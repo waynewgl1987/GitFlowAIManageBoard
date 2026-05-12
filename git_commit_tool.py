@@ -512,8 +512,8 @@ def resolve_conflict(fp, resolution):
     else:
         with open(fp,"w",encoding="utf-8") as f: f.write(resolution)
     out, err, rc = _run(["git","add",fp])
-    # Check if all conflicts are now resolved (but do NOT auto-commit — let the UI prompt the user)
-    all_resolved = rc == 0 and not get_conflicts() and _get_merge_type() is not None
+    # all_resolved: no remaining conflict files (regardless of merge state)
+    all_resolved = rc == 0 and not get_conflicts()
     return out, err, rc, all_resolved
 
 def get_file_commits(file_path, page=1, per_page=20):
@@ -3723,8 +3723,16 @@ function resolveAllBlocks(filePath, fileIdx){
   }
   var content=out.join('\n');
   apiPost('/api/resolve-conflict',{path:filePath,content:content},function(data){
-    if(data.ok){resolvedConflicts[filePath]=true;addMsg(t('conflict_resolved_ok'),'success');loadConflicts();checkConflicts();loadFiles();
-      if(data.all_resolved){setTimeout(function(){showMergeCommitDialog(data.default_msg||'');},500);}
+    if(data.ok){
+      resolvedConflicts[filePath]=true;
+      addMsg(t('conflict_resolved_ok'),'success');
+      loadConflicts();checkConflicts();loadFiles();
+      if(data.all_resolved){
+        setTimeout(function(){showMergeCommitDialog(data.default_msg||'');},500);
+      } else {
+        // This file is resolved but other conflict files remain — tell the user
+        addMsg('✅ File resolved. Resolve remaining conflict files to commit.','success');
+      }
     }
     else addMsg(t('op_failed_err')+(data.error||''),'error');
   });
@@ -3743,11 +3751,18 @@ function showRawEdit(filePath, fileIdx){
 // ═══════════ Post-resolve commit & push dialog ═══════════
 function showMergeCommitDialog(defaultMsg){
   var branchName=(document.getElementById('branch-name')||{textContent:''}).textContent||'';
+  // Detect if we're in a merge/rebase/cherry-pick state via the default msg hint
+  var isMergeState=defaultMsg && (defaultMsg.indexOf('Merge')===0 || defaultMsg.indexOf('merge')!==-1 || defaultMsg.indexOf('cherry-pick')!==-1);
+  var titleIcon=isMergeState?'🔀':'✅';
+  var titleText=isMergeState?t('merge_all_resolved_title'):'All Conflicts Resolved!';
+  var descText=isMergeState
+    ? t('merge_all_resolved_desc')
+    : 'All conflict files have been resolved and staged. Commit these changes now?';
   var bodyHtml=
-    '<p style="margin:0 0 12px;color:#374151;font-size:13px">'+t('merge_all_resolved_desc')+'</p>'
+    '<p style="margin:0 0 12px;color:#374151;font-size:13px">'+descText+'</p>'
     +'<label style="font-size:12px;font-weight:600;color:#6b7280;display:block;margin-bottom:4px">'+t('commit_msg_label')+'</label>'
     +'<textarea id="merge-complete-msg" rows="4" style="width:100%;padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;outline:none;box-sizing:border-box">'+escapeHtml(defaultMsg)+'</textarea>';
-  showModal('✅ '+t('merge_all_resolved_title'), bodyHtml, t('commit_now_btn'), function(){
+  showModal(titleIcon+' '+titleText, bodyHtml, t('commit_now_btn'), function(){
     var msg=(document.getElementById('merge-complete-msg')||{value:''}).value.trim();
     if(!msg){addMsg('⚠️ '+t('enter_commit_msg_err'),'error');return;}
     apiPost('/api/complete-merge',{message:msg},function(data){
@@ -3795,8 +3810,10 @@ function resolveConflictCustom(filePath,fileIdx){
   var ta=document.getElementById('cf-raw-editor-'+fileIdx);
   if(!ta) return;
   apiPost('/api/resolve-conflict',{path:filePath,content:ta.value},function(data){
-    if(data.ok){resolvedConflicts[filePath]=true;addMsg(t('conflict_resolved_ok'),'success');loadConflicts();checkConflicts();loadFiles();
+    if(data.ok){
+      resolvedConflicts[filePath]=true;addMsg(t('conflict_resolved_ok'),'success');loadConflicts();checkConflicts();loadFiles();
       if(data.all_resolved){setTimeout(function(){showMergeCommitDialog(data.default_msg||'');},500);}
+      else addMsg('✅ File resolved. Resolve remaining conflict files to commit.','success');
     }
     else addMsg(t('op_failed_err')+(data.error||''),'error');
   });
@@ -4319,7 +4336,10 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     stdout,stderr,rc=_run(["git","commit","--no-edit"],env=env)
             else:
-                self._json({"ok":False,"error":"No merge/rebase/cherry-pick in progress"},400); return
+                # No special merge state — just a regular commit of staged resolved files
+                if not msg:
+                    self._json({"ok":False,"error":"Commit message required"},400); return
+                stdout,stderr,rc=_run(["git","commit","-m",msg])
             self._json({"ok":True,"stdout":stdout} if rc==0 else {"ok":False,"error":stderr or stdout},400)
 
         elif path=="/api/reset":
