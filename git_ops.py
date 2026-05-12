@@ -503,8 +503,64 @@ def get_conflicts():
     return [f.strip() for f in out.splitlines() if f.strip()]
 
 
+_BINARY_EXTENSIONS = {
+    # Images
+    "png","jpg","jpeg","gif","webp","bmp","ico","tiff","tif","svg","heic","raw",
+    # Video / Audio
+    "mp4","mov","avi","mkv","mp3","wav","flac","m4a","aac","ogg","webm",
+    # Archives / packages
+    "zip","tar","gz","bz2","xz","7z","rar","jar","war","ear",
+    # Compiled / executables
+    "exe","dll","so","dylib","class","pyc","pyd","o","a","lib",
+    # Fonts / Documents
+    "ttf","otf","woff","woff2","pdf","doc","docx","xls","xlsx","ppt","pptx",
+    # Database / data
+    "db","sqlite","sqlite3",
+}
+
+
+def _is_binary_file(fp):
+    """Return True if fp is a binary file, by extension first, then null-byte scan."""
+    ext = os.path.splitext(fp)[1].lstrip(".").lower()
+    if ext in _BINARY_EXTENSIONS:
+        return True
+    # Null-byte scan of working tree file
+    try:
+        with open(fp, "rb") as f:
+            chunk = f.read(8192)
+        if b"\x00" in chunk:
+            return True
+    except Exception:
+        pass
+    # Fall back: check staged :2 (ours) via subprocess in binary mode
+    try:
+        import subprocess as _sp
+        r = _sp.run(["git", "show", f":2:{fp}"], capture_output=True, timeout=10)
+        if b"\x00" in r.stdout[:512]:
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def get_conflict_detail(fp):
-    """Return conflict detail for a file: raw content, ours, theirs, and parsed blocks."""
+    """Return conflict detail for a file: raw content, ours, theirs, and parsed blocks.
+
+    For binary files, returns ``is_binary=True`` with no blocks.
+    Callers should present "Use Ours / Use Theirs" buttons instead of a diff editor.
+    """
+    binary = _is_binary_file(fp)
+
+    if binary:
+        return {
+            "is_binary": True,
+            "raw": "",
+            "ours": "",
+            "theirs": "",
+            "blocks": [],
+            "path": fp,
+        }
+
     try:
         with open(fp, "r", encoding="utf-8", errors="replace") as f:
             raw = f.read()
@@ -513,7 +569,7 @@ def get_conflict_detail(fp):
     ours, _, _ = _run(["git", "show", f":2:{fp}"])
     theirs, _, _ = _run(["git", "show", f":3:{fp}"])
     blocks = _parse_blocks(raw)
-    return {"raw": raw, "ours": ours, "theirs": theirs, "blocks": blocks}
+    return {"is_binary": False, "raw": raw, "ours": ours, "theirs": theirs, "blocks": blocks}
 
 
 def _parse_blocks(raw):
@@ -582,11 +638,23 @@ def _complete_merge_step():
 
 
 def resolve_conflict(fp, resolution):
-    """Resolve a conflict file with 'ours', 'theirs', or custom content."""
-    if resolution == "ours": _run(["git", "checkout", "--ours", fp])
-    elif resolution == "theirs": _run(["git", "checkout", "--theirs", fp])
+    """Resolve a conflict file with 'ours', 'theirs', or custom text content.
+
+    ``resolution`` is either the literal string ``'ours'``/``'theirs'`` (which
+    runs ``git checkout --ours/--theirs``) or arbitrary text content to write.
+    Binary files must always use ``'ours'`` or ``'theirs'`` — passing empty
+    content for a binary file is rejected to avoid corrupting the file.
+    """
+    if resolution == "ours":
+        _run(["git", "checkout", "--ours", fp])
+    elif resolution == "theirs":
+        _run(["git", "checkout", "--theirs", fp])
     else:
-        with open(fp, "w", encoding="utf-8") as f: f.write(resolution)
+        # Safety: never overwrite a binary file with empty text content
+        if not resolution and _is_binary_file(fp):
+            return "", "Cannot resolve binary file with empty content — use 'ours' or 'theirs'", 1, False
+        with open(fp, "w", encoding="utf-8") as f:
+            f.write(resolution)
     out, err, rc = _run(["git", "add", fp])
     all_resolved = rc == 0 and not get_conflicts()
     return out, err, rc, all_resolved
@@ -631,8 +699,29 @@ def get_uncommitted_changes():
     return files
 
 
+def _get_unpushed_hashes(branch: str) -> set:
+    """Return set of commit hashes on branch that have NOT been pushed to origin."""
+    remote = f"origin/{branch}"
+    # Check if the remote tracking branch exists at all
+    check_out, _, check_rc = _run(["git", "rev-parse", "--verify", remote])
+    if check_rc != 0:
+        # No remote tracking branch — treat everything as unpushed
+        out, _, rc = _run(["git", "rev-list", branch])
+        if rc == 0:
+            return set(h.strip() for h in out.splitlines() if h.strip())
+        return set()
+    out, _, rc = _run(["git", "log", f"{remote}..{branch}", "--pretty=format:%H"])
+    if rc != 0:
+        return set()
+    return set(h.strip() for h in out.splitlines() if h.strip())
+
+
 def get_commit_log(page=1, per_page=10, search="", order="desc"):
-    """Return paginated commit log with optional search."""
+    """Return paginated commit log with optional search.
+
+    Each commit dict includes a ``pushed`` boolean indicating whether the
+    commit is present on the remote tracking branch (origin/<branch>).
+    """
     branch = current_branch()
     skip = (page - 1) * per_page if per_page > 0 else 0
     fmt = "--pretty=format:%H||%an||%ad||%s"
@@ -640,6 +729,9 @@ def get_commit_log(page=1, per_page=10, search="", order="desc"):
 
     root_out, _, _ = _run(["git", "rev-list", "--max-parents=0", "HEAD"])
     root_hashes = set(h.strip() for h in root_out.splitlines() if h.strip())
+
+    # Collect unpushed hashes once for the current branch
+    unpushed = _get_unpushed_hashes(branch)
 
     def _parse(lines):
         result = []
@@ -651,7 +743,8 @@ def get_commit_log(page=1, per_page=10, search="", order="desc"):
                 h = parts[0]
                 result.append({"hash": h, "short_hash": h[:7],
                                 "author": parts[1], "date": parts[2], "message": parts[3],
-                                "is_root": h in root_hashes})
+                                "is_root": h in root_hashes,
+                                "pushed": h not in unpushed})
         return result
 
     if not search:

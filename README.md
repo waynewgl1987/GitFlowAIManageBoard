@@ -342,12 +342,70 @@ All operation results (commits, pulls, pushes, resets, merges, …) are stored i
 
 ```
 GitAutoManageBoard/
-├── git_commit_tool.py   # Single-file app: HTTP server + Git API + embedded HTML/CSS/JS
-├── config.ini           # Optional: customise app name and version
-└── README.md
+│
+├── git_commit_tool.py      # Entry point — HTTP server, request routing, static file serving.
+│                           # Class Handler (BaseHTTPRequestHandler):
+│                           #   do_GET  → serves static files + delegates to handle_get()
+│                           #   do_POST → delegates to handle_post()
+│                           # main() finds a free port, starts HTTPServer, opens browser.
+│
+├── git_ops.py              # All Git operations and shared state.
+│                           # Globals: PORT, _MSGLOG (op log), _PUSH_JOBS (streaming jobs),
+│                           #          _PUSH_JOBS_LOCK, _MSGLOG_LOCK (thread safety)
+│                           # Key helpers:
+│                           #   _get_git_env()          — unified git env (no interactive prompts)
+│                           #   _run()                  — synchronous git subprocess wrapper
+│                           #   _run_push_streaming()   — async push with live output
+│                           #   _run_gitop_streaming()  — async fetch/pull with live output
+│                           # Domain functions: current_branch, get_status, get_conflicts,
+│                           #   get_branches, create_branch, checkout_branch, delete_branch_*,
+│                           #   get_commit_log, reset_to, revert_commit, squash_commits,
+│                           #   stash_list/pop/drop, resolve_conflict, pull_current, fetch ...
+│
+├── api_handlers.py         # REST API endpoint dispatcher.
+│                           #   json_result(rc, stdout, stderr) — canonical response builder
+│                           #   handle_get(path, params, send_json)  — all GET /api/* routes
+│                           #   handle_post(path, data, send_json)   — all POST /api/* routes
+│                           # Each route validates input, calls git_ops, returns JSON.
+│
+├── static/
+│   ├── index.html          # HTML skeleton — layout structure, tab panels, modal containers.
+│   │                       # References /static/style.css and /static/app.js.
+│   │                       # No inline styles or scripts.
+│   │
+│   ├── style.css           # All UI styles.
+│   │                       # CSS custom properties (:root) define the design token system:
+│   │                       #   --color-primary/success/warning/error/purple,
+│   │                       #   --color-text/bg/border, --radius-*, --font-size-*
+│   │                       # Sections: layout, top-bar, project banner, tabs, diff viewer,
+│   │                       #   branch list, conflict zones, modals, stash, log, toasts.
+│   │
+│   └── app.js              # All client-side JavaScript (~2800 lines).
+│                           # Sections:
+│                           #   i18n       — T{} translation table, t()/tf() helpers, switchLang()
+│                           #   State      — global UI state (checkedPaths, resolvedConflicts ...)
+│                           #   API        — apiGet(), apiPost(), spinner management
+│                           #   Pages      — switchPage(), loadFiles(), loadBranches(), loadLog(),
+│                           #               loadConflicts(), loadStash(), loadProjectName()
+│                           #   Git ops    — doFetch(), doPull(), doPush(), doManualPush(),
+│                           #               checkoutBranch(), refreshAppState(), createNewBranch(),
+│                           #               promptDeleteBranch(), resolveAllBlocks() ...
+│                           #   UI helpers — showModal(), showModalDouble(), showToast(),
+│                           #               addMsg(), highlightDiff(), renderConflictZone()
+│                           #   Syntax HL  — _tokenLine(), buildHighlightedPre() for 10+ languages
+│
+├── config.ini              # App branding config (read on every /api/project-name request).
+│                           #   [app]
+│                           #   name    = Git Manage Board   # displayed in top-right header
+│                           #   version = v1.0.0             # displayed below the name badge
+│
+├── docs/
+│   └── screenshot.png      # Screenshot used in README preview.
+│
+└── README.md               # Full documentation in English and Chinese.
 ```
 
-The entire application — backend logic, HTML, CSS, and JavaScript — lives in one file for maximum portability.
+The application is split into a Python backend (`git_commit_tool.py`, `git_ops.py`, `api_handlers.py`) and a static frontend (`static/`). Run with `python3 git_commit_tool.py` — no frameworks or external packages required.
 
 ---
 
@@ -693,12 +751,70 @@ version = v1.0.0
 
 ```
 GitAutoManageBoard/
-├── git_commit_tool.py   # 单文件应用：HTTP 服务器 + Git API + 内嵌 HTML/CSS/JS
-├── config.ini           # 可选：自定义应用名称和版本号
-└── README.md
+│
+├── git_commit_tool.py      # 入口文件 — HTTP 服务器、请求路由、静态文件服务。
+│                           # Handler 类（继承 BaseHTTPRequestHandler）：
+│                           #   do_GET  → 服务静态文件 + 委托 handle_get() 处理 API
+│                           #   do_POST → 委托 handle_post() 处理 API
+│                           # main() 自动寻找空闲端口，启动 HTTPServer，打开浏览器。
+│
+├── git_ops.py              # 所有 Git 操作函数与共享状态。
+│                           # 全局变量：PORT、_MSGLOG（操作日志）、_PUSH_JOBS（流式任务），
+│                           #           _PUSH_JOBS_LOCK、_MSGLOG_LOCK（线程安全）
+│                           # 核心辅助函数：
+│                           #   _get_git_env()          — 统一 git 环境变量（禁用交互提示）
+│                           #   _run()                  — 同步 git 子进程封装
+│                           #   _run_push_streaming()   — 异步 push，支持实时输出
+│                           #   _run_gitop_streaming()  — 异步 fetch/pull，支持实时输出
+│                           # 业务函数：current_branch、get_status、get_conflicts、
+│                           #   get_branches、create_branch、checkout_branch、delete_branch_*、
+│                           #   get_commit_log、reset_to、revert_commit、squash_commits、
+│                           #   stash_list/pop/drop、resolve_conflict、pull_current、fetch ...
+│
+├── api_handlers.py         # REST API 端点分发器。
+│                           #   json_result(rc, stdout, stderr) — 统一响应格式构建函数
+│                           #   handle_get(path, params, send_json)  — 所有 GET /api/* 路由
+│                           #   handle_post(path, data, send_json)   — 所有 POST /api/* 路由
+│                           # 每个路由负责参数校验、调用 git_ops、返回 JSON。
+│
+├── static/
+│   ├── index.html          # HTML 骨架 — 页面布局、Tab 面板、Modal 容器。
+│   │                       # 引用 /static/style.css 和 /static/app.js。
+│   │                       # 不含任何内联样式或脚本。
+│   │
+│   ├── style.css           # 所有 UI 样式。
+│   │                       # :root CSS 自定义属性定义设计令牌体系：
+│   │                       #   --color-primary/success/warning/error/purple，
+│   │                       #   --color-text/bg/border，--radius-*，--font-size-*
+│   │                       # 涵盖：布局、顶部栏、项目横幅、Tab、diff 视图、
+│   │                       #   分支列表、冲突区域、Modal、Stash、日志、Toast。
+│   │
+│   └── app.js              # 所有客户端 JavaScript（约 2800 行）。
+│                           # 功能分区：
+│                           #   i18n       — T{} 翻译表，t()/tf() 辅助，switchLang()
+│                           #   状态管理   — 全局 UI 状态（checkedPaths、resolvedConflicts ...）
+│                           #   API 层     — apiGet()、apiPost()、全局 spinner 管理
+│                           #   页面加载   — switchPage()、loadFiles()、loadBranches()、loadLog()、
+│                           #               loadConflicts()、loadStash()、loadProjectName()
+│                           #   Git 操作   — doFetch()、doPull()、doPush()、doManualPush()、
+│                           #               checkoutBranch()、refreshAppState()、createNewBranch()、
+│                           #               promptDeleteBranch()、resolveAllBlocks() ...
+│                           #   UI 辅助    — showModal()、showModalDouble()、showToast()、
+│                           #               addMsg()、highlightDiff()、renderConflictZone()
+│                           #   语法高亮   — _tokenLine()、buildHighlightedPre()，支持 10+ 语言
+│
+├── config.ini              # 应用品牌配置（每次 /api/project-name 请求时读取）。
+│                           #   [app]
+│                           #   name    = Git Manage Board   # 显示在右上角标题区域
+│                           #   version = v1.0.0             # 显示在名称徽章下方
+│
+├── docs/
+│   └── screenshot.png      # README 预览截图。
+│
+└── README.md               # 完整文档，中英双语。
 ```
 
-整个应用——后端逻辑、HTML、CSS 和 JavaScript——都集中在一个文件中，便于携带和部署。
+应用由 Python 后端（`git_commit_tool.py`、`git_ops.py`、`api_handlers.py`）和静态前端（`static/`）组成。使用 `python3 git_commit_tool.py` 启动，无需任何框架或第三方依赖。
 
 ---
 

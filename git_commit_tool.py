@@ -24,12 +24,15 @@ MIME_TYPES = {
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args): pass
 
-    def _send(self, code, ctype, body):
+    def _send(self, code, ctype, body, extra_headers=None):
         if isinstance(body, str):
             body = body.encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", len(body))
+        if extra_headers:
+            for k, v in extra_headers.items():
+                self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
 
@@ -49,7 +52,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/" or path == "/index.html":
             fp = os.path.join(STATIC_DIR, "index.html")
             try:
-                self._send(200, "text/html; charset=utf-8", open(fp, "rb").read())
+                self._send(200, "text/html; charset=utf-8", open(fp, "rb").read(),
+                           {"Cache-Control": "no-store"})
             except FileNotFoundError:
                 self._send(404, "text/plain", "index.html not found")
             return
@@ -60,7 +64,10 @@ class Handler(BaseHTTPRequestHandler):
             if os.path.isfile(fp):
                 ext = os.path.splitext(fp)[1]
                 ct = MIME_TYPES.get(ext, "application/octet-stream")
-                self._send(200, ct, open(fp, "rb").read())
+                # Prevent stale JS/CSS after server restart
+                no_cache = ext in {".js", ".css", ".html"}
+                hdrs = {"Cache-Control": "no-store"} if no_cache else {}
+                self._send(200, ct, open(fp, "rb").read(), hdrs)
             else:
                 self._send(404, "text/plain", "Not found")
             return

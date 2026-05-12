@@ -456,7 +456,7 @@ def handle_post(path, data, send_json):
         content = data.get("content")
         if resolution:
             stdout, stderr, rc, all_resolved = resolve_conflict(fp, resolution)
-        elif content:
+        elif content is not None:
             stdout, stderr, rc, all_resolved = resolve_conflict(fp, content)
         else:
             send_json({"ok": False, "error": "no resolution"}, 400)

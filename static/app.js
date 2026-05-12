@@ -1662,29 +1662,80 @@ function renderLog(data){
   html+='<th style="width:20px"></th>';
   html+='<th>Hash</th><th>Author</th>';
   html+='<th style="cursor:pointer;user-select:none;white-space:nowrap" onclick="toggleLogSort()" title="'+sortTip+'">Date'+sortIcon+'</th>';
-  html+='<th>Message</th><th>Actions</th><th style="width:20px"></th>';
+  html+='<th>Message</th><th>Status</th><th>Actions</th><th style="width:20px"></th>';
   html+='</tr></thead><tbody>';
   data.commits.forEach(function(c,idx){
     var checked=squashSelected[c.hash]?' checked':'';
     var isRoot=c.is_root?true:false;
     var cbDisabled=isRoot?' disabled title="'+(L==='zh'?'初始 commit 不可参与 Squash':'Initial commit cannot be squashed')+'"':'';
     var rootBadge=isRoot?'<span style="font-size:10px;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:middle">root</span>':'';
+
+    // ── Push status badge ──────────────────────────────────────────────────
+    var statusCell;
+    if(c.pushed){
+      statusCell=
+        '<span title="This commit has been pushed to remote" '
+        +'style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;'
+        +'background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;border-radius:20px;'
+        +'padding:3px 10px;white-space:nowrap;cursor:default">'
+        +'☁️ Pushed</span> '
+        +'<button class="btn btn-sm" onclick="event.stopPropagation();copyToClipboard(\''+c.hash+'\')" '
+        +'title="Copy full commit hash" '
+        +'style="font-size:10px;padding:2px 7px;background:#ecfdf5;color:#065f46;border:1px solid #6ee7b7;'
+        +'border-radius:12px;margin-left:2px">📋 Copy</button>';
+    } else {
+      statusCell=
+        '<span title="This commit has NOT been pushed to remote yet" '
+        +'style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;'
+        +'background:#fffbeb;color:#92400e;border:1px solid #fcd34d;border-radius:20px;'
+        +'padding:3px 10px;white-space:nowrap;cursor:default">'
+        +'⏳ Local</span> '
+        +'<button class="btn btn-sm" onclick="event.stopPropagation();pushFromLog()" '
+        +'title="Push this commit and all pending commits to remote" '
+        +'style="font-size:10px;padding:2px 8px;background:linear-gradient(135deg,#6366f1,#4f46e5);'
+        +'color:#fff;border:none;border-radius:12px;font-weight:600;cursor:pointer;'
+        +'box-shadow:0 1px 4px rgba(79,70,229,.35);margin-left:2px">⬆ Push</button>';
+    }
+
     html+='<tr style="cursor:pointer" onclick="toggleCommitDiff(\''+c.hash+'\','+idx+')"><td><input type="checkbox" class="squash-cb" data-hash="'+c.hash+'"'+checked+cbDisabled+' onclick="event.stopPropagation();toggleSquashSelect(this)"></td>';
     html+='<td><span class="log-hash" data-full="'+c.hash+'" onclick="event.stopPropagation();toggleHash(this)" title="Click to toggle full hash">'+c.short_hash+'</span></td>';
     html+='<td class="log-author">'+escapeHtml(c.author)+'</td>';
     html+='<td class="log-date">'+c.date+'</td>';
     html+='<td class="log-msg" title="'+escapeAttr(c.message)+'">'+escapeHtml(c.message)+rootBadge+'</td>';
+    html+='<td class="log-status" onclick="event.stopPropagation()">'+statusCell+'</td>';
     html+='<td class="log-actions">';
     html+='<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();showResetModal(\''+c.hash+'\',\''+c.short_hash+'\')">Reset</button>';
     html+='<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();showRevertModal(\''+c.hash+'\',\''+c.short_hash+'\')">Revert</button>';
     html+='</td>';
     html+='<td style="text-align:center"><span class="file-toggle" id="log-toggle-'+idx+'">▶</span></td>';
     html+='</tr>';
-    html+='<tr id="commit-diff-row-'+idx+'" style="display:none"><td colspan="7" style="padding:0"><div id="commit-diff-'+idx+'" style="padding:12px 16px;max-height:600px;overflow-y:auto"></div></td></tr>';
+    html+='<tr id="commit-diff-row-'+idx+'" style="display:none"><td colspan="8" style="padding:0"><div id="commit-diff-'+idx+'" style="padding:12px 16px;max-height:600px;overflow-y:auto"></div></td></tr>';
   });
   html+='</tbody></table>';
   container.innerHTML=html;
   updateSquashBar();
+}
+
+/** Push from commit log row — same confirm flow as the top Push button. */
+function pushFromLog(){
+  doManualPush();
+}
+
+/** Copy text to clipboard and show a brief toast. */
+function copyToClipboard(text){
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){
+      showToast('✅ Copied: '+text.substr(0,12)+'…','ok',2000);
+    }).catch(function(){ _copyFallback(text); });
+  } else { _copyFallback(text); }
+}
+function _copyFallback(text){
+  var ta=document.createElement('textarea');
+  ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); showToast('✅ Copied','ok',2000); }
+  catch(e){ showToast('❌ Copy failed','error',2000); }
+  document.body.removeChild(ta);
 }
 
 function toggleCommitDiff(hash,idx){
@@ -2322,7 +2373,50 @@ function _tokenLine(line,lang,kwRe,strRe,numRe,typeRe,fnRe,decRe){
 
 function renderConflictDetail(filePath, fileIdx, data){
   var detail=document.getElementById('conflict-detail-'+fileIdx);
-  var blocks=data.blocks||[];
+
+  // ── Binary file: no text blocks, just pick one side ──────────────────────
+  if(data.is_binary){
+    var ext = filePath.split('.').pop().toLowerCase();
+    var icon = ['png','jpg','jpeg','gif','webp','bmp','svg','ico'].indexOf(ext)>=0 ? '🖼️' :
+               ['mp4','mov','avi','mkv'].indexOf(ext)>=0 ? '🎬' :
+               ['zip','tar','gz','7z'].indexOf(ext)>=0 ? '📦' : '📎';
+    var already = resolvedConflicts[filePath];
+    detail.innerHTML =
+      '<div style="padding:20px;background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;margin:8px 0">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">' +
+          '<span style="font-size:28px">'+icon+'</span>' +
+          '<div>' +
+            '<div style="font-weight:700;font-size:14px;color:#92400e">Binary file — cannot show diff</div>' +
+            '<div style="font-size:12px;color:#78350f;margin-top:2px">'+escapeHtml(filePath)+'</div>' +
+          '</div>' +
+        '</div>' +
+        '<p style="font-size:13px;color:#78350f;margin-bottom:16px;line-height:1.6">' +
+          'This is a binary file (image, archive, etc). Git cannot merge it automatically.<br>' +
+          'Choose which version to keep:' +
+        '</p>' +
+        '<div style="display:flex;gap:12px;flex-wrap:wrap">' +
+          '<button onclick="resolveBinary(\''+escapeAttr(filePath)+'\','+fileIdx+',\'ours\')" ' +
+            'style="flex:1;min-width:160px;padding:12px 16px;border-radius:8px;border:2px solid #10b981;' +
+            'background:'+(already==='ours'?'#10b981':'#f0fdf4')+';color:'+(already==='ours'?'#fff':'#065f46')+';' +
+            'font-weight:700;font-size:13px;cursor:pointer;transition:all .2s">' +
+            '✅ Keep Ours (HEAD)<br>' +
+            '<span style="font-size:11px;font-weight:400;opacity:.8">Current branch version</span>' +
+          '</button>' +
+          '<button onclick="resolveBinary(\''+escapeAttr(filePath)+'\','+fileIdx+',\'theirs\')" ' +
+            'style="flex:1;min-width:160px;padding:12px 16px;border-radius:8px;border:2px solid #3b82f6;' +
+            'background:'+(already==='theirs'?'#3b82f6':'#eff6ff')+';color:'+(already==='theirs'?'#fff':'#1e40af')+';' +
+            'font-weight:700;font-size:13px;cursor:pointer;transition:all .2s">' +
+            '🔵 Use Theirs (Incoming)<br>' +
+            '<span style="font-size:11px;font-weight:400;opacity:.8">Version being merged in</span>' +
+          '</button>' +
+        '</div>' +
+        (already ? '<div style="margin-top:14px;padding:8px 12px;background:#d1fae5;border-radius:6px;font-size:12px;color:#065f46;font-weight:600">✅ Resolved — using <b>'+already+'</b></div>' : '') +
+      '</div>';
+    return;
+  }
+
+  // ── Text file: original block rendering ──────────────────────────────────
+  var blocks = data.blocks || [];
   var lang=_cfLang(filePath);
   var conflictCount=0;
   for(var b=0;b<blocks.length;b++) if(blocks[b].type==='conflict') conflictCount++;
@@ -2495,6 +2589,13 @@ function saveManualBlock(filePath, fileIdx, ci){
 }
 
 function resolveAllBlocks(filePath, fileIdx){
+  // Guard: binary files must use resolveBinary() — this path doesn't apply
+  if((_conflictData[filePath]||{}).is_binary){
+    showModal('⚠️ Binary File',
+      '<p style="margin:0;font-size:14px">This is a binary file. Please use the <b>✅ Keep Ours</b> or <b>🔵 Use Theirs</b> buttons above to resolve it.</p>',
+      'OK');
+    return;
+  }
   var choices=conflictChoices[filePath]||[];
   var blocks=(_conflictData[filePath]||{}).blocks||[];
   var ci=0; var out=[];
@@ -2613,6 +2714,29 @@ function jumpToConflict(filePath, fileIdx, dir){
 
 function showEditConflict(idx){document.getElementById('conflict-edit-'+idx) && (document.getElementById('conflict-edit-'+idx).style.display='block')}
 function resolveConflict(filePath,resolution,idx){apiPost('/api/resolve-conflict',{path:filePath,resolution:resolution},function(data){if(data.ok){resolvedConflicts[filePath]=true;addMsg(t('conflict_resolved')+resolution,'success');loadConflicts();checkConflicts();loadFiles();if(data.all_resolved){setTimeout(function(){showMergeCommitDialog(data.default_msg||'');},500);}}else addMsg(t('op_failed_err')+(data.error||''),'error')})}
+
+/**
+ * Resolve a binary file conflict by choosing ours or theirs.
+ * Runs git checkout --ours/--theirs then git add, same as text resolution.
+ */
+function resolveBinary(filePath, fileIdx, side){
+  apiPost('/api/resolve-conflict',{path:filePath,resolution:side},function(data){
+    if(data.ok){
+      resolvedConflicts[filePath] = side; // store which side was chosen
+      addMsg((side==='ours'?'✅ Kept our version of ':'🔵 Using their version of ')+filePath,'success');
+      showToast((side==='ours'?'✅ Kept ours':'🔵 Using theirs')+': '+filePath,'ok',2500);
+      // Re-render the binary card to show resolved state
+      if(_conflictData[filePath]) _conflictData[filePath].is_binary=true;
+      var det=document.getElementById('conflict-detail-'+fileIdx);
+      if(det) renderConflictDetail(filePath, fileIdx, _conflictData[filePath]||{is_binary:true});
+      checkConflicts(); loadFiles();
+      if(data.all_resolved){ setTimeout(function(){ showMergeCommitDialog(data.default_msg||''); },500); }
+    } else {
+      addMsg('❌ Failed to resolve binary conflict: '+(data.error||''),'error');
+    }
+  });
+}
+
 function resolveConflictCustom(filePath,fileIdx){
   var ta=document.getElementById('cf-raw-editor-'+fileIdx);
   if(!ta) return;
