@@ -22,22 +22,28 @@
 </div>
 
 <div class="top-bar">
-  <!-- Left: current branch, flush with content below -->
-  <div style="flex:1;display:flex;align-items:center;">
-    <div style="display:flex;flex-direction:column;align-items:flex-start;">
-      <span class="branch-label" data-i18n="current_branch_label" style="font-weight:700;margin-bottom:2px">Current Branch:</span>
-      <span class="branch-tag" id="branch-name" title="Current Branch">...</span>
+  <!-- Row 1: current branch (left) + language selector (right) -->
+  <div class="top-bar-row top-bar-row--branch">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;min-width:0;flex:1;gap:4px;">
+      <span class="branch-label" data-i18n="current_branch_label">🌿 Current Branch</span>
+      <span class="branch-tag" id="branch-name" title="Current Branch" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;">...</span>
+    </div>
+    <div style="flex-shrink:0;margin-left:12px;">
+      <select class="lang-sel" id="lang-sel" onchange="switchLang(this.value)">
+        <option value="en">EN</option>
+        <option value="zh">中文</option>
+      </select>
     </div>
   </div>
-  <!-- Center: tabs + remote actions -->
-  <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+  <!-- Row 2: tabs + remote actions -->
+  <div class="top-bar-row top-bar-row--tabs">
     <button class="btn-tab active" id="tab-commit" onclick="switchPage('main')" data-i18n="tab_commit">Commit</button>
     <button class="btn-tab" id="tab-branches" onclick="loadBranches(1)" data-i18n="tab_branches">Branches</button>
     <button class="btn-tab" id="tab-log" onclick="loadLog(1)" data-i18n="tab_log">Commit Log</button>
     <button class="btn-tab" id="tab-conflicts" onclick="loadConflicts()" data-i18n="tab_conflicts">Conflicts</button>
     <button class="btn-tab" id="tab-stash" onclick="loadStash()" data-i18n="tab_stash">Stash</button>
     <div class="sync-section">
-      <span style="font-size:10px;color:#6366f1;font-weight:700;letter-spacing:0.8px;margin-right:4px;">REMOTE</span>
+      <span style="font-size:10px;color:#9ca3af;font-weight:700;letter-spacing:0.8px;margin-right:2px;">REMOTE</span>
       <button class="git-action-btn fetch-btn" onclick="doFetch()">
         ⬇ Fetch<span class="git-action-desc" data-i18n="fetch_desc">Check remote for new commits (no merge)</span>
       </button>
@@ -49,13 +55,7 @@
       </button>
     </div>
   </div>
-  <!-- Right: language selector -->
-  <div style="flex:1;display:flex;justify-content:flex-end;">
-    <select class="lang-sel" id="lang-sel" onchange="switchLang(this.value)">
-      <option value="en">EN</option>
-      <option value="zh">中文</option>
-    </select>
-  </div>
+
 </div>
 
 <div class="msg-log-bar" style="margin-bottom:4px;">

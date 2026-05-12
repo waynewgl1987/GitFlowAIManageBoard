@@ -21,8 +21,11 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;background:var(--color-bg);color:#1a1a2e;padding:24px 16px}
 .container{max-width:1280px;margin:0 auto}
-.top-bar{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:12px;overflow:visible;}
+.top-bar{display:flex;flex-direction:column;background:#fff;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.07),0 0 0 1px rgba(0,0,0,.04);margin-bottom:16px;overflow:hidden;}
 .top-bar h1{font-size:22px;margin-right:0}
+.top-bar-row{display:flex;align-items:center;gap:10px;}
+.top-bar-row--branch{padding:12px 20px;background:#fafafa;border-bottom:1px solid #f0f0f0;}
+.top-bar-row--tabs{flex-wrap:wrap;padding:8px 16px 10px;justify-content:center;gap:4px;}
 .project-banner{display:flex;align-items:center;gap:12px;padding:10px 20px;margin-bottom:10px;border-radius:12px;background:linear-gradient(135deg,#1e3a8a 0%,#1d4ed8 50%,#7c3aed 100%);box-shadow:0 4px 16px rgba(30,58,138,.35);overflow:hidden;position:relative;}
 .project-banner::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(45deg,transparent,transparent 18px,rgba(255,255,255,.03) 18px,rgba(255,255,255,.03) 36px);}
 .project-banner-icon{font-size:26px;line-height:1;flex-shrink:0;position:relative;z-index:1;}
@@ -30,9 +33,10 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",sans-s
 .project-banner-name{font-size:20px;font-weight:800;color:#fff;letter-spacing:0.5px;line-height:1.1;text-shadow:0 1px 4px rgba(0,0,0,.3);}
 .project-banner-remote{font-size:11px;color:rgba(255,255,255,.7);font-family:monospace;letter-spacing:0.3px;}
 .project-banner-badge{margin-left:auto;position:relative;z-index:1;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;letter-spacing:0.5px;backdrop-filter:blur(4px);white-space:nowrap;}
-.branch-tag{background:var(--color-primary-dark);color:#fff;padding:5px 16px;border-radius:99px;font-size:14px;font-weight:700;white-space:nowrap;box-shadow:0 0 8px rgba(30,64,175,.4);cursor:default}
-.branch-label{font-size:12px;color:var(--color-text-muted);white-space:nowrap}
-.lang-sel{padding:4px 8px;border-radius:6px;border:1px solid #d1d5db;font-size:12px;cursor:pointer}
+.branch-tag{background:linear-gradient(135deg,#1e40af,#3b82f6);color:#fff;padding:5px 16px;border-radius:99px;font-size:13px;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(59,130,246,.35);cursor:default;letter-spacing:.3px;}
+.branch-label{font-size:11px;color:var(--color-text-muted);white-space:nowrap;font-weight:600;letter-spacing:.4px;text-transform:uppercase;}
+.lang-sel{padding:5px 10px;border-radius:8px;border:1px solid #e5e7eb;font-size:12px;cursor:pointer;background:#fff;color:#374151;font-weight:500;}
+.lang-sel:hover{border-color:#3b82f6;}
 .btn{padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;border:none;cursor:pointer;transition:opacity .2s;background:var(--color-border);color:#374151}
 .btn:hover{opacity:.85}
 .btn-primary{background:var(--color-primary);color:#fff}
@@ -46,13 +50,13 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",sans-s
 .git-action-btn:active{transform:translateY(0);}
 .git-action-btn .git-action-desc{visibility:hidden;opacity:0;position:fixed;background:#1f2937;color:#f9fafb;font-size:11px;font-weight:400;white-space:nowrap;padding:5px 10px;border-radius:5px;pointer-events:none;transition:opacity 0.15s;z-index:9999;box-shadow:0 2px 8px rgba(0,0,0,0.25);}
 .git-action-btn:hover .git-action-desc{visibility:visible;opacity:1;}
-.fetch-btn{background:var(--color-border);color:#374151;}
-.pull-btn{background:#fef3c7;color:#92400e;}
-.push-btn{background:#d1fae5;color:#065f46;}
-.sync-section{display:flex;align-items:center;gap:6px;padding:5px 12px;background:#fff;border:1.5px solid #6366f1;border-radius:8px;margin-left:8px;box-shadow:0 1px 4px rgba(99,102,241,0.10);}
-.btn-tab{background:var(--color-border);color:var(--color-text-muted);padding:8px 16px;border-radius:8px 8px 0 0;font-size:13px;font-weight:600;border:none;cursor:pointer;transition:all .2s;border-bottom:3px solid transparent}
-.btn-tab:hover{background:#d1d5db;color:#374151}
-.btn-tab.active{background:var(--color-primary);color:#fff;border-bottom-color:#1d4ed8}
+.fetch-btn{background:#f3f4f6;color:#374151;}
+.pull-btn{background:#fef9c3;color:#854d0e;}
+.push-btn{background:#dcfce7;color:#166534;}
+.sync-section{display:flex;align-items:center;gap:6px;padding:4px 10px 4px 14px;margin-left:6px;border-left:2px solid #e5e7eb;background:transparent;border-top:none;border-right:none;border-bottom:none;border-radius:0;box-shadow:none;}
+.btn-tab{background:transparent;color:#6b7280;padding:6px 15px;border-radius:99px;font-size:13px;font-weight:600;border:none;cursor:pointer;transition:background .15s,color .15s;white-space:nowrap;}
+.btn-tab:hover{background:#f3f4f6;color:#374151;}
+.btn-tab.active{background:#3b82f6;color:#fff;box-shadow:0 2px 6px rgba(59,130,246,.35);}
 .page{display:none}
 .page.active{display:block}
 .help-toggle{color:var(--color-primary);cursor:pointer;font-size:12px;margin-left:4px;text-decoration:underline}
@@ -105,14 +109,26 @@ input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:var(--
 .branch-sort-hdr span:hover{color:#1d4ed8;background:#eff6ff;border-radius:4px}
 .branch-item{display:flex;align-items:center;gap:10px;padding:10px 20px;cursor:pointer;transition:background .15s}
 .branch-item:hover{background:#f3f4f6}
-.branch-item .name{flex:1;font-size:14px;font-weight:500}
+.branch-item .name{flex:1;min-width:0;font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .branch-item.current{background:linear-gradient(90deg,#dbeafe 0%,#ede9fe 100%);border-left:4px solid #4f46e5;padding-left:16px}
 .branch-item.current:hover{background:linear-gradient(90deg,#bfdbfe 0%,#ddd6fe 100%)}
 .branch-item.current .name{color:#3730a3;font-weight:700}
+.branch-date{width:160px;flex-shrink:0;font-size:12px;color:#9ca3af;text-align:right;white-space:nowrap;padding-right:16px}
+.branch-actions{width:294px;flex-shrink:0;display:flex;gap:6px;justify-content:flex-end}
+.branch-current-badge{display:inline-flex;align-items:center;justify-content:center;width:90px;padding:4px 0;border-radius:99px;font-size:12px;font-weight:700;letter-spacing:.3px;background:linear-gradient(135deg,#1d4ed8,#7c3aed);color:#fff;box-shadow:0 0 0 2px rgba(99,102,241,.3),0 2px 8px rgba(29,78,216,.35)}
+.btn-compare{width:90px;background:#0ea5e9;color:#fff;border:none;cursor:pointer;border-radius:6px;font-size:12px;font-weight:600;padding:5px 0}
+.btn-merge{width:90px;background:#f97316;color:#fff;border:none;cursor:pointer;border-radius:6px;font-size:12px;font-weight:600;padding:5px 0}
+.btn-checkout{width:90px;background:#6366f1;color:#fff;border:none;cursor:pointer;border-radius:6px;font-size:12px;font-weight:600;padding:5px 0}
 .btn-del-branch{background:none;border:1px solid #fca5a5;color:var(--color-error);border-radius:5px;padding:4px 10px;font-size:12px;cursor:pointer;white-space:nowrap;line-height:1.4;transition:background .15s}
 .btn-del-branch:hover{background:#fef2f2;border-color:var(--color-error);color:#b91c1c}
 .btn-branch-expand{background:none;border:none;color:#9ca3af;padding:4px 6px;font-size:12px;cursor:pointer;line-height:1;transition:color .15s;flex-shrink:0;user-select:none}
 .btn-branch-expand:hover{color:#374151}
+.btn-branch-info{background:none;border:none;color:#c4b5fd;padding:0 2px;font-size:13px;cursor:pointer;line-height:1;flex-shrink:0;user-select:none;transition:color .15s}
+.btn-branch-info:hover{color:#7c3aed}
+.branch-name-popover{position:fixed;z-index:9999;background:#1e293b;color:#f1f5f9;border-radius:8px;padding:10px 14px;box-shadow:0 4px 20px rgba(0,0,0,.3);max-width:400px;word-break:break-all;display:flex;align-items:flex-start;gap:10px;font-size:13px;line-height:1.5}
+.branch-name-popover .pop-name{flex:1}
+.branch-name-popover .pop-copy{background:#334155;border:none;color:#94a3b8;border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:background .15s}
+.branch-name-popover .pop-copy:hover{background:#475569;color:#e2e8f0}
 .branch-expand-panel{display:none;padding:8px 20px 10px 20px;background:#fafafa;border-top:1px solid #f0f0f0;}
 .branch-expand-panel.open{display:flex;align-items:center;justify-content:flex-end;gap:10px;}
 /* Compare page */
