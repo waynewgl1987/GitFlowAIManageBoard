@@ -392,6 +392,16 @@ def create_branch(name, base=None):
     if base: cmd.append(base)
     return _run(cmd)
 
+def delete_branch_local(name, force=False):
+    """删除本地分支；force=True 时用 -D 强制删除未合并分支"""
+    flag = "-D" if force else "-d"
+    return _run(["git", "branch", flag, name])
+
+def delete_branch_remote(name):
+    """删除远端分支，name 应为不含 origin/ 前缀的短名"""
+    short = name.replace("origin/","",1) if name.startswith("origin/") else name
+    return _run(["git","push","origin","--delete", short])
+
 def fetch():
     out,err,rc = _run(["git","fetch","--all","--prune","--verbose"])
     combined = (out+"\n"+err).strip()
@@ -751,6 +761,12 @@ input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:#3b82f
 .branch-item.current{background:linear-gradient(90deg,#dbeafe 0%,#ede9fe 100%);border-left:4px solid #4f46e5;padding-left:16px}
 .branch-item.current:hover{background:linear-gradient(90deg,#bfdbfe 0%,#ddd6fe 100%)}
 .branch-item.current .name{color:#3730a3;font-weight:700}
+.btn-del-branch{background:none;border:1px solid #fca5a5;color:#ef4444;border-radius:5px;padding:4px 10px;font-size:12px;cursor:pointer;white-space:nowrap;line-height:1.4;transition:background .15s}
+.btn-del-branch:hover{background:#fef2f2;border-color:#ef4444;color:#b91c1c}
+.btn-branch-expand{background:none;border:none;color:#9ca3af;padding:4px 6px;font-size:12px;cursor:pointer;line-height:1;transition:color .15s;flex-shrink:0;user-select:none}
+.btn-branch-expand:hover{color:#374151}
+.branch-expand-panel{display:none;padding:8px 20px 10px 20px;background:#fafafa;border-top:1px solid #f0f0f0;}
+.branch-expand-panel.open{display:flex;align-items:center;justify-content:flex-end;gap:10px;}
 /* Compare page */
 .compare-bar{display:flex;align-items:flex-start;gap:10px;background:#fff;padding:14px 16px;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:16px;flex-wrap:wrap}
 .compare-row{display:flex;align-items:center;justify-content:flex-start;gap:10px;width:100%;flex-wrap:wrap}
@@ -1504,12 +1520,14 @@ function showModal(title, msg, confirmLabel, cb) {
   cancelBtn.className='btn btn-secondary';
   cancelBtn.textContent='Cancel';
   cancelBtn.onclick=function(){closeModal();};
-  var confirmBtn=document.createElement('button');
-  confirmBtn.className='btn btn-warning';
-  confirmBtn.textContent=confirmLabel;
-  confirmBtn.onclick=function(){var c=cb;closeModal();if(c)c();};
   btnsDiv.appendChild(cancelBtn);
-  btnsDiv.appendChild(confirmBtn);
+  if(confirmLabel){
+    var confirmBtn=document.createElement('button');
+    confirmBtn.className='btn btn-warning';
+    confirmBtn.textContent=confirmLabel;
+    confirmBtn.onclick=function(){var c=cb;closeModal();if(c)c();};
+    btnsDiv.appendChild(confirmBtn);
+  }
   document.getElementById('modal-bg').classList.add('show');
 }
 
@@ -2152,9 +2170,11 @@ function loadBranches(page){
     var sortedRemote=_sortBranches(data.remote||[]);
     var html=_branchSortHeader();
     html+='<div class="branch-list"><h3>Local Branches ('+data.total_local+')</h3>';
-    sortedLocal.forEach(function(b){
+    sortedLocal.forEach(function(b,bi){
       var isCur=(b.name===data.current);
+      var wid='bwrap-l-'+bi;
       var cls=isCur?' branch-item current':' branch-item';
+      html+='<div id="'+wid+'">';
       html+='<div class="'+cls+'">';
       html+='<span class="name">'+escapeHtml(b.name)+'</span>';
       html+='<span style="font-size:12px;color:#9ca3af;margin-left:auto;margin-right:12px;white-space:nowrap">'+escapeHtml(b.date||'')+'</span>';
@@ -2170,11 +2190,21 @@ function loadBranches(page){
         html+='<button class="btn btn-sm" style="width:90px;background:#f97316;color:#fff;border:none;cursor:pointer;border-radius:6px;font-size:12px;font-weight:600;padding:5px 0" onclick="event.stopPropagation();mergeBranch(\''+escapeAttr(b.name)+'\')">⚡ Merge</button>';
         html+='<button class="btn btn-sm" style="width:90px;background:#6366f1;color:#fff;border:none;cursor:pointer;border-radius:6px;font-size:12px;font-weight:600;padding:5px 0" onclick="event.stopPropagation();checkoutBranch(\''+escapeAttr(b.name)+'\')">✅ Checkout</button>';
         html+='</div>';
+        html+='<button class="btn-branch-expand" onclick="event.stopPropagation();toggleBranchExpand(\''+wid+'\')" title="Expand">▶</button>';
+      }
+      html+='</div>';
+      if(!isCur){
+        html+='<div class="branch-expand-panel" id="bpanel-l-'+bi+'">';
+        html+='<span style="font-size:12px;color:#9ca3af;flex:1">Danger zone</span>';
+        html+='<button class="btn-del-branch" onclick="promptDeleteBranch(\''+escapeAttr(b.name)+'\',\'local\')">🗑 Delete Branch</button>';
+        html+='</div>';
       }
       html+='</div>';
     });
     html+='</div><div class="branch-list"><h3>Remote Branches ('+data.total_remote+')</h3>';
-    sortedRemote.forEach(function(b){
+    sortedRemote.forEach(function(b,bi){
+      var wid='bwrap-r-'+bi;
+      html+='<div id="'+wid+'">';
       html+='<div class="branch-item">';
       html+='<span class="name">'+escapeHtml(b.name)+'</span>';
       html+='<span style="font-size:12px;color:#9ca3af;margin-left:auto;margin-right:12px;white-space:nowrap">'+escapeHtml(b.date||'')+'</span>';
@@ -2182,6 +2212,12 @@ function loadBranches(page){
       html+='<button class="btn btn-sm" style="width:90px;background:#0ea5e9;color:#fff;border:none;cursor:pointer;border-radius:6px;font-size:12px;font-weight:600;padding:5px 0" onclick="event.stopPropagation();openCompare(\''+escapeAttr(b.name)+'\',\'remote\')">⚖️ Compare</button>';
       html+='<button class="btn btn-sm" style="width:90px;background:#f97316;color:#fff;border:none;cursor:pointer;border-radius:6px;font-size:12px;font-weight:600;padding:5px 0" onclick="event.stopPropagation();mergeBranch(\''+escapeAttr(b.name)+'\')">⚡ Merge</button>';
       html+='<button class="btn btn-sm" style="width:90px;background:#6366f1;color:#fff;border:none;cursor:pointer;border-radius:6px;font-size:12px;font-weight:600;padding:5px 0" onclick="event.stopPropagation();checkoutBranch(\''+escapeAttr(b.name)+'\')">✅ Checkout</button>';
+      html+='</div>';
+      html+='<button class="btn-branch-expand" onclick="event.stopPropagation();toggleBranchExpand(\''+wid+'\')" title="Expand">▶</button>';
+      html+='</div>';
+      html+='<div class="branch-expand-panel" id="bpanel-r-'+bi+'">';
+      html+='<span style="font-size:12px;color:#9ca3af;flex:1">Danger zone</span>';
+      html+='<button class="btn-del-branch" onclick="promptDeleteBranch(\''+escapeAttr(b.name)+'\',\'remote\')">🗑 Delete Branch</button>';
       html+='</div>';
       html+='</div>';
     });
@@ -2219,6 +2255,128 @@ function createNewBranch(){
     });
   });
 }
+
+function toggleBranchExpand(wrapId){
+  var wrap=document.getElementById(wrapId);
+  if(!wrap) return;
+  var panel=wrap.querySelector('.branch-expand-panel');
+  var arrow=wrap.querySelector('.btn-branch-expand');
+  var isOpen=panel&&panel.classList.contains('open');
+  // Close all other open panels (accordion)
+  document.querySelectorAll('.branch-expand-panel.open').forEach(function(p){
+    p.classList.remove('open');
+    var a=p.parentElement&&p.parentElement.querySelector('.btn-branch-expand');
+    if(a) a.textContent='▶';
+  });
+  if(!isOpen&&panel){
+    panel.classList.add('open');
+    if(arrow) arrow.textContent='▼';
+  }
+}
+
+function promptDeleteBranch(branchName, defaultScope){
+  // Step 1: choose local vs remote
+  var isRemoteList=(defaultScope==='remote');
+  var shortName=branchName.replace(/^origin\//,'');
+  var bodyHtml=
+    '<p style="margin:0 0 14px;font-size:13px;color:#374151">Choose what to delete for branch <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;font-weight:700">'+escapeHtml(shortName)+'</code>:</p>'
+    +'<div style="display:flex;flex-direction:column;gap:8px">'
+    +'<button onclick="_delBranchScope(\''+escapeAttr(branchName)+'\',\'local\')" style="padding:10px 14px;border-radius:8px;border:1.5px solid #d1d5db;background:#f9fafb;cursor:pointer;text-align:left;font-size:13px;display:flex;align-items:center;gap:8px">'
+    +'<span style="font-size:18px">💻</span><div><div style="font-weight:600;color:#111827">Delete Local Branch</div><div style="font-size:11px;color:#6b7280;margin-top:2px">Removes only the local copy. Remote is untouched.</div></div></button>'
+    +'<button onclick="_delBranchScope(\''+escapeAttr(branchName)+'\',\'remote\')" style="padding:10px 14px;border-radius:8px;border:1.5px solid #fca5a5;background:#fff5f5;cursor:pointer;text-align:left;font-size:13px;display:flex;align-items:center;gap:8px">'
+    +'<span style="font-size:18px">☁️</span><div><div style="font-weight:600;color:#b91c1c">Delete Remote Branch</div><div style="font-size:11px;color:#dc2626;margin-top:2px">⚠️ Permanently removes from the remote server.</div></div></button>'
+    +'</div>';
+  showModal('🗑 Delete Branch', bodyHtml, null, null);
+}
+
+function _delBranchScope(branchName, scope){
+  var ov=document.getElementById('modal-overlay');
+  if(ov) ov.style.display='none';
+  var shortName=branchName.replace(/^origin\//,'');
+  if(scope==='remote'){
+    _doDeleteRemote(branchName, shortName);
+  }else{
+    var localBody=
+      '<p style="margin:0 0 10px;font-size:13px;color:#374151">Delete local branch <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;font-weight:700">'+escapeHtml(shortName)+'</code>?</p>'
+      +'<p style="margin:0;font-size:12px;color:#6b7280">The remote branch (if any) will not be affected. Make sure all your commits are pushed or you no longer need them.</p>';
+    showModal('🗑 Delete Local Branch', localBody, '🗑 Delete', function(){
+      apiPost('/api/delete-branch',{name:shortName,scope:'local'},function(data){
+        if(data.ok){
+          addMsg('🗑 Local branch "'+shortName+'" deleted','success');
+          loadBranches(1);
+        } else if(data.not_merged){
+          // Branch has unmerged commits — offer force delete
+          var forceBody=
+            '<div style="background:#fffbeb;border:2px solid #f59e0b;border-radius:10px;padding:12px 14px;margin-bottom:12px">'
+            +'<div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:6px">⚠️ Branch not fully merged</div>'
+            +'<div style="font-size:12px;color:#78350f;line-height:1.6">'
+            +'Branch <code style="background:#fef3c7;padding:1px 5px;border-radius:3px;font-weight:700">'+escapeHtml(shortName)+'</code> contains commits that have <strong>not been merged</strong> into your current branch.<br>'
+            +'Deleting it now will <strong>permanently lose those unmerged commits</strong>.</div>'
+            +'</div>'
+            +'<p style="margin:0;font-size:13px;color:#374151">Force delete anyway? (<code>git branch -D</code>)</p>';
+          showModalDouble(
+            '⚠️ Force Delete?',
+            forceBody,
+            '🗑 Force Delete (-D)',
+            function(){
+              apiPost('/api/delete-branch',{name:shortName,scope:'local',force:true},function(d){
+                if(d.ok){addMsg('🗑 Branch "'+shortName+'" force deleted','success');loadBranches(1);}
+                else addMsg('❌ Failed: '+(d.error||''),'error');
+              });
+            },
+            'Cancel', null, 'btn-danger', 'btn-secondary'
+          );
+        } else {
+          addMsg('❌ Failed: '+(data.error||''),'error');
+        }
+      });
+    });
+  }
+}
+
+function _doDeleteRemote(branchName, shortName){
+  // Show live log popup
+  var logId='del-remote-log';
+  var logBox='<div id="'+logId+'" style="'
+    +'background:#0f172a;color:#d1fae5;font-family:monospace;font-size:12px;line-height:1.6;'
+    +'padding:12px 14px;border-radius:8px;min-height:100px;max-height:280px;'
+    +'overflow-y:auto;white-space:pre-wrap;word-break:break-all;border:1px solid #1e293b">'
+    +'<span style="color:#94a3b8">⏳ Deleting remote branch origin/'+escapeHtml(shortName)+'...\n</span></div>';
+  showModal('🗑 Deleting Remote Branch — <span style="font-size:12px;font-weight:400;color:#94a3b8">origin/'+escapeHtml(shortName)+'</span>',
+    logBox, 'Please wait…', null);
+  var closeBtn=document.querySelector('#modal-btns .btn-warning');
+  if(closeBtn){closeBtn.disabled=true;closeBtn.style.opacity='0.4';}
+
+  apiPost('/api/delete-branch',{name:branchName,scope:'remote'},function(data){
+    var ld=document.getElementById(logId);
+    var output=(data.output||data.error||'').trim();
+    if(output&&ld){
+      output.split('\n').forEach(function(line){
+        if(!line.trim()) return;
+        var col='#e2e8f0';
+        if(/^error:|fatal:|ERROR/i.test(line)) col='#f87171';
+        else if(/^remote:|^To /i.test(line)) col='#67e8f9';
+        else if(/deleted/i.test(line)) col='#4ade80';
+        else if(/hint:/i.test(line)) col='#94a3b8';
+        ld.innerHTML+='<span style="color:'+col+'">'+escapeHtml(line)+'</span>\n';
+        ld.scrollTop=ld.scrollHeight;
+      });
+    }
+    var cb=document.querySelector('#modal-btns .btn-warning');
+    if(data.ok){
+      if(ld) ld.innerHTML+='<span style="color:#4ade80;font-weight:700">✅ Remote branch deleted successfully!\n</span>';
+      addMsg('🗑 Remote branch "'+shortName+'" deleted','success');
+      loadBranches(1);
+    }else{
+      if(ld) ld.innerHTML+='<span style="color:#f87171;font-weight:700">❌ Failed: '+escapeHtml(data.error||'')+'</span>\n';
+    }
+    if(cb){cb.disabled=false;cb.style.opacity='';cb.textContent='Close';cb.onclick=closeModal;}
+  });
+}
+
+
+
+
 
 function checkoutBranch(branchName){
   apiGet('/api/has-uncommitted',function(data){
@@ -3592,39 +3750,7 @@ function showMergeCommitDialog(defaultMsg){
       }
     });
   });
-}
 
-// ═══════════ Post-resolve commit & push dialog ═══════════
-function showMergeCommitDialog(defaultMsg){
-  var branchName=(document.getElementById('branch-name')||{textContent:''}).textContent||'';
-  var bodyHtml=
-    '<p style="margin:0 0 12px;color:#374151;font-size:13px">'+t('merge_all_resolved_desc')+'</p>'
-    +'<label style="font-size:12px;font-weight:600;color:#6b7280;display:block;margin-bottom:4px">'+t('commit_msg_label')+'</label>'
-    +'<textarea id="merge-complete-msg" rows="4" style="width:100%;padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;outline:none;box-sizing:border-box">'+escapeHtml(defaultMsg)+'</textarea>';
-  showModal('✅ '+t('merge_all_resolved_title'), bodyHtml, t('commit_now_btn'), function(){
-    var msg=(document.getElementById('merge-complete-msg')||{value:''}).value.trim();
-    if(!msg){addMsg('⚠️ '+t('enter_commit_msg_err'),'error');return;}
-    apiPost('/api/complete-merge',{message:msg},function(data){
-      if(data.ok){
-        addMsg('✅ '+t('merge_commit_ok'),'success');
-        loadLog(1);loadFiles();loadCurrentBranch();
-        setTimeout(function(){
-          showModalDouble(
-            '🚀 '+t('push_after_merge_title'),
-            t('push_after_merge_desc').replace('{branch}',escapeHtml(branchName)),
-            t('push_now_btn'),
-            function(){ doPush(); },
-            t('push_later_btn'),
-            null,
-            'btn-success',
-            'btn-secondary'
-          );
-        },400);
-      }else{
-        addMsg('❌ '+t('merge_commit_fail')+(data.error||''),'error');
-      }
-    });
-  });
 }
 
 function jumpToConflict(filePath, fileIdx, dir){
@@ -4013,6 +4139,19 @@ class Handler(BaseHTTPRequestHandler):
             name=data.get("name",""); base=data.get("base","")
             stdout,stderr,rc=create_branch(name,base if base else None)
             self._json({"ok":True,"stdout":stdout} if rc==0 else {"ok":False,"error":stderr or stdout},400)
+
+        elif path=="/api/delete-branch":
+            name=data.get("name",""); scope=data.get("scope","local"); force=data.get("force",False)
+            if not name:
+                self._json({"ok":False,"error":"branch name required"},400); return
+            if scope=="remote":
+                stdout,stderr,rc=delete_branch_remote(name)
+            else:
+                stdout,stderr,rc=delete_branch_local(name, force=force)
+            combined=(stdout+"\n"+stderr).strip()
+            not_merged = rc!=0 and ("not fully merged" in stderr or "not fully merged" in stdout)
+            self._json({"ok":rc==0,"stdout":stdout,"stderr":stderr,"output":combined,"not_merged":not_merged} if rc==0
+                       else {"ok":False,"error":stderr or stdout,"output":combined,"not_merged":not_merged},400 if rc!=0 else 200)
 
         elif path=="/api/stash":
             stdout,stderr,rc=stash_changes()
