@@ -25,6 +25,12 @@ No frameworks, no npm, no Docker. Just Python 3 and a modern browser.
 
 ---
 
+### 📸 Preview
+
+![GitAutoManageBoard Screenshot](docs/screenshot.png)
+
+---
+
 ### ✨ Features at a Glance
 
 | Tab | What you can do |
@@ -291,6 +297,12 @@ No third-party packages required.
 **GitAutoManageBoard** 是一个单文件 Python 脚本，运行后会在本地启动一个 Web 服务器，并自动在浏览器中打开一个功能完整的 Git 可视化管理面板。它将常用的 `git` 命令封装成直观的 UI 界面，特别适合希望在日常 Git 操作中获得更快、更直观体验的开发者。
 
 无需任何框架、无需 npm、无需 Docker。只需 Python 3 和一个现代浏览器。
+
+---
+
+### 📸 预览
+
+![GitAutoManageBoard 界面截图](docs/screenshot.png)
 
 ---
 

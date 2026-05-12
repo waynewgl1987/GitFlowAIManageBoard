@@ -657,6 +657,8 @@ def make_html():
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Git Tool</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;background:#f5f7fa;color:#1a1a2e;padding:24px 16px}
@@ -798,8 +800,9 @@ input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:#3b82f
 .conflict-block-normal{background:#f9fafb;border-radius:6px;margin-bottom:8px;overflow:hidden;}
 .conflict-block-normal-header{display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;color:#6b7280;font-family:monospace;user-select:none;}
 .conflict-block-normal-header:hover{background:#f0f0f0;}
-.conflict-block-normal-body{display:none;padding:8px 14px;font-family:monospace;font-size:12px;white-space:pre-wrap;line-height:1.5;border-top:1px solid #e5e7eb;}
+.conflict-block-normal-body{display:none;border-top:1px solid #e5e7eb;}
 .conflict-block-normal-body.open{display:block;}
+.conflict-block-normal-body pre{margin:0;font-family:monospace;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-all;padding:10px 14px;background:#f9fafb;max-height:1800px;overflow-y:auto;}
 .conflict-zone{border:2px solid #ef4444;border-radius:8px;margin-bottom:14px;overflow:hidden;}
 .conflict-zone-header{display:flex;align-items:center;gap:10px;padding:8px 14px;background:#fef2f2;}
 .conflict-zone-num{font-size:12px;font-weight:700;color:#dc2626;background:#fee2e2;padding:2px 8px;border-radius:4px;}
@@ -807,13 +810,44 @@ input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:#3b82f
 .conflict-zone-status.chosen-ours{color:#059669;font-weight:600;}
 .conflict-zone-status.chosen-theirs{color:#2563eb;font-weight:600;}
 .conflict-sides{display:grid;grid-template-columns:1fr 1fr;gap:0;}
-.conflict-side{padding:10px 14px;}
+.conflict-side{padding:0;overflow:hidden;}
 .conflict-side-ours{background:#f0fdf4;border-right:1px solid #bbf7d0;}
 .conflict-side-theirs{background:#eff6ff;}
-.conflict-side h4{margin:0 0 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;}
-.conflict-side-ours h4{color:#059669;}
-.conflict-side-theirs h4{color:#2563eb;}
-.conflict-side pre{margin:0;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all;}
+.conflict-side h4{margin:0;padding:5px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;display:flex;align-items:center;gap:5px;}
+.conflict-side-ours h4{color:#059669;background:#dcfce7;border-bottom:1px solid #bbf7d0;}
+.conflict-side-theirs h4{color:#2563eb;background:#dbeafe;border-bottom:1px solid #bfdbfe;}
+.conflict-side pre{margin:0;font-family:monospace;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-all;padding:8px 12px;max-height:480px;overflow-y:auto;}
+.conflict-side-ours pre{background:#f0fdf4;}
+.conflict-side-theirs pre{background:#eff6ff;}
+.cf-manual-ref{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;margin-bottom:8px;}
+.cf-manual-ref-side{overflow:hidden;}
+.cf-manual-ref-side h5{margin:0;padding:4px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;}
+.cf-manual-ref-ours h5{background:#fef9c3;color:#92400e;border-bottom:1px solid #fde68a;border-right:1px solid #e5e7eb;}
+.cf-manual-ref-theirs h5{background:#f0f9ff;color:#0369a1;border-bottom:1px solid #bae6fd;}
+.cf-manual-ref-side pre{margin:0;font-family:monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;padding:6px 10px;max-height:200px;overflow-y:auto;}
+.cf-manual-ref-ours pre{background:#fefce8;border-right:1px solid #e5e7eb;}
+.cf-manual-ref-theirs pre{background:#f0f9ff;}
+/* Code editor textarea */
+.cf-editor-wrap{display:grid;border-radius:6px;border:2px solid var(--cf-border,#5a3d8f);background:var(--cf-bg,#1e1e2e);min-height:160px;transition:border-color .15s;}
+.cf-editor-wrap:focus-within{border-color:var(--cf-kw,#cba6f7);box-shadow:0 0 0 3px rgba(139,92,246,.2);}
+.cf-editor-hl,.cf-editor-ta{grid-area:1/1;margin:0;padding:10px 12px;font-family:'Cascadia Code',Consolas,Menlo,monospace;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-all;tab-size:4;box-sizing:border-box;min-height:160px;}
+.cf-editor-hl{pointer-events:none;overflow:hidden;color:var(--cf-text,#cdd6f4);}
+.cf-editor-ta{background:transparent;color:transparent;caret-color:var(--cf-caret,#f5c2e7);border:none;outline:none;resize:vertical;overflow-y:auto;-webkit-text-fill-color:transparent;}
+.cf-editor-wrap .hl-kw{color:var(--cf-kw,#cba6f7);font-weight:600}
+.cf-editor-wrap .hl-str{color:var(--cf-str,#a6e3a1)}
+.cf-editor-wrap .hl-cmt{color:var(--cf-cmt,#585b70);font-style:italic}
+.cf-editor-wrap .hl-num{color:var(--cf-num,#fab387)}
+.cf-editor-wrap .hl-type{color:var(--cf-type,#89dceb);font-weight:500}
+.cf-editor-wrap .hl-fn{color:var(--cf-fn,#89b4fa)}
+.cf-editor-wrap .hl-dec{color:var(--cf-dec,#f38ba8)}
+/* Inline syntax highlight token styles */
+.hl-kw{color:#7c3aed;font-weight:600}
+.hl-str{color:#059669}
+.hl-cmt{color:#9ca3af;font-style:italic}
+.hl-num{color:#d97706}
+.hl-type{color:#0891b2;font-weight:500}
+.hl-fn{color:#2563eb}
+.hl-dec{color:#db2777}
 .conflict-zone-actions{display:flex;gap:8px;padding:10px 14px;background:#fafafa;border-top:1px solid #fee2e2;flex-wrap:wrap;align-items:center;}
 .conflict-zone.resolved-ours{border-color:#10b981;}
 .conflict-zone.resolved-ours .conflict-zone-header{background:#f0fdf4;}
@@ -821,6 +855,11 @@ input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:#3b82f
 .conflict-zone.resolved-theirs .conflict-zone-header{background:#eff6ff;}
 .conflict-zone.resolved-manual{border-color:#8b5cf6;}
 .conflict-zone.resolved-manual .conflict-zone-header{background:#f5f3ff;}
+.cf-resolved-banner{display:none;padding:9px 14px;font-size:12px;font-weight:700;letter-spacing:0.4px;text-align:center;animation:cfBannerIn 0.25s ease;}
+@keyframes cfBannerIn{from{opacity:0;transform:scaleY(0.6)}to{opacity:1;transform:scaleY(1)}}
+.conflict-zone.resolved-ours .cf-resolved-banner{display:block;background:linear-gradient(90deg,#16a34a,#22c55e);color:#fff;border-top:1px solid #15803d;}
+.conflict-zone.resolved-theirs .cf-resolved-banner{display:block;background:linear-gradient(90deg,#1d4ed8,#3b82f6);color:#fff;border-top:1px solid #1e40af;}
+.conflict-zone.resolved-manual .cf-resolved-banner{display:block;background:linear-gradient(90deg,#6d28d9,#8b5cf6);color:#fff;border-top:1px solid #5b21b6;}
 .conflict-resolve-all{margin-top:14px;padding:12px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
 .resolved-tag{background:#d1fae5;color:#065f46;font-size:12px;padding:2px 8px;border-radius:99px;font-weight:500}
 .log-controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
@@ -3105,9 +3144,173 @@ function toggleConflict(filePath,idx){
   });
 }
 
+// ─── Code editor with live syntax highlighting ────────────────────────────
+var _cfEditorTheme=(function(){try{return localStorage.getItem('cf_editor_theme')||'dark';}catch(e){return 'dark';}})();
+var _CF_THEMES={
+  dark:{bg:'#1e1e2e',text:'#cdd6f4',caret:'#f5c2e7',border:'#5a3d8f',
+    kw:'#cba6f7',str:'#a6e3a1',cmt:'#585b70',num:'#fab387',type:'#89dceb',fn:'#89b4fa',dec:'#f38ba8'},
+  light:{bg:'#f6f8fa',text:'#24292f',caret:'#0550ae',border:'#8250df',
+    kw:'#cf222e',str:'#0a3069',cmt:'#6e7781',num:'#0550ae',type:'#953800',fn:'#8250df',dec:'#116329'}
+};
+function _cfApplyTheme(wrap,theme){
+  var t=_CF_THEMES[theme]||_CF_THEMES.dark;
+  var s=wrap.style;
+  s.setProperty('--cf-bg',t.bg);s.setProperty('--cf-text',t.text);
+  s.setProperty('--cf-caret',t.caret);s.setProperty('--cf-border',t.border);
+  s.setProperty('--cf-kw',t.kw);s.setProperty('--cf-str',t.str);
+  s.setProperty('--cf-cmt',t.cmt);s.setProperty('--cf-num',t.num);
+  s.setProperty('--cf-type',t.type);s.setProperty('--cf-fn',t.fn);
+  s.setProperty('--cf-dec',t.dec);
+  wrap.dataset.theme=theme;
+}
+function _cfEdUpdate(hl,ta,lang){
+  hl.innerHTML=_synHL(ta.value,lang);
+  hl.scrollTop=ta.scrollTop;hl.scrollLeft=ta.scrollLeft;
+}
+function _cfEditorInit(wrapId,lang){
+  var wrap=document.getElementById(wrapId);
+  if(!wrap||wrap.dataset.initialized)return;
+  var ta=wrap.querySelector('.cf-editor-ta');
+  var hl=wrap.querySelector('.cf-editor-hl');
+  if(!ta||!hl)return;
+  wrap.dataset.lang=lang||'';
+  _cfApplyTheme(wrap,_cfEditorTheme);
+  _cfEdUpdate(hl,ta,lang);
+  ta.addEventListener('input',function(){_cfEdUpdate(hl,ta,lang);});
+  ta.addEventListener('scroll',function(){hl.scrollTop=ta.scrollTop;hl.scrollLeft=ta.scrollLeft;});
+  ta.addEventListener('keydown',function(e){
+    if(e.key==='Tab'){
+      e.preventDefault();
+      var s=ta.selectionStart,end=ta.selectionEnd;
+      ta.value=ta.value.slice(0,s)+'  '+ta.value.slice(end);
+      ta.selectionStart=ta.selectionEnd=s+2;
+      _cfEdUpdate(hl,ta,lang);
+    }
+  });
+  wrap.dataset.initialized='1';
+}
+function _cfSwitchTheme(theme){
+  _cfEditorTheme=theme;
+  try{localStorage.setItem('cf_editor_theme',theme);}catch(e){}
+  document.querySelectorAll('.cf-editor-wrap').forEach(function(wrap){
+    _cfApplyTheme(wrap,theme);
+    var ta=wrap.querySelector('.cf-editor-ta');
+    var hl=wrap.querySelector('.cf-editor-hl');
+    if(ta&&hl)_cfEdUpdate(hl,ta,wrap.dataset.lang||'');
+  });
+}
+// ─── End code editor ──────────────────────────────────────────────────────
+
+// ─── Built-in syntax highlighter (no CDN needed) ───────────────────────────
+var _HL_KEYWORDS = {
+  swift:    /\b(func|class|struct|enum|protocol|extension|var|let|if|else|guard|return|import|init|self|super|override|public|private|internal|final|static|mutating|throws|try|catch|async|await|for|in|while|switch|case|default|break|continue|nil|true|false|where|typealias|associatedtype|some|any|inout|defer)\b/g,
+  kotlin:   /\b(fun|class|object|interface|val|var|if|else|return|import|when|for|in|while|do|is|as|null|true|false|override|data|sealed|companion|private|public|internal|protected|abstract|open|suspend|coroutine|by|init|constructor|this|super|typealias|operator|infix|inline|crossinline|noinline|reified|lateinit|lazy|const)\b/g,
+  java:     /\b(class|interface|enum|extends|implements|import|package|public|private|protected|static|final|void|return|if|else|for|while|do|switch|case|default|break|continue|new|this|super|null|true|false|try|catch|finally|throw|throws|abstract|synchronized|volatile|native|transient|instanceof)\b/g,
+  python:   /\b(def|class|import|from|if|elif|else|for|while|return|in|not|and|or|is|None|True|False|try|except|finally|raise|with|as|pass|break|continue|lambda|yield|global|nonlocal|del|assert|async|await)\b/g,
+  javascript:/\b(function|const|let|var|if|else|return|import|export|default|from|class|extends|new|this|typeof|instanceof|null|undefined|true|false|for|while|do|switch|case|break|continue|try|catch|finally|throw|async|await|yield|of|in)\b/g,
+  typescript:/\b(function|const|let|var|if|else|return|import|export|default|from|class|extends|new|this|typeof|instanceof|null|undefined|true|false|for|while|do|switch|case|break|continue|try|catch|finally|throw|async|await|yield|of|in|interface|type|enum|namespace|declare|abstract|implements|readonly|private|public|protected|override|as)\b/g,
+  go:       /\b(func|package|import|var|const|type|struct|interface|if|else|return|for|range|switch|case|default|break|continue|go|chan|select|defer|make|new|nil|true|false|map|append|len|cap|close|panic|recover|error)\b/g,
+  rust:     /\b(fn|let|mut|const|struct|enum|trait|impl|use|pub|mod|if|else|return|for|in|while|loop|match|break|continue|self|super|crate|move|ref|where|async|await|dyn|type|unsafe|extern|static|true|false|None|Some|Ok|Err)\b/g,
+  objectivec:/\b(self|super|nil|YES|NO|id|void|int|NSString|NSArray|NSDictionary|NSInteger|CGFloat|BOOL|IBOutlet|IBAction|readonly|readwrite|nonatomic|atomic|strong|weak|copy|assign|retain|release|autoreleasepool|if|else|for|while|return|import|interface|implementation|protocol|property|synthesize|end)\b/g,
+  dart:     /\b(void|var|final|const|class|extends|implements|mixin|abstract|interface|import|export|library|part|if|else|for|while|do|switch|case|default|return|break|continue|new|this|super|null|true|false|try|catch|finally|throw|rethrow|async|await|yield|in|is|as|factory|get|set|late|required|dynamic)\b/g,
+  cpp:      /\b(auto|class|struct|enum|template|namespace|using|if|else|return|for|while|do|switch|case|default|break|continue|new|delete|this|nullptr|true|false|try|catch|throw|const|static|virtual|override|public|private|protected|inline|explicit|friend|typedef|typename|operator)\b/g,
+  c:        /\b(if|else|return|for|while|do|switch|case|default|break|continue|struct|enum|typedef|const|static|void|int|char|float|double|long|short|unsigned|signed|NULL|true|false)\b/g,
+  ruby:     /\b(def|class|module|end|if|elsif|else|unless|while|until|for|in|do|begin|rescue|ensure|raise|return|yield|self|nil|true|false|and|or|not|require|include|extend|attr_reader|attr_writer|attr_accessor)\b/g,
+  php:      /\b(function|class|interface|extends|implements|namespace|use|return|if|else|elseif|while|for|foreach|switch|case|default|break|continue|new|echo|print|null|true|false|try|catch|finally|throw|public|private|protected|static|abstract|final)\b/g,
+  css:      /\b(important|media|keyframes|from|to|root|not|is|where|has|nth-child|hover|focus|active|first-child|last-child|before|after)\b/g,
+};
+var _HL_COMMENT = {
+  swift:{line:['//'],block:['/*','*/']}, kotlin:{line:['//'],block:['/*','*/']},
+  java:{line:['//'],block:['/*','*/']}, python:{line:['#']},
+  javascript:{line:['//'],block:['/*','*/']}, typescript:{line:['//'],block:['/*','*/']},
+  go:{line:['//'],block:['/*','*/']}, rust:{line:['//'],block:['/*','*/']},
+  objectivec:{line:['//'],block:['/*','*/']}, dart:{line:['//'],block:['/*','*/']},
+  cpp:{line:['//'],block:['/*','*/']}, c:{line:['//'],block:['/*','*/']},
+  ruby:{line:['#']}, php:{line:['//','#'],block:['/*','*/']},
+};
+function _cfLang(fp){
+  var ext=(fp||'').split('.').pop().toLowerCase();
+  var m={swift:'swift',kt:'kotlin',kts:'kotlin',java:'java',py:'python',
+    js:'javascript',jsx:'javascript',ts:'typescript',tsx:'typescript',
+    go:'go',rs:'rust',m:'objectivec',mm:'objectivec',dart:'dart',
+    cpp:'cpp',cc:'cpp',cxx:'cpp',h:'cpp',hpp:'cpp',c:'c',
+    rb:'ruby',php:'php',css:'css',scss:'css',html:'html',
+    sh:'bash',bash:'bash',json:'json',md:'md',xml:'xml',yml:'yaml',yaml:'yaml'};
+  return m[ext]||'';
+}
+function _synHL(raw, lang){
+  if(!lang||!raw) return '<span>'+escapeHtml(raw||'')+'</span>';
+  // tokenize line by line to handle comments correctly
+  var cmt=_HL_COMMENT[lang]||{line:[],block:[]};
+  var lineC=cmt.line||[]; var blkO=cmt.block&&cmt.block[0]; var blkC=cmt.block&&cmt.block[1];
+  var kwRe=_HL_KEYWORDS[lang];
+  var strRe=/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/g;
+  var numRe=/\b(\d+\.?\d*)\b/g;
+  var typeRe=/\b([A-Z][a-zA-Z0-9_]+)/g;
+  var fnRe=/\b([a-z_][a-zA-Z0-9_]*)\s*(?=\()/g;
+  var decRe=/(@[a-zA-Z_][a-zA-Z0-9_]*)/g;
+
+  var lines=raw.split('\n');
+  var inBlock=false;
+  var out=lines.map(function(line){
+    var esc=function(s){return escapeHtml(s);};
+    if(inBlock){
+      var ec=line.indexOf(blkC);
+      if(ec>=0){inBlock=false;return '<span class="hl-cmt">'+esc(line.slice(0,ec+blkC.length))+'</span>'+_tokenLine(line.slice(ec+blkC.length),lang,kwRe,strRe,numRe,typeRe,fnRe,decRe);}
+      return '<span class="hl-cmt">'+esc(line)+'</span>';
+    }
+    // check line comment
+    var lci=-1;
+    for(var i=0;i<lineC.length;i++){var p=line.indexOf(lineC[i]);if(p>=0&&(lci<0||p<lci))lci=p;}
+    // check block comment open
+    var bci=blkO?line.indexOf(blkO):-1;
+    if(bci>=0&&(lci<0||bci<lci)){
+      var head=line.slice(0,bci);
+      var rest=line.slice(bci);
+      var ec2=rest.indexOf(blkC,blkO.length);
+      if(ec2>=0){return _tokenLine(head,lang,kwRe,strRe,numRe,typeRe,fnRe,decRe)+'<span class="hl-cmt">'+esc(rest.slice(0,ec2+blkC.length))+'</span>'+_tokenLine(rest.slice(ec2+blkC.length),lang,kwRe,strRe,numRe,typeRe,fnRe,decRe);}
+      inBlock=true;
+      return _tokenLine(head,lang,kwRe,strRe,numRe,typeRe,fnRe,decRe)+'<span class="hl-cmt">'+esc(rest)+'</span>';
+    }
+    if(lci>=0){return _tokenLine(line.slice(0,lci),lang,kwRe,strRe,numRe,typeRe,fnRe,decRe)+'<span class="hl-cmt">'+esc(line.slice(lci))+'</span>';}
+    return _tokenLine(line,lang,kwRe,strRe,numRe,typeRe,fnRe,decRe);
+  });
+  return out.join('\n');
+}
+function _tokenLine(line,lang,kwRe,strRe,numRe,typeRe,fnRe,decRe){
+  if(!line) return '';
+  // chunk the line: extract strings first (they contain anything)
+  var parts=[]; var last=0;
+  strRe.lastIndex=0;
+  var m;
+  while((m=strRe.exec(line))!==null){
+    if(m.index>last) parts.push({t:'code',s:line.slice(last,m.index)});
+    parts.push({t:'str',s:m[0]});
+    last=m.index+m[0].length;
+  }
+  if(last<line.length) parts.push({t:'code',s:line.slice(last)});
+  return parts.map(function(p){
+    if(p.t==='str') return '<span class="hl-str">'+escapeHtml(p.s)+'</span>';
+    var s=escapeHtml(p.s);
+    // decorators
+    s=s.replace(/(@[a-zA-Z_][a-zA-Z0-9_]*)/g,'<span class="hl-dec">$1</span>');
+    // keywords (must come before type/fn to avoid double-wrapping)
+    if(kwRe){kwRe.lastIndex=0;s=s.replace(kwRe,'<span class="hl-kw">$1</span>');}
+    // type names (CamelCase)
+    s=s.replace(/\b([A-Z][a-zA-Z0-9_]+)\b/g,'<span class="hl-type">$1</span>');
+    // function calls
+    s=s.replace(/\b([a-z_][a-zA-Z0-9_]*)\s*(?=\()/g,'<span class="hl-fn">$1</span>(');
+    // numbers
+    s=s.replace(/\b(\d+\.?\d*)\b/g,'<span class="hl-num">$1</span>');
+    return s;
+  }).join('');
+}
+// ─── End syntax highlighter ────────────────────────────────────────────────
+
 function renderConflictDetail(filePath, fileIdx, data){
   var detail=document.getElementById('conflict-detail-'+fileIdx);
   var blocks=data.blocks||[];
+  var lang=_cfLang(filePath);
   var conflictCount=0;
   for(var b=0;b<blocks.length;b++) if(blocks[b].type==='conflict') conflictCount++;
 
@@ -3122,15 +3325,50 @@ function renderConflictDetail(filePath, fileIdx, data){
     html+='</div>';
   }
 
+  var CTX_LINES = 100; // lines of context to show around each conflict
   var conflictIdx=0;
   for(var b=0;b<blocks.length;b++){
     var block=blocks[b];
     if(block.type==='normal'){
       var lines=block.lines||[];
-      var preview=lines.slice(0,2).join('\n');
+      var total=lines.length;
+      // Determine which portion to show:
+      // - block before a conflict: show last CTX_LINES
+      // - block after a conflict: show first CTX_LINES
+      // - block between two conflicts: show last CTX_LINES from tail (as tail context)
+      var nextIsConflict=(b+1<blocks.length&&blocks[b+1].type==='conflict');
+      var prevIsConflict=(b>0&&blocks[b-1].type==='conflict');
+      var shownLines, hiddenBefore=0, hiddenAfter=0;
+      if(prevIsConflict&&!nextIsConflict){
+        // trailing context: show first CTX_LINES
+        shownLines=lines.slice(0,CTX_LINES);
+        hiddenAfter=Math.max(0,total-CTX_LINES);
+      } else if(nextIsConflict&&!prevIsConflict){
+        // leading context: show last CTX_LINES
+        hiddenBefore=Math.max(0,total-CTX_LINES);
+        shownLines=lines.slice(hiddenBefore);
+      } else if(prevIsConflict&&nextIsConflict){
+        // sandwiched between two conflicts: show all (it IS context)
+        shownLines=lines; hiddenBefore=0; hiddenAfter=0;
+      } else {
+        // head or tail (no adjacent conflict): show last CTX_LINES
+        hiddenBefore=Math.max(0,total-CTX_LINES);
+        shownLines=lines.slice(hiddenBefore);
+        hiddenAfter=0;
+      }
+      var autoOpen=false;
+      var bodyClass='conflict-block-normal-body'+(autoOpen?' open':'');
+      var arrow=autoOpen?'▼':'▶';
+      var truncMsg='';
+      if(hiddenBefore>0) truncMsg+='<div style="padding:3px 14px;font-size:11px;color:#9ca3af;background:#f3f4f6;border-bottom:1px solid #e5e7eb">… '+hiddenBefore+' more lines above (scroll file to see) …</div>';
+      if(hiddenAfter>0) truncMsg+='<div style="padding:3px 14px;font-size:11px;color:#9ca3af;background:#f3f4f6;border-top:1px solid #e5e7eb">… '+hiddenAfter+' more lines below …</div>';
       html+='<div class="conflict-block-normal">';
-      html+='<div class="conflict-block-normal-header" onclick="toggleNormalBlock(this)">▶ '+escapeHtml(lines.length)+' lines of context  <span style="opacity:0.6;font-size:11px">(click to expand)</span></div>';
-      html+='<div class="conflict-block-normal-body">'+escapeHtml(lines.join('\n'))+'</div>';
+      html+='<div class="conflict-block-normal-header" onclick="toggleNormalBlock(this)">'+arrow+' '+total+' lines of context</div>';
+      html+='<div class="'+bodyClass+'">';
+      html+=truncMsg.split('below')[0]; // top truncation notice
+      html+='<pre>'+_synHL(shownLines.join('\n'),lang)+'</pre>';
+      if(hiddenAfter>0) html+='<div style="padding:3px 14px;font-size:11px;color:#9ca3af;background:#f3f4f6;border-top:1px solid #e5e7eb">… '+hiddenAfter+' more lines below …</div>';
+      html+='</div>';
       html+='</div>';
     } else {
       var ci=conflictIdx;
@@ -3141,24 +3379,50 @@ function renderConflictDetail(filePath, fileIdx, data){
       else if(choice&&choice.type==='theirs'){resolvedCls=' resolved-theirs';statusHtml='<span class="conflict-zone-status chosen-theirs">🔵 Using Theirs</span>';}
       else if(choice&&choice.type==='manual'){resolvedCls=' resolved-manual';statusHtml='<span class="conflict-zone-status" style="color:#7c3aed;font-weight:600">✏️ Manual edit</span>';}
 
+      var oursHL=_synHL(block.ours||'(empty)',lang);
+      var theirsHL=_synHL(block.theirs||'(empty)',lang);
+      var initContent=(choice&&choice.type==='manual')?choice.content:(block.ours||block.theirs||'');
+
       html+='<div class="conflict-zone'+resolvedCls+'" id="cf-block-'+fileIdx+'-'+ci+'">';
       html+='<div class="conflict-zone-header">';
       html+='<span class="conflict-zone-num">CONFLICT #'+(ci+1)+'</span>';
       html+=statusHtml;
       html+='</div>';
+      // Resolved banner — visible when zone has resolved-* class
+      var bannerText='';
+      if(choice&&choice.type==='ours') bannerText='✅  CONFLICT RESOLVED — Using HEAD (Ours)';
+      else if(choice&&choice.type==='theirs') bannerText='✅  CONFLICT RESOLVED — Using Theirs (Incoming)';
+      else if(choice&&choice.type==='manual') bannerText='✅  CONFLICT RESOLVED — Custom Manual Edit';
+      html+='<div class="cf-resolved-banner">'+escapeHtml(bannerText)+'</div>';
       html+='<div class="conflict-sides">';
-      html+='<div class="conflict-side conflict-side-ours"><h4>⬅ Ours (current branch)</h4><pre>'+escapeHtml(block.ours||'(empty)')+'</pre></div>';
-      html+='<div class="conflict-side conflict-side-theirs"><h4>Remote (theirs) ➡</h4><pre>'+escapeHtml(block.theirs||'(empty)')+'</pre></div>';
+      html+='<div class="conflict-side conflict-side-ours"><h4>⬅ HEAD &nbsp;<span style="font-weight:400;font-size:10px;opacity:.8">(your current branch)</span></h4><pre>'+oursHL+'</pre></div>';
+      html+='<div class="conflict-side conflict-side-theirs"><h4>Incoming ➡ &nbsp;<span style="font-weight:400;font-size:10px;opacity:.8">(theirs / merging)</span></h4><pre>'+theirsHL+'</pre></div>';
       html+='</div>';
       html+='<div class="conflict-zone-actions">';
-      html+='<button class="btn btn-sm btn-success" onclick="chooseConflict(\''+escapeAttr(filePath)+'\','+fileIdx+','+ci+',\'ours\')">✅ Use Ours</button>';
+      html+='<button class="btn btn-sm btn-success" onclick="chooseConflict(\''+escapeAttr(filePath)+'\','+fileIdx+','+ci+',\'ours\')">✅ Use HEAD (Ours)</button>';
       html+='<button class="btn btn-sm btn-primary" onclick="chooseConflict(\''+escapeAttr(filePath)+'\','+fileIdx+','+ci+',\'theirs\')">🔵 Use Theirs</button>';
       html+='<button class="btn btn-sm btn-secondary" onclick="openManualEdit(\''+escapeAttr(filePath)+'\','+fileIdx+','+ci+')">✏️ Edit manually</button>';
       html+='</div>';
-      html+='<div id="cf-manual-'+fileIdx+'-'+ci+'" style="display:none;padding:10px 14px;border-top:1px solid #e5e7eb;">';
-      var initContent=(choice&&choice.type==='manual')?choice.content:(block.ours||'');
-      html+='<textarea id="cf-editor-'+fileIdx+'-'+ci+'" style="width:100%;min-height:120px;font-family:monospace;font-size:12px;border:1px solid #d1d5db;border-radius:6px;padding:8px;resize:vertical">'+escapeHtml(initContent)+'</textarea>';
-      html+='<button class="btn btn-sm btn-warning" style="margin-top:6px" onclick="saveManualBlock(\''+escapeAttr(filePath)+'\','+fileIdx+','+ci+')">Save this block</button>';
+      // Manual edit panel — side-by-side reference + live syntax-highlighted editor
+      var wrapId='cf-wrap-'+fileIdx+'-'+ci;
+      html+='<div id="cf-manual-'+fileIdx+'-'+ci+'" style="display:none;padding:10px 14px;background:#faf5ff;border-top:2px solid #8b5cf6;">';
+      html+='<div style="font-size:11px;color:#6b7280;margin-bottom:6px;font-weight:600">📖 Reference (read-only):</div>';
+      html+='<div class="cf-manual-ref">';
+      html+='<div class="cf-manual-ref-side cf-manual-ref-ours"><h5>⬅ HEAD (yours)</h5><pre>'+oursHL+'</pre></div>';
+      html+='<div class="cf-manual-ref-side cf-manual-ref-theirs"><h5>Incoming (theirs) ➡</h5><pre>'+theirsHL+'</pre></div>';
+      html+='</div>';
+      html+='<div style="display:flex;align-items:center;gap:6px;margin-top:10px;margin-bottom:5px;">';
+      html+='<span style="font-size:11px;color:#a78bfa;font-weight:600">✏️ Edit your resolution:</span>';
+      html+='<div style="margin-left:auto;display:flex;gap:4px;align-items:center;">';
+      html+='<span style="font-size:10px;color:#9ca3af">Theme:</span>';
+      html+='<button onclick="_cfSwitchTheme(\'dark\')" title="Catppuccin Dark" style="padding:2px 8px;font-size:10px;border-radius:4px;border:1px solid #5a3d8f;background:#1e1e2e;color:#cba6f7;cursor:pointer;line-height:1.5">🌙 Dark</button>';
+      html+='<button onclick="_cfSwitchTheme(\'light\')" title="GitHub Light" style="padding:2px 8px;font-size:10px;border-radius:4px;border:1px solid #d0d7de;background:#f6f8fa;color:#24292f;cursor:pointer;line-height:1.5">☀️ Light</button>';
+      html+='</div></div>';
+      html+='<div class="cf-editor-wrap" id="'+wrapId+'">';
+      html+='<pre class="cf-editor-hl"></pre>';
+      html+='<textarea class="cf-editor-ta" id="cf-editor-'+fileIdx+'-'+ci+'" spellcheck="false">'+escapeHtml(initContent)+'</textarea>';
+      html+='</div>';
+      html+='<button class="btn btn-sm btn-warning" style="margin-top:6px" onclick="saveManualBlock(\''+escapeAttr(filePath)+'\','+fileIdx+','+ci+')">💾 Save this block</button>';
       html+='</div>';
       html+='</div>';
       conflictIdx++;
@@ -3170,13 +3434,42 @@ function renderConflictDetail(filePath, fileIdx, data){
   html+='<button class="btn btn-success" onclick="resolveAllBlocks(\''+escapeAttr(filePath)+'\','+fileIdx+')">💾 Save &amp; Resolve File</button>';
   html+='<button class="btn btn-sm btn-secondary" onclick="showRawEdit(\''+escapeAttr(filePath)+'\','+fileIdx+')">📝 Edit raw file</button>';
   html+='<div id="cf-raw-'+fileIdx+'" style="display:none;width:100%;margin-top:10px">';
-  html+='<textarea id="cf-raw-editor-'+fileIdx+'" style="width:100%;min-height:200px;font-family:monospace;font-size:12px;border:1px solid #d1d5db;border-radius:6px;padding:8px;resize:vertical">'+escapeHtml(data.raw||'')+'</textarea>';
+  html+='<div class="cf-editor-wrap" id="cf-raw-wrap-'+fileIdx+'" style="min-height:240px">';
+  html+='<pre class="cf-editor-hl"></pre>';
+  html+='<textarea class="cf-editor-ta" id="cf-raw-editor-'+fileIdx+'" spellcheck="false">'+escapeHtml(data.raw||'')+'</textarea>';
+  html+='</div>';
   html+='<button class="btn btn-success btn-sm" style="margin-top:6px" onclick="resolveConflictCustom(\''+escapeAttr(filePath)+'\','+fileIdx+')">Save raw &amp; Resolve</button>';
   html+='</div></div>';
 
   detail.innerHTML=html;
   window._cfCurrentConflict=window._cfCurrentConflict||{};
   window._cfCurrentConflict[fileIdx]=0;
+  // Apply syntax highlighting to all code blocks in this detail panel
+  _cfHighlight(detail, _cfLang(filePath));
+}
+
+function _cfLang(fp){
+  var ext=(fp||'').split('.').pop().toLowerCase();
+  var map={
+    js:'javascript',ts:'typescript',jsx:'javascript',tsx:'typescript',
+    py:'python',swift:'swift',kt:'kotlin',java:'java',go:'go',
+    rs:'rust',c:'c',cpp:'cpp',cs:'csharp',rb:'ruby',php:'php',
+    sh:'bash',bash:'bash',yaml:'yaml',yml:'yaml',json:'json',
+    xml:'xml',html:'html',css:'css',scss:'scss',md:'markdown',
+    sql:'sql',m:'objectivec',mm:'objectivec',dart:'dart',
+    lua:'lua',scala:'scala',vue:'xml',tf:'hcl',gradle:'groovy'
+  };
+  return map[ext]||'plaintext';
+}
+
+function _cfHighlight(container, lang){
+  if(typeof hljs==='undefined') return;
+  var els=container.querySelectorAll('code.cf-code');
+  for(var i=0;i<els.length;i++){
+    var el=els[i];
+    el.className='language-'+lang; // hljs uses language-* class
+    try{ hljs.highlightElement(el); }catch(e){}
+  }
 }
 
 function toggleNormalBlock(header){
@@ -3190,14 +3483,18 @@ function chooseConflict(filePath, fileIdx, ci, side){
   var block=_conflictData[filePath].blocks.filter(function(b){return b.type==='conflict'})[ci];
   conflictChoices[filePath][ci]={type:side,content:side==='ours'?(block.ours||''):(block.theirs||'')};
   renderConflictDetail(filePath, fileIdx, _conflictData[filePath]);
-  // scroll back to this conflict block
   var el=document.getElementById('cf-block-'+fileIdx+'-'+ci);
   if(el) el.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
 function openManualEdit(filePath, fileIdx, ci){
   var box=document.getElementById('cf-manual-'+fileIdx+'-'+ci);
-  if(box) box.style.display=box.style.display==='none'?'block':'none';
+  if(!box)return;
+  var opening=box.style.display==='none';
+  box.style.display=opening?'block':'none';
+  if(opening){
+    setTimeout(function(){_cfEditorInit('cf-wrap-'+fileIdx+'-'+ci,_cfLang(filePath));},0);
+  }
 }
 
 function saveManualBlock(filePath, fileIdx, ci){
@@ -3227,15 +3524,22 @@ function resolveAllBlocks(filePath, fileIdx){
     }
   }
   if(!allResolved){
-    addMsg('⚠️ Please resolve all '+choices.length+' conflicts before saving','error');
-    // scroll to first unresolved
-    for(var i=0;i<choices.length;i++){
-      if(!choices[i]||!choices[i].type){
-        var el=document.getElementById('cf-block-'+fileIdx+'-'+i);
-        if(el) el.scrollIntoView({behavior:'smooth',block:'center'});
-        break;
+    var unresolved=0;
+    for(var i=0;i<choices.length;i++) if(!choices[i]||!choices[i].type) unresolved++;
+    var warningBody=
+      '<div style="text-align:center;margin-bottom:12px;font-size:36px">⚠️</div>'
+      +'<p style="margin:0 0 10px;font-size:14px;font-weight:700;color:#dc2626">'+unresolved+' conflict'+(unresolved===1?'':'s')+' not yet resolved</p>'
+      +'<p style="margin:0 0 10px;font-size:13px;color:#374151">Please resolve all conflicts before saving. Unresolved blocks will remain with raw conflict markers (<code style="font-size:11px">&lt;&lt;&lt;&lt;&lt;&lt;&lt; / =======</code>).</p>'
+      +'<p style="margin:0;font-size:12px;color:#6b7280">Scroll up to find and resolve the remaining conflicts.</p>';
+    showModal('⚠️ Unresolved Conflicts', warningBody, "OK, I'll fix them", function(){
+      for(var i=0;i<choices.length;i++){
+        if(!choices[i]||!choices[i].type){
+          var el=document.getElementById('cf-block-'+fileIdx+'-'+i);
+          if(el) el.scrollIntoView({behavior:'smooth',block:'center'});
+          break;
+        }
       }
-    }
+    });
     return;
   }
   var content=out.join('\n');
@@ -3249,7 +3553,45 @@ function resolveAllBlocks(filePath, fileIdx){
 
 function showRawEdit(filePath, fileIdx){
   var box=document.getElementById('cf-raw-'+fileIdx);
-  if(box) box.style.display=box.style.display==='none'?'block':'none';
+  if(!box)return;
+  var opening=box.style.display==='none';
+  box.style.display=opening?'block':'none';
+  if(opening){
+    setTimeout(function(){_cfEditorInit('cf-raw-wrap-'+fileIdx,_cfLang(filePath));},0);
+  }
+}
+
+// ═══════════ Post-resolve commit & push dialog ═══════════
+function showMergeCommitDialog(defaultMsg){
+  var branchName=(document.getElementById('branch-name')||{textContent:''}).textContent||'';
+  var bodyHtml=
+    '<p style="margin:0 0 12px;color:#374151;font-size:13px">'+t('merge_all_resolved_desc')+'</p>'
+    +'<label style="font-size:12px;font-weight:600;color:#6b7280;display:block;margin-bottom:4px">'+t('commit_msg_label')+'</label>'
+    +'<textarea id="merge-complete-msg" rows="4" style="width:100%;padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;outline:none;box-sizing:border-box">'+escapeHtml(defaultMsg)+'</textarea>';
+  showModal('✅ '+t('merge_all_resolved_title'), bodyHtml, t('commit_now_btn'), function(){
+    var msg=(document.getElementById('merge-complete-msg')||{value:''}).value.trim();
+    if(!msg){addMsg('⚠️ '+t('enter_commit_msg_err'),'error');return;}
+    apiPost('/api/complete-merge',{message:msg},function(data){
+      if(data.ok){
+        addMsg('✅ '+t('merge_commit_ok'),'success');
+        loadLog(1);loadFiles();loadCurrentBranch();
+        setTimeout(function(){
+          showModalDouble(
+            '🚀 '+t('push_after_merge_title'),
+            t('push_after_merge_desc').replace('{branch}',escapeHtml(branchName)),
+            t('push_now_btn'),
+            function(){ doPush(); },
+            t('push_later_btn'),
+            null,
+            'btn-success',
+            'btn-secondary'
+          );
+        },400);
+      }else{
+        addMsg('❌ '+t('merge_commit_fail')+(data.error||''),'error');
+      }
+    });
+  });
 }
 
 // ═══════════ Post-resolve commit & push dialog ═══════════
