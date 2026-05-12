@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Git Tool</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="container">
+
+<div class="project-banner" id="project-banner">
+  <span class="project-banner-icon">📁</span>
+  <div class="project-banner-info">
+    <span class="project-banner-name" id="project-banner-name">Loading…</span>
+    <span class="project-banner-remote" id="project-banner-remote"></span>
+  </div>
+  <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:4px;position:relative;z-index:1">
+    <span class="project-banner-badge" id="app-title-name">Git Manage Board</span>
+    <span id="app-title-version" style="font-size:10px;font-weight:500;color:rgba(255,255,255,.65);letter-spacing:.6px">v1.0.0</span>
+  </div>
+</div>
+
+<div class="top-bar">
+  <!-- Left: current branch, flush with content below -->
+  <div style="flex:1;display:flex;align-items:center;">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+      <span class="branch-label" data-i18n="current_branch_label" style="font-weight:700;margin-bottom:2px">Current Branch:</span>
+      <span class="branch-tag" id="branch-name" title="Current Branch">...</span>
+    </div>
+  </div>
+  <!-- Center: tabs + remote actions -->
+  <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+    <button class="btn-tab active" id="tab-commit" onclick="switchPage('main')" data-i18n="tab_commit">Commit</button>
+    <button class="btn-tab" id="tab-branches" onclick="loadBranches(1)" data-i18n="tab_branches">Branches</button>
+    <button class="btn-tab" id="tab-log" onclick="loadLog(1)" data-i18n="tab_log">Commit Log</button>
+    <button class="btn-tab" id="tab-conflicts" onclick="loadConflicts()" data-i18n="tab_conflicts">Conflicts</button>
+    <button class="btn-tab" id="tab-stash" onclick="loadStash()" data-i18n="tab_stash">Stash</button>
+    <div class="sync-section">
+      <span style="font-size:10px;color:#6366f1;font-weight:700;letter-spacing:0.8px;margin-right:4px;">REMOTE</span>
+      <button class="git-action-btn fetch-btn" onclick="doFetch()">
+        ⬇ Fetch<span class="git-action-desc" data-i18n="fetch_desc">Check remote for new commits (no merge)</span>
+      </button>
+      <button class="git-action-btn pull-btn" onclick="doPull()">
+        🔄 Pull<span class="git-action-desc" data-i18n="pull_desc">Fetch + rebase local onto remote</span>
+      </button>
+      <button class="git-action-btn push-btn" onclick="doManualPush()">
+        🚀 Push<span class="git-action-desc" data-i18n="push_desc">Send local commits to remote</span>
+      </button>
+    </div>
+  </div>
+  <!-- Right: language selector -->
+  <div style="flex:1;display:flex;justify-content:flex-end;">
+    <select class="lang-sel" id="lang-sel" onchange="switchLang(this.value)">
+      <option value="en">EN</option>
+      <option value="zh">中文</option>
+    </select>
+  </div>
+</div>
+
+<div class="msg-log-bar" style="margin-bottom:4px;">
+  <span style="font-size:12px;color:#6b7280;" data-i18n="msg_count">Messages: 0</span>
+  <a onclick="switchPage('msglog');loadMsgLog(1)" data-i18n="view_log">View Log</a>
+</div>
+
+<div id="msg-area"></div>
+
+<!-- ═══════════ Main Page ═══════════ -->
+<div class="page active" id="page-main">
+  <div id="select-all-bar" style="display:none;margin-bottom:12px">
+    <label class="cb-wrap" style="font-weight:600;font-size:14px;color:#374151">
+      <input type="checkbox" id="select-all-cb"> <span data-i18n="select_all">Select / Deselect All</span>
+    </label>
+  </div>
+  <div id="file-list"></div>
+  <div class="toolbar" id="toolbar" style="display:none">
+    <input type="text" id="msg-input" placeholder="commit message (required)...">
+    <button class="btn btn-primary" id="commit-btn" data-i18n="confirm_commit">Commit</button>
+    <button class="btn btn-secondary" id="reset-btn" data-i18n="deselect_all">Deselect All</button>
+    <button class="btn btn-secondary" id="refresh-btn" onclick="loadFiles()" data-i18n="refresh">Refresh</button>
+    <button class="btn btn-secondary" onclick="loadIgnored()" title="View and manage .gitignore entries" style="font-size:12px">📋 Gitignore</button>
+  </div>
+</div>
+
+<!-- ═══════════ Branches Page ═══════════ -->
+<div class="page" id="page-branches">
+  <button class="btn btn-secondary btn-back" onclick="switchPage('main')">← <span data-i18n="back">Back</span></button>
+  <h2 style="margin-bottom:16px" data-i18n="branches_title">Branches</h2>
+  <div style="display:flex;gap:8px;margin-bottom:14px">
+    <input type="text" id="new-branch-name" data-i18n-placeholder="new_branch_placeholder" placeholder="New branch name..." style="flex:1;padding:6px 12px;border-radius:8px;border:1px solid #d1d5db;font-size:13px;outline:none">
+    <button class="btn btn-sm btn-success" onclick="createNewBranch()" data-i18n="create_branch_btn">+ Create Branch</button>
+  </div>
+  <div class="branch-search-wrap">
+    <div class="branch-search-row">
+      <input type="text" id="branch-search" data-i18n-placeholder="branch_search_placeholder" placeholder="Search branches (fuzzy)..." style="width:220px;padding:6px 12px;border-radius:8px;border:1px solid #d1d5db;font-size:13px;outline:none" oninput="onBranchSearchInput()">
+      <span style="font-size:12px;color:#9ca3af">Quick:</span>
+      <span class="branch-tag develop" onclick="setBranchSearchTag('develop')">develop</span>
+      <span class="branch-tag release" onclick="setBranchSearchTag('release')">release</span>
+      <span class="branch-tag" onclick="setBranchSearchTag('feature')">feature</span>
+      <span class="branch-tag" onclick="setBranchSearchTag('hotfix')">hotfix</span>
+      <button class="btn btn-sm btn-secondary" id="branch-search-clear" onclick="clearBranchSearch()" style="display:none">✕ Clear</button>
+    </div>
+  </div>
+  <div class="log-controls" style="margin-bottom:14px">
+    <select id="branches-per-page" onchange="onPerPageChange(this,'branches')">
+      <option value="10">10/pg</option><option value="20" selected>20/pg</option><option value="50">50/pg</option><option value="100">100/pg</option><option value="200">200/pg</option><option value="300">300/pg</option><option value="0">All ⚠️</option>
+    </select>
+    <span id="branches-all-warn" style="display:none;font-size:12px;color:#d97706;background:#fef3c7;padding:2px 10px;border-radius:6px" data-i18n="all_mode_slow">⚠️ Loading all may be slow</span>
+  </div>
+  <div id="branches-content"></div>
+  <div class="pagination" id="branches-pagination"></div>
+</div>
+
+<!-- ═══════════ Compare Page ═══════════ -->
+<div class="page" id="page-compare">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+    <button class="btn btn-secondary btn-back" onclick="loadBranches(1)">← Branches</button>
+    <h2 style="margin:0">⚖️ Branch Compare</h2>
+    <div id="compare-merge-btn-wrap" style="margin-left:auto"></div>
+  </div>
+  <div class="compare-bar" style="flex-direction:column;gap:10px">
+    <div class="compare-row">
+      <label class="compare-label">BRANCH A</label>
+      <div class="compare-source-toggle">
+        <button id="cmp-base-remote" class="btn btn-sm btn-primary" onclick="setCmpSelSource('base','remote')" style="padding:2px 10px;font-size:11px">🌐 Remote</button>
+        <button id="cmp-base-local" class="btn btn-sm btn-secondary" onclick="setCmpSelSource('base','local')" style="padding:2px 10px;font-size:11px">💻 Local</button>
+      </div>
+      <select id="compare-base-sel" onchange="runCompare()"></select>
+    </div>
+    <div class="compare-row">
+      <label class="compare-label">BRANCH B</label>
+      <div class="compare-source-toggle">
+        <button id="cmp-head-remote" class="btn btn-sm btn-primary" onclick="setCmpSelSource('head','remote')" style="padding:2px 10px;font-size:11px">🌐 Remote</button>
+        <button id="cmp-head-local" class="btn btn-sm btn-secondary" onclick="setCmpSelSource('head','local')" style="padding:2px 10px;font-size:11px">💻 Local</button>
+      </div>
+      <select id="compare-head-sel" onchange="runCompare()"></select>
+    </div>
+    <div class="compare-actions">
+      <button class="btn btn-secondary btn-sm" onclick="swapCompare()" title="Swap A ⇄ B">⇄ Swap</button>
+      <div id="compare-legend" class="compare-legend">
+        <span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:4px;font-weight:600">+ A added</span>
+        <span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:4px;font-weight:600">− A removed</span>
+      </div>
+    </div>
+  </div>
+  <div id="compare-summary" style="margin-bottom:10px"></div>
+  <div class="compare-content">
+    <div id="compare-file-sidebar" style="width:240px;flex-shrink:0;background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);overflow:hidden;position:sticky;top:12px;max-height:75vh;overflow-y:auto"></div>
+    <div id="compare-diff-area" style="flex:1;min-width:0"></div>
+  </div>
+</div>
+
+<!-- ═══════════ Restore File Page ═══════════ -->
+<div class="page" id="page-restore">
+  <button class="btn btn-secondary btn-back" onclick="switchPage('log')" data-i18n="back_to_log">← Back to Log</button>
+  <h2 style="margin-bottom:8px" data-i18n="restore_page_title">Restore File to Commit</h2>
+  <div class="restore-page-file" id="restore-file-info">
+    <span class="filepath" id="restore-filepath"></span>
+  </div>
+  <p style="font-size:13px;color:#6b7280;margin-bottom:16px" data-i18n="restore_page_desc">Select a commit below to restore this file to that version. This will overwrite your current working copy.</p>
+  <div id="restore-result" style="margin-bottom:12px"></div>
+  <div id="restore-commits-content"></div>
+  <div class="pagination" id="restore-pagination"></div>
+</div>
+
+<!-- ═══════════ Stash Page ═══════════ -->
+<div class="page" id="page-stash">
+  <button class="btn btn-secondary btn-back" onclick="switchPage('main')">← <span data-i18n="back">Back</span></button>
+  <h2 style="margin-bottom:16px" data-i18n="stash_title">Stash List</h2>
+  <div class="log-controls">
+    <select id="stash-per-page" onchange="onPerPageChange(this,'stash')">
+      <option value="1">1/pg</option><option value="5">5/pg</option><option value="10" selected>10/pg</option><option value="20">20/pg</option><option value="50">50/pg</option><option value="100">100/pg</option><option value="200">200/pg</option><option value="300">300/pg</option><option value="0">All ⚠️</option>
+    </select>
+    <span id="stash-all-warn" style="display:none;font-size:12px;color:#d97706;background:#fef3c7;padding:2px 10px;border-radius:6px" data-i18n="all_mode_slow">⚠️ Loading all may be slow</span>
+  </div>
+  <div id="stash-content"></div>
+  <div class="pagination" id="stash-pagination"></div>
+</div>
+
+<!-- ═══════════ Conflicts Page ═══════════ -->
+<div class="page" id="page-conflicts">
+  <button class="btn btn-secondary btn-back" onclick="switchPage('main')">← <span data-i18n="back">Back</span></button>
+  <h2 style="margin-bottom:16px" data-i18n="conflicts_title">Conflict Resolution</h2>
+  <div id="conflicts-content"></div>
+</div>
+
+<!-- ═══════════ Log Page ═══════════ -->
+<div class="page" id="page-log">
+  <button class="btn btn-secondary btn-back" onclick="switchPage('main')">← <span data-i18n="back">Back</span></button>
+  <h2 style="margin-bottom:16px" data-i18n="log_title">Commit Log</h2>
+  <div class="log-controls">
+    <input type="text" id="log-search" data-i18n-placeholder="log_search_placeholder" placeholder="Search hash / author / message..." style="width:200px" oninput="onLogSearchInput()">
+    <input type="text" id="log-code-search" data-i18n-placeholder="code_search_placeholder" placeholder="Search code in diffs..." style="width:200px" oninput="filterCommitDiffs()">
+    <button class="btn btn-sm btn-primary" id="log-search-btn" onclick="clearLogSearch()" style="display:none">✕</button>
+    <select id="log-per-page" onchange="onPerPageChange(this,'log')">
+      <option value="1">1/pg</option><option value="5">5/pg</option><option value="10" selected>10/pg</option><option value="20">20/pg</option><option value="50">50/pg</option><option value="100">100/pg</option><option value="200">200/pg</option><option value="300">300/pg</option><option value="0">All ⚠️</option>
+    </select>
+    <span id="log-all-warn" style="display:none;font-size:12px;color:#d97706;background:#fef3c7;padding:2px 10px;border-radius:6px" data-i18n="all_mode_slow">⚠️ Loading all may be slow</span>
+    <button class="btn btn-sm btn-danger abort-btn" onclick="abortMerge()" data-i18n="abort_conflict">Reset Conflict State</button>
+  </div>
+  <div id="squash-bar" class="squash-bar" style="display:none">
+    <span style="font-size:13px;font-weight:600">Squash msg:</span>
+    <input type="text" id="squash-msg" data-i18n-placeholder="squash_msg_placeholder" placeholder="New commit message...">
+    <button class="btn btn-sm btn-warning" onclick="doSquash()">Squash</button>
+    <button class="btn btn-sm btn-secondary" onclick="cancelSquash()">Cancel</button>
+    <span class="help-toggle" onclick="toggleHelp('help-squash')" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:3px 10px;border-radius:6px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;text-decoration:none;font-weight:600">ℹ️ What is Squash?</span>
+  </div>
+  <div class="help-box" id="help-squash">
+    <b>Squash:</b> Select 2+ commits via checkbox, then merge them into one new commit. Uses <code>git reset --soft</code> followed by a new commit.
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;padding:7px 14px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;font-size:13px;color:#92400e;margin-bottom:8px">
+    <span data-i18n="squash_tip">💡 Tip: Check 2 or more commit checkboxes to merge them into one commit (Squash)</span>
+  </div>
+  <div id="log-content"></div>
+  <div class="pagination" id="log-pagination"></div>
+</div>
+
+<!-- ═══════════ Msg Log Page ═══════════ -->
+<div class="page" id="page-msglog">
+  <button class="btn btn-secondary btn-back" onclick="switchPage('main')">← <span data-i18n="back">Back</span></button>
+  <h2 style="margin-bottom:16px" data-i18n="msglog_title">Message Log</h2>
+  <div class="log-controls">
+    <button class="btn btn-danger btn-sm" onclick="clearMsgLog()" data-i18n="clear_msglog">Clear All Messages</button>
+  </div>
+  <div id="msglog-content"></div>
+  <div class="pagination" id="msglog-pagination"></div>
+</div>
+
+<div id="toast"></div>
+<div id="global-spinner"><span class="spinner"></span><span id="spinner-msg">Loading...</span></div>
+</div>
+
+<!-- ═══════════ Modal ═══════════ -->
+<div class="modal-bg" id="modal-bg">
+  <div class="modal-box">
+    <h2 id="modal-title">Stash Changes?</h2>
+    <p id="modal-msg">You have uncommitted changes. Stash before switching?</p>
+    <div class="modal-btns" id="modal-btns">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-warning" id="modal-confirm">Stash & Switch</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+
+</body>
+</html>
