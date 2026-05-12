@@ -7,13 +7,23 @@ Usage: python3 git_commit_tool.py
 Browser opens http://127.0.0.1:8989
 """
 
-import os, json, subprocess, socket
+import os, json, subprocess, socket, configparser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 PORT    = 8989
 _MSGLOG = []  # 内存中的操作日志
 _PUSH_JOBS = {}  # {job_id: {lines:[], done:bool, ok:bool, error:str, authRequired:bool}}
+
+def _load_app_config():
+    """Read config.ini next to this script. Returns (app_name, app_version)."""
+    cfg = configparser.ConfigParser()
+    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+    if os.path.exists(cfg_path):
+        cfg.read(cfg_path, encoding="utf-8")
+    name    = cfg.get("app", "name",    fallback="Git Manage Board")
+    version = cfg.get("app", "version", fallback="v1.0.0")
+    return name, version
 
 def _run(cmd, cwd=None, timeout=120, env=None):
     import os as _os
@@ -231,20 +241,21 @@ def display_branch():
     return current_branch()
 
 def get_project_info():
-    """Return project display name and remote repo slug."""
+    """Return project display name, remote repo slug, app name and version from config."""
+    app_name, app_version = _load_app_config()
     dir_name = os.path.basename(os.path.abspath(os.getcwd()))
     remote_slug = ""
     url_out, _, rc = _run(["git", "remote", "get-url", "origin"])
     if rc == 0 and url_out.strip():
         url = url_out.strip()
-        # Strip .git suffix and extract last two path components (owner/repo)
+
         url = url.rstrip("/")
         if url.endswith(".git"):
             url = url[:-4]
         parts = url.replace(":", "/").split("/")
         if len(parts) >= 2:
             remote_slug = parts[-2] + "/" + parts[-1]
-    return {"dir": dir_name, "remote": remote_slug}
+    return {"dir": dir_name, "remote": remote_slug, "app_name": app_name, "app_version": app_version}
 
 def _ref_exists(name):
     _, _, rc = _run(["git", "rev-parse", "--verify", name])
@@ -952,36 +963,47 @@ mark{background:#fef3c7;border-radius:2px;padding:0 1px}
     <span class="project-banner-name" id="project-banner-name">Loading…</span>
     <span class="project-banner-remote" id="project-banner-remote"></span>
   </div>
-  <span class="project-banner-badge">GIT TOOL</span>
+  <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:4px;position:relative;z-index:1">
+    <span class="project-banner-badge" id="app-title-name">Git Manage Board</span>
+    <span id="app-title-version" style="font-size:10px;font-weight:500;color:rgba(255,255,255,.65);letter-spacing:.6px">v1.0.0</span>
+  </div>
 </div>
 
 <div class="top-bar">
-  <h1>Git Tool</h1>
-  <div style="display:flex;flex-direction:column;align-items:center;margin-left:25px">
-    <span class="branch-label" data-i18n="current_branch_label" style="font-weight:700;margin-bottom:2px">Current Branch:</span>
-    <span class="branch-tag" id="branch-name" title="Current Branch">...</span>
+  <!-- Left: current branch, flush with content below -->
+  <div style="flex:1;display:flex;align-items:center;">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+      <span class="branch-label" data-i18n="current_branch_label" style="font-weight:700;margin-bottom:2px">Current Branch:</span>
+      <span class="branch-tag" id="branch-name" title="Current Branch">...</span>
+    </div>
   </div>
-  <button class="btn-tab active" id="tab-commit" onclick="switchPage('main')" data-i18n="tab_commit">Commit</button>
-  <button class="btn-tab" id="tab-branches" onclick="loadBranches(1)" data-i18n="tab_branches">Branches</button>
-  <button class="btn-tab" id="tab-log" onclick="loadLog(1)" data-i18n="tab_log">Commit Log</button>
-  <button class="btn-tab" id="tab-conflicts" onclick="loadConflicts()" data-i18n="tab_conflicts">Conflicts</button>
-  <button class="btn-tab" id="tab-stash" onclick="loadStash()" data-i18n="tab_stash">Stash</button>
-  <div class="sync-section">
-    <span style="font-size:10px;color:#6366f1;font-weight:700;letter-spacing:0.8px;margin-right:4px;">REMOTE</span>
-    <button class="git-action-btn fetch-btn" onclick="doFetch()">
-      ⬇ Fetch<span class="git-action-desc" data-i18n="fetch_desc">Check remote for new commits (no merge)</span>
-    </button>
-    <button class="git-action-btn pull-btn" onclick="doPull()">
-      🔄 Pull<span class="git-action-desc" data-i18n="pull_desc">Fetch + rebase local onto remote</span>
-    </button>
-    <button class="git-action-btn push-btn" onclick="doManualPush()">
-      🚀 Push<span class="git-action-desc" data-i18n="push_desc">Send local commits to remote</span>
-    </button>
+  <!-- Center: tabs + remote actions -->
+  <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+    <button class="btn-tab active" id="tab-commit" onclick="switchPage('main')" data-i18n="tab_commit">Commit</button>
+    <button class="btn-tab" id="tab-branches" onclick="loadBranches(1)" data-i18n="tab_branches">Branches</button>
+    <button class="btn-tab" id="tab-log" onclick="loadLog(1)" data-i18n="tab_log">Commit Log</button>
+    <button class="btn-tab" id="tab-conflicts" onclick="loadConflicts()" data-i18n="tab_conflicts">Conflicts</button>
+    <button class="btn-tab" id="tab-stash" onclick="loadStash()" data-i18n="tab_stash">Stash</button>
+    <div class="sync-section">
+      <span style="font-size:10px;color:#6366f1;font-weight:700;letter-spacing:0.8px;margin-right:4px;">REMOTE</span>
+      <button class="git-action-btn fetch-btn" onclick="doFetch()">
+        ⬇ Fetch<span class="git-action-desc" data-i18n="fetch_desc">Check remote for new commits (no merge)</span>
+      </button>
+      <button class="git-action-btn pull-btn" onclick="doPull()">
+        🔄 Pull<span class="git-action-desc" data-i18n="pull_desc">Fetch + rebase local onto remote</span>
+      </button>
+      <button class="git-action-btn push-btn" onclick="doManualPush()">
+        🚀 Push<span class="git-action-desc" data-i18n="push_desc">Send local commits to remote</span>
+      </button>
+    </div>
   </div>
-  <select class="lang-sel" id="lang-sel" onchange="switchLang(this.value)" style="margin-left:auto;margin-right:25px">
-    <option value="en">EN</option>
-    <option value="zh">中文</option>
-  </select>
+  <!-- Right: language selector -->
+  <div style="flex:1;display:flex;justify-content:flex-end;">
+    <select class="lang-sel" id="lang-sel" onchange="switchLang(this.value)">
+      <option value="en">EN</option>
+      <option value="zh">中文</option>
+    </select>
+  </div>
 </div>
 
 <div class="msg-log-bar" style="margin-bottom:4px;">
@@ -1688,6 +1710,11 @@ function loadProjectName(){
       if(data.remote) remoteEl.textContent='⎇  '+data.remote;
       else remoteEl.textContent='';
     }
+    // Update top-right app title from config
+    var titleName=document.getElementById('app-title-name');
+    var titleVer=document.getElementById('app-title-version');
+    if(titleName&&data.app_name) titleName.textContent=data.app_name;
+    if(titleVer&&data.app_version) titleVer.textContent=data.app_version;
   });
 }
 
