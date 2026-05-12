@@ -2294,7 +2294,28 @@ function _delBranchScope(branchName, scope){
   if(ov) ov.style.display='none';
   var shortName=branchName.replace(/^origin\//,'');
   if(scope==='remote'){
-    _doDeleteRemote(branchName, shortName);
+    // Strong warning confirmation before remote delete
+    var warnBody=
+      '<div style="background:#fef2f2;border:2px solid #ef4444;border-radius:10px;padding:14px 16px;margin-bottom:14px">'
+      +'<div style="font-size:28px;margin-bottom:8px;text-align:center">🚨</div>'
+      +'<div style="font-size:14px;font-weight:800;color:#dc2626;margin-bottom:8px;text-align:center;letter-spacing:.3px">IRREVERSIBLE — REMOTE BRANCH WILL BE GONE</div>'
+      +'<div style="font-size:13px;color:#7f1d1d;line-height:1.7">'
+      +'You are about to delete the remote branch<br>'
+      +'<code style="background:#fee2e2;padding:2px 8px;border-radius:4px;font-weight:700;font-size:13px;display:inline-block;margin:4px 0">origin/'+escapeHtml(shortName)+'</code><br>'
+      +'from the remote server.<br><br>'
+      +'⛔ <strong>This cannot be undone</strong> — once deleted, the remote branch will no longer exist and anyone tracking it will lose access.</div>'
+      +'</div>'
+      +'<p style="margin:0;font-size:13px;color:#374151;font-weight:600">Are you absolutely sure you want to permanently delete this remote branch?</p>';
+    showModalDouble(
+      '⚠️ Delete Remote Branch',
+      warnBody,
+      '🗑 Yes, Delete Remote',
+      function(){ _doDeleteRemote(branchName, shortName); },
+      'Cancel',
+      null,
+      'btn-danger',
+      'btn-secondary'
+    );
   }else{
     var localBody=
       '<p style="margin:0 0 10px;font-size:13px;color:#374151">Delete local branch <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;font-weight:700">'+escapeHtml(shortName)+'</code>?</p>'
