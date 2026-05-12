@@ -144,12 +144,107 @@ def _run_push_streaming(job_id, branch, extra_env=None, force=False, is_ssh=Fals
         job['ok'] = False
         job['error'] = str(e)
 
+def _run_gitop_streaming(job_id, op, mode=None):
+    """Stream git fetch or pull into _PUSH_JOBS[job_id] (background thread)."""
+    import os as _os, subprocess as _subp, threading as _threading, time as _time
+    run_env = _os.environ.copy()
+    run_env["GIT_TERMINAL_PROMPT"] = "0"
+    run_env["GIT_ASKPASS"] = "echo"
+    job = _PUSH_JOBS[job_id]
+
+    def _append(line):
+        line = (line or '').rstrip('\r\n')
+        if line:
+            ts = _time.strftime('%H:%M:%S')
+            job['lines'].append(f'[{ts}] {line}')
+
+    def _append_raw(line):
+        line = (line or '').rstrip('\r\n')
+        if line:
+            job['lines'].append(line)
+
+    try:
+        branch_name = current_branch()
+        url_out, _, _ = _run(["git", "remote", "get-url", "origin"])
+        remote_url = url_out.strip() or "origin"
+
+        _append_raw('─' * 52)
+        _append(f'📦 Repo  : {remote_url}')
+        _append(f'🌿 Branch: {branch_name}')
+
+        if op == 'fetch':
+            _append('⬇️ Operation: fetch --all --prune --verbose')
+            cmd = ["git", "fetch", "--all", "--prune", "--verbose"]
+        else:  # pull
+            mode_str = mode or 'merge'
+            if mode_str == 'rebase':
+                _append('⬇️ Operation: pull --rebase --verbose')
+                cmd = ["git", "pull", "--rebase", "--verbose", "origin", branch_name]
+            elif mode_str == 'ff':
+                _append('⬇️ Operation: pull --ff-only --verbose')
+                cmd = ["git", "pull", "--ff-only", "--verbose", "origin", branch_name]
+            else:
+                _append('⬇️ Operation: pull (merge) --verbose')
+                cmd = ["git", "pull", "--no-rebase", "--verbose", "origin", branch_name]
+
+        _append_raw('─' * 52)
+        _append_raw('$ ' + ' '.join(cmd))
+
+        try:
+            proc = _subp.Popen(cmd, stdout=_subp.PIPE, stderr=_subp.PIPE,
+                               text=True, cwd=_os.getcwd(), env=run_env)
+        except Exception as e:
+            _append(f'ERROR: {e}')
+            job['done'] = True; job['ok'] = False; job['error'] = str(e)
+            return
+
+        def rd(stream):
+            for l in stream:
+                _append(l)
+
+        t1 = _threading.Thread(target=rd, args=(proc.stdout,), daemon=True)
+        t2 = _threading.Thread(target=rd, args=(proc.stderr,), daemon=True)
+        t1.start(); t2.start()
+
+        try:
+            proc.wait(timeout=120)
+        except _subp.TimeoutExpired:
+            proc.kill()
+            _append('⏱ Operation timed out after 120s — check your network.')
+
+        t1.join(); t2.join()
+        rc = proc.returncode
+        job['done'] = True
+        job['ok'] = (rc == 0)
+        if rc != 0:
+            job['error'] = '\n'.join(job['lines'])
+    except Exception as e:
+        job['done'] = True
+        job['ok'] = False
+        job['error'] = str(e)
+
 def current_branch():
     out, _, rc = _run(["git","rev-parse","--abbrev-ref","HEAD"])
     return out if rc==0 else "unknown"
 
 def display_branch():
     return current_branch()
+
+def get_project_info():
+    """Return project display name and remote repo slug."""
+    dir_name = os.path.basename(os.path.abspath(os.getcwd()))
+    remote_slug = ""
+    url_out, _, rc = _run(["git", "remote", "get-url", "origin"])
+    if rc == 0 and url_out.strip():
+        url = url_out.strip()
+        # Strip .git suffix and extract last two path components (owner/repo)
+        url = url.rstrip("/")
+        if url.endswith(".git"):
+            url = url[:-4]
+        parts = url.replace(":", "/").split("/")
+        if len(parts) >= 2:
+            remote_slug = parts[-2] + "/" + parts[-1]
+    return {"dir": dir_name, "remote": remote_slug}
 
 def _ref_exists(name):
     _, _, rc = _run(["git", "rev-parse", "--verify", name])
@@ -333,7 +428,11 @@ def get_conflicts():
     return [f.strip() for f in out.splitlines() if f.strip()]
 
 def get_conflict_detail(fp):
-    raw,_,_ = _run(["cat",fp])
+    try:
+        with open(fp, "r", encoding="utf-8", errors="replace") as f:
+            raw = f.read()
+    except Exception:
+        raw = ""
     ours,_,_ = _run(["git","show",f":2:{fp}"])
     theirs,_,_ = _run(["git","show",f":3:{fp}"])
     blocks = _parse_blocks(raw)
@@ -360,12 +459,52 @@ def _parse_blocks(raw):
     flush()
     return blocks
 
+def _get_merge_type():
+    """Return the current in-progress merge type: 'merge', 'rebase', 'cherry-pick', or None."""
+    cwd = os.getcwd()
+    if os.path.exists(os.path.join(cwd, ".git", "CHERRY_PICK_HEAD")):
+        return "cherry-pick"
+    if os.path.exists(os.path.join(cwd, ".git", "rebase-merge")) or \
+       os.path.exists(os.path.join(cwd, ".git", "rebase-apply")):
+        return "rebase"
+    if os.path.exists(os.path.join(cwd, ".git", "MERGE_HEAD")):
+        return "merge"
+    return None
+
+def _get_merge_default_msg():
+    """Return the default commit message for the current merge (reads .git/MERGE_MSG)."""
+    cwd = os.getcwd()
+    merge_msg_file = os.path.join(cwd, ".git", "MERGE_MSG")
+    if os.path.exists(merge_msg_file):
+        try:
+            with open(merge_msg_file, "r", encoding="utf-8") as f:
+                return f.read().strip()
+        except Exception:
+            pass
+    return "Merge resolved"
+
+def _complete_merge_step():
+    """After all conflicts are resolved, complete the merge/rebase/cherry-pick."""
+    env = {"GIT_EDITOR": "true"}
+    cwd = os.getcwd()
+    if os.path.exists(os.path.join(cwd, ".git", "CHERRY_PICK_HEAD")):
+        return _run(["git", "cherry-pick", "--continue"], env=env)
+    if os.path.exists(os.path.join(cwd, ".git", "rebase-merge")) or \
+       os.path.exists(os.path.join(cwd, ".git", "rebase-apply")):
+        return _run(["git", "rebase", "--continue"], env=env)
+    if os.path.exists(os.path.join(cwd, ".git", "MERGE_HEAD")):
+        return _run(["git", "commit", "--no-edit"], env=env)
+    return "", "No merge/rebase/cherry-pick in progress", -1
+
 def resolve_conflict(fp, resolution):
     if resolution=="ours": _run(["git","checkout","--ours",fp])
     elif resolution=="theirs": _run(["git","checkout","--theirs",fp])
     else:
         with open(fp,"w",encoding="utf-8") as f: f.write(resolution)
-    return _run(["git","add",fp])
+    out, err, rc = _run(["git","add",fp])
+    # Check if all conflicts are now resolved (but do NOT auto-commit — let the UI prompt the user)
+    all_resolved = rc == 0 and not get_conflicts() and _get_merge_type() is not None
+    return out, err, rc, all_resolved
 
 def get_file_commits(file_path, page=1, per_page=20):
     """Get commit history for a specific file."""
@@ -524,6 +663,13 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",sans-s
 .container{max-width:1280px;margin:0 auto}
 .top-bar{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:12px;overflow:visible;}
 .top-bar h1{font-size:22px;margin-right:0}
+.project-banner{display:flex;align-items:center;gap:12px;padding:10px 20px;margin-bottom:10px;border-radius:12px;background:linear-gradient(135deg,#1e3a8a 0%,#1d4ed8 50%,#7c3aed 100%);box-shadow:0 4px 16px rgba(30,58,138,.35);overflow:hidden;position:relative;}
+.project-banner::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(45deg,transparent,transparent 18px,rgba(255,255,255,.03) 18px,rgba(255,255,255,.03) 36px);}
+.project-banner-icon{font-size:26px;line-height:1;flex-shrink:0;position:relative;z-index:1;}
+.project-banner-info{display:flex;flex-direction:column;gap:2px;position:relative;z-index:1;}
+.project-banner-name{font-size:20px;font-weight:800;color:#fff;letter-spacing:0.5px;line-height:1.1;text-shadow:0 1px 4px rgba(0,0,0,.3);}
+.project-banner-remote{font-size:11px;color:rgba(255,255,255,.7);font-family:monospace;letter-spacing:0.3px;}
+.project-banner-badge{margin-left:auto;position:relative;z-index:1;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;letter-spacing:0.5px;backdrop-filter:blur(4px);white-space:nowrap;}
 .branch-tag{background:#1e40af;color:#fff;padding:5px 16px;border-radius:99px;font-size:14px;font-weight:700;white-space:nowrap;box-shadow:0 0 8px rgba(30,64,175,.4);cursor:default}
 .branch-label{font-size:12px;color:#6b7280;white-space:nowrap}
 .lang-sel{padding:4px 8px;border-radius:6px;border:1px solid #d1d5db;font-size:12px;cursor:pointer}
@@ -744,6 +890,15 @@ mark{background:#fef3c7;border-radius:2px;padding:0 1px}
 </head>
 <body>
 <div class="container">
+
+<div class="project-banner" id="project-banner">
+  <span class="project-banner-icon">📁</span>
+  <div class="project-banner-info">
+    <span class="project-banner-name" id="project-banner-name">Loading…</span>
+    <span class="project-banner-remote" id="project-banner-remote"></span>
+  </div>
+  <span class="project-banner-badge">GIT TOOL</span>
+</div>
 
 <div class="top-bar">
   <h1>Git Tool</h1>
@@ -1050,6 +1205,17 @@ var T = {
   no_conflict_abort: {en:'No conflict or abort failed: ', zh:'无冲突或中止失败: '},
   conflict_resolved: {en:'Conflict resolved with ', zh:'冲突已解决: '},
   conflict_resolved_ok: {en:'Conflict resolved', zh:'冲突已解决'},
+  merge_all_resolved_title: {en:'All Conflicts Resolved!', zh:'所有冲突已解决！'},
+  merge_all_resolved_desc: {en:'All conflict files have been resolved. Do you want to commit this merge now?', zh:'所有冲突文件已解决。是否立即提交本次合并？'},
+  commit_msg_label: {en:'Commit Message', zh:'提交消息'},
+  commit_now_btn: {en:'Commit Now', zh:'立即提交'},
+  enter_commit_msg_err: {en:'Please enter a commit message', zh:'请输入提交消息'},
+  merge_commit_ok: {en:'Merge committed successfully', zh:'合并已成功提交'},
+  merge_commit_fail: {en:'Commit failed: ', zh:'提交失败: '},
+  push_after_merge_title: {en:'Push to Remote?', zh:'是否推送到远端？'},
+  push_after_merge_desc: {en:'Merge committed! Push <b>{branch}</b> to remote now?', zh:'合并已提交！是否立即将 <b>{branch}</b> 推送到远端？'},
+  push_now_btn: {en:'Push Now', zh:'立即推送'},
+  push_later_btn: {en:'Cancel (Push Manually)', zh:'取消（手动推送）'},
   stash_failed: {en:'Stash failed: ', zh:'Stash 失败: '},
   pull_ok_pop: {en:'Pull OK, popping stash...', zh:'Pull 成功，恢复 stash...'},
   stash_conflict: {en:'Stash pop conflict! Resolve in Conflicts tab.', zh:'Stash pop 冲突！请在 Conflicts 页面解决。'},
@@ -1456,6 +1622,18 @@ function loadCurrentBranch(){apiGet('/api/current-branch',function(data){
   if (el) el.textContent = data.branch;
 })}
 
+function loadProjectName(){
+  apiGet('/api/project-name',function(data){
+    var nameEl=document.getElementById('project-banner-name');
+    var remoteEl=document.getElementById('project-banner-remote');
+    if(nameEl) nameEl.textContent=data.dir||'Unknown Project';
+    if(remoteEl){
+      if(data.remote) remoteEl.textContent='⎇  '+data.remote;
+      else remoteEl.textContent='';
+    }
+  });
+}
+
 function checkConflicts(){
   apiGet('/api/conflicts',function(data){
     var tab=document.getElementById('tab-conflicts');
@@ -1701,18 +1879,87 @@ function _showGitLog(label, log){
   if(cleaned) addMsg('📋 '+label+':\n'+cleaned, 'info');
 }
 
-function _executePull(mode, onDone){
-  apiPost('/api/pull',{mode:mode||'merge'},function(data){
-    _showGitLog('Git pull log', data.log||'');
-    if(data.ok){
-      addMsg(t('pull_ok')+(data.log||'').split('\n')[0],'success');
-      checkConflicts();
-      if(onDone) onDone(true);
-    } else {
-      handlePullErr(data.error||data.log||'');
-      if(onDone) onDone(false);
+// ═══════════ Streaming live-log modal for fetch / pull ═══════════
+function _startGitopStream(op, mode, onDone){
+  var branch=(document.getElementById('branch-name')||{textContent:''}).textContent||'?';
+  var label = op==='fetch' ? '⬇️ Fetching' : '⬇️ Pulling';
+  var uid = op+'-'+Date.now();
+  var logDivId = 'gitop-log-'+uid;
+
+  var logBox='<div id="'+logDivId+'" style="'
+    +'background:#0f172a;color:#d1fae5;font-family:monospace;font-size:12px;line-height:1.5;'
+    +'padding:12px 14px;border-radius:8px;min-height:140px;max-height:340px;'
+    +'overflow-y:auto;white-space:pre-wrap;word-break:break-all;border:1px solid #1e293b">'
+    +'<span style="color:#94a3b8">⏳ Starting '+escapeHtml(op)+' from origin/'+escapeHtml(branch)+'...\n</span></div>';
+
+  // Show modal — Cancel & Close are both immediately enabled so user can dismiss any time
+  showModal(
+    label+' — <span style="font-size:12px;font-weight:400;color:#94a3b8">origin/'+escapeHtml(branch)+'</span>',
+    logBox, 'Close', null
+  );
+
+  apiPost('/api/gitop-start',{op:op,mode:mode||'merge'},function(startData){
+    var ld=document.getElementById(logDivId);
+    if(!startData||!startData.jobId){
+      if(ld) ld.innerHTML+='<span style="color:#f87171">❌ Failed to start: '+escapeHtml((startData&&startData.error)||'unknown error')+'</span>\n';
+      if(onDone) onDone(false,'');
+      return;
     }
+    var jobId=startData.jobId;
+    var seenLines=0;
+
+    function poll(){
+      var xhr=new XMLHttpRequest();
+      xhr.open('GET','/api/push-status?jobId='+encodeURIComponent(jobId));
+      xhr.onload=function(){
+        var r;
+        try{r=JSON.parse(xhr.responseText);}catch(e){setTimeout(poll,600);return;}
+        var ld2=document.getElementById(logDivId); // null if modal was closed
+        if(ld2 && r.lines && r.lines.length>seenLines){
+          for(var i=seenLines;i<r.lines.length;i++){
+            var line=r.lines[i];
+            var col='#e2e8f0';
+            var lineBody=line.replace(/^\[\d{2}:\d{2}:\d{2}\] /,'');
+            if(/^─+$/.test(line)) col='#334155';
+            else if(/^error:|fatal:|ERROR|timed out/i.test(lineBody)) col='#f87171';
+            else if(/^remote:|^From |^origin\//i.test(lineBody)) col='#67e8f9';
+            else if(/^\$/.test(lineBody)) col='#fbbf24';
+            else if(/Already up.to.date/i.test(lineBody)) col='#4ade80';
+            else if(/^📦|^🌿|^⬇️/.test(lineBody)) col='#c4b5fd';
+            else if(/^\[/.test(line)) col='#94a3b8';
+            ld2.innerHTML+='<span style="color:'+col+'">'+escapeHtml(line)+'</span>\n';
+          }
+          seenLines=r.lines.length;
+          ld2.scrollTop=ld2.scrollHeight;
+        }
+        if(r.done){
+          var ld3=document.getElementById(logDivId);
+          if(r.ok){
+            if(ld3) ld3.innerHTML+='<span style="color:#4ade80;font-weight:700">✅ '+(op==='fetch'?'Fetch':'Pull')+' succeeded!\n</span>';
+            addMsg('✅ '+(op==='fetch'?t('fetch_ok'):t('pull_ok')),'success');
+          }else{
+            if(ld3) ld3.innerHTML+='<span style="color:#f87171;font-weight:700">❌ '+(op==='fetch'?'Fetch':'Pull')+' failed!\n</span>';
+            // Page log (always fires even if modal was closed)
+            var errTxt=r.error||'';
+            if(op==='pull') handlePullErr(errTxt);
+            else addMsg('❌ '+t('fetch_fail')+errTxt,'error');
+          }
+          checkConflicts();
+          if(r.ok && op==='pull') loadCurrentBranch();
+          if(onDone) onDone(r.ok);
+        }else{
+          setTimeout(poll,500);
+        }
+      };
+      xhr.onerror=function(){setTimeout(poll,1000);};
+      xhr.send();
+    }
+    poll();
   });
+}
+
+function _executePull(mode, onDone){
+  _startGitopStream('pull', mode, onDone);
 }
 
 function doPull() {
@@ -1771,10 +2018,8 @@ function doPull() {
 
 function doFetch() {
   addMsg(t('fetching'),'info');
-  apiPost('/api/fetch',{},function(data){
-    _showGitLog('Git fetch log', data.log||'');
-    if(data.ok){addMsg(t('fetch_ok'),'success');loadFiles();checkConflicts()}
-    else{addMsg(t('fetch_fail')+(data.error||''),'error')}
+  _startGitopStream('fetch', null, function(ok){
+    if(ok){ loadFiles(); }
   });
 }
 
@@ -2995,7 +3240,9 @@ function resolveAllBlocks(filePath, fileIdx){
   }
   var content=out.join('\n');
   apiPost('/api/resolve-conflict',{path:filePath,content:content},function(data){
-    if(data.ok){resolvedConflicts[filePath]=true;addMsg(t('conflict_resolved_ok'),'success');loadConflicts();checkConflicts();loadFiles();}
+    if(data.ok){resolvedConflicts[filePath]=true;addMsg(t('conflict_resolved_ok'),'success');loadConflicts();checkConflicts();loadFiles();
+      if(data.all_resolved){setTimeout(function(){showMergeCommitDialog(data.default_msg||'');},500);}
+    }
     else addMsg(t('op_failed_err')+(data.error||''),'error');
   });
 }
@@ -3003,6 +3250,39 @@ function resolveAllBlocks(filePath, fileIdx){
 function showRawEdit(filePath, fileIdx){
   var box=document.getElementById('cf-raw-'+fileIdx);
   if(box) box.style.display=box.style.display==='none'?'block':'none';
+}
+
+// ═══════════ Post-resolve commit & push dialog ═══════════
+function showMergeCommitDialog(defaultMsg){
+  var branchName=(document.getElementById('branch-name')||{textContent:''}).textContent||'';
+  var bodyHtml=
+    '<p style="margin:0 0 12px;color:#374151;font-size:13px">'+t('merge_all_resolved_desc')+'</p>'
+    +'<label style="font-size:12px;font-weight:600;color:#6b7280;display:block;margin-bottom:4px">'+t('commit_msg_label')+'</label>'
+    +'<textarea id="merge-complete-msg" rows="4" style="width:100%;padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;outline:none;box-sizing:border-box">'+escapeHtml(defaultMsg)+'</textarea>';
+  showModal('✅ '+t('merge_all_resolved_title'), bodyHtml, t('commit_now_btn'), function(){
+    var msg=(document.getElementById('merge-complete-msg')||{value:''}).value.trim();
+    if(!msg){addMsg('⚠️ '+t('enter_commit_msg_err'),'error');return;}
+    apiPost('/api/complete-merge',{message:msg},function(data){
+      if(data.ok){
+        addMsg('✅ '+t('merge_commit_ok'),'success');
+        loadLog(1);loadFiles();loadCurrentBranch();
+        setTimeout(function(){
+          showModalDouble(
+            '🚀 '+t('push_after_merge_title'),
+            t('push_after_merge_desc').replace('{branch}',escapeHtml(branchName)),
+            t('push_now_btn'),
+            function(){ doPush(); },
+            t('push_later_btn'),
+            null,
+            'btn-success',
+            'btn-secondary'
+          );
+        },400);
+      }else{
+        addMsg('❌ '+t('merge_commit_fail')+(data.error||''),'error');
+      }
+    });
+  });
 }
 
 function jumpToConflict(filePath, fileIdx, dir){
@@ -3021,12 +3301,14 @@ function jumpToConflict(filePath, fileIdx, dir){
 }
 
 function showEditConflict(idx){document.getElementById('conflict-edit-'+idx) && (document.getElementById('conflict-edit-'+idx).style.display='block')}
-function resolveConflict(filePath,resolution,idx){apiPost('/api/resolve-conflict',{path:filePath,resolution:resolution},function(data){if(data.ok){resolvedConflicts[filePath]=true;addMsg(t('conflict_resolved')+resolution,'success');loadConflicts();checkConflicts();loadFiles()}else addMsg(t('op_failed_err')+(data.error||''),'error')})}
+function resolveConflict(filePath,resolution,idx){apiPost('/api/resolve-conflict',{path:filePath,resolution:resolution},function(data){if(data.ok){resolvedConflicts[filePath]=true;addMsg(t('conflict_resolved')+resolution,'success');loadConflicts();checkConflicts();loadFiles();if(data.all_resolved){setTimeout(function(){showMergeCommitDialog(data.default_msg||'');},500);}}else addMsg(t('op_failed_err')+(data.error||''),'error')})}
 function resolveConflictCustom(filePath,fileIdx){
   var ta=document.getElementById('cf-raw-editor-'+fileIdx);
   if(!ta) return;
   apiPost('/api/resolve-conflict',{path:filePath,content:ta.value},function(data){
-    if(data.ok){resolvedConflicts[filePath]=true;addMsg(t('conflict_resolved_ok'),'success');loadConflicts();checkConflicts();loadFiles();}
+    if(data.ok){resolvedConflicts[filePath]=true;addMsg(t('conflict_resolved_ok'),'success');loadConflicts();checkConflicts();loadFiles();
+      if(data.all_resolved){setTimeout(function(){showMergeCommitDialog(data.default_msg||'');},500);}
+    }
     else addMsg(t('op_failed_err')+(data.error||''),'error');
   });
 }
@@ -3150,6 +3432,7 @@ document.getElementById('reset-btn').addEventListener('click',function(){
 
 // ═══════════ Init ═══════════
 loadCurrentBranch();
+loadProjectName();
 // Restore last active tab
 (function(){
   var saved=null;
@@ -3208,6 +3491,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"files":get_uncommitted_changes()})
         elif path=="/api/current-branch":
             self._json({"branch":display_branch()})
+        elif path=="/api/project-name":
+            self._json(get_project_info())
         elif path=="/api/branches":
             qs=parse_qs(parsed.query) if parsed.query else {}
             page=int(qs.get("page",["1"])[0])
@@ -3408,6 +3693,14 @@ class Handler(BaseHTTPRequestHandler):
             log,stderr,rc=fetch()
             if rc==0: self._json({"ok":True,"log":log})
             else: self._json({"ok":False,"error":stderr or log,"log":log},400)
+        elif path=="/api/gitop-start":
+            import uuid, threading as _thr2
+            op = data.get("op","fetch")   # "fetch" or "pull"
+            mode = data.get("mode","merge")
+            job_id = str(uuid.uuid4())[:8]
+            _PUSH_JOBS[job_id] = {'lines': [], 'done': False, 'ok': False, 'error': '', 'authRequired': False}
+            _thr2.Thread(target=_run_gitop_streaming, args=(job_id, op, mode), daemon=True).start()
+            self._json({"ok": True, "jobId": job_id})
         elif path=="/api/set-upstream":
             stdout,stderr,rc=set_upstream()
             self._json({"ok":True,"stdout":stdout} if rc==0 else {"ok":False,"error":stderr or stdout},400)
@@ -3498,10 +3791,34 @@ class Handler(BaseHTTPRequestHandler):
             self._json(get_conflict_detail(fp))
         elif path=="/api/resolve-conflict":
             fp=data.get("path",""); resolution=data.get("resolution"); content=data.get("content")
-            if resolution: stdout,stderr,rc=resolve_conflict(fp,resolution)
-            elif content: stdout,stderr,rc=resolve_conflict(fp,content)
+            if resolution: stdout,stderr,rc,all_resolved=resolve_conflict(fp,resolution)
+            elif content: stdout,stderr,rc,all_resolved=resolve_conflict(fp,content)
             else: self._json({"ok":False,"error":"no resolution"},400); return
-            self._json({"ok":True} if rc==0 else {"ok":False,"error":stderr or "failed"},400)
+            if rc==0:
+                resp={"ok":True,"all_resolved":all_resolved}
+                if all_resolved:
+                    resp["merge_type"]=_get_merge_type()
+                    resp["default_msg"]=_get_merge_default_msg()
+                self._json(resp)
+            else:
+                self._json({"ok":False,"error":stderr or "failed"},400)
+
+        elif path=="/api/complete-merge":
+            msg=data.get("message","")
+            cwd=os.getcwd(); env={"GIT_EDITOR":"true"}
+            if os.path.exists(os.path.join(cwd,".git","CHERRY_PICK_HEAD")):
+                stdout,stderr,rc=_run(["git","cherry-pick","--continue"],env=env)
+            elif os.path.exists(os.path.join(cwd,".git","rebase-merge")) or \
+                 os.path.exists(os.path.join(cwd,".git","rebase-apply")):
+                stdout,stderr,rc=_run(["git","rebase","--continue"],env=env)
+            elif os.path.exists(os.path.join(cwd,".git","MERGE_HEAD")):
+                if msg:
+                    stdout,stderr,rc=_run(["git","commit","-m",msg])
+                else:
+                    stdout,stderr,rc=_run(["git","commit","--no-edit"],env=env)
+            else:
+                self._json({"ok":False,"error":"No merge/rebase/cherry-pick in progress"},400); return
+            self._json({"ok":True,"stdout":stdout} if rc==0 else {"ok":False,"error":stderr or stdout},400)
 
         elif path=="/api/reset":
             commit=data.get("commit",""); mode=data.get("mode","soft")
