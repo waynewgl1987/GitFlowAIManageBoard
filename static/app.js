@@ -525,17 +525,22 @@ function loadProjectName(){
   });
 }
 
+function _updateConflictTabBadge(count){
+  var tab=document.getElementById('tab-conflicts');
+  if(!tab) return;
+  if(count>0){
+    tab.textContent='Conflicts ('+count+')';
+    tab.style.background='#fee2e2';tab.style.color='#991b1b';
+  }else{
+    tab.textContent='Conflicts';
+    tab.style.background='';tab.style.color='';
+  }
+}
 function checkConflicts(){
-  apiGet('/api/conflicts',function(data){
-    var tab=document.getElementById('tab-conflicts');
-    if(data.count>0){
-      tab.textContent='Conflicts ('+data.count+')';
-      tab.style.background='#fee2e2';tab.style.color='#991b1b';
-    }else{
-      tab.textContent='Conflicts';
-      tab.style.background='';tab.style.color='';
-    }
-  });
+  fetch(API_BASE+'/api/conflicts',{cache:'no-store'})
+    .then(function(r){return r.json();})
+    .then(function(data){ _updateConflictTabBadge(data.count||0); })
+    .catch(function(){});
 }
 
 // ═══════════ Pull + Fetch ═══════════
@@ -2213,7 +2218,10 @@ var _conflictData = {}; // filePath -> {blocks, raw}
 
 function loadConflicts(){
   switchPage('conflicts');
-  apiGet('/api/conflicts',function(data){
+  fetch(API_BASE+'/api/conflicts',{cache:'no-store'})
+    .then(function(r){return r.json();})
+    .then(function(data){
+    _updateConflictTabBadge(data.count||0);
     if(data.count===0){document.getElementById('conflicts-content').innerHTML='<div class="empty">🎉 '+t('no_conflict')+'</div>';return}
     var html='';
     // AI quick-resolve bar at the top
@@ -2239,7 +2247,7 @@ function loadConflicts(){
     document.getElementById('conflicts-content').innerHTML=html;
     // auto-expand first file
     if(data.files.length>0 && !expandedPaths[data.files[0]]) toggleConflict(data.files[0],0);
-  });
+  }).catch(function(){});
 }
 
 function toggleConflict(filePath,idx){
