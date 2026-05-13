@@ -25,14 +25,33 @@ def _get_git_env(extra=None):
 
 
 def _load_app_config():
-    """Read config.ini next to this script. Returns (app_name, app_version)."""
+    """Read config.ini next to this script. Returns (app_name, app_version, exact_set, contains_list)."""
     cfg = configparser.ConfigParser()
     cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
     if os.path.exists(cfg_path):
         cfg.read(cfg_path, encoding="utf-8")
     name    = cfg.get("app", "name",    fallback="Git Manage Board")
     version = cfg.get("app", "version", fallback="v1.0.0")
-    return name, version
+    raw_exact    = cfg.get("protection", "protected_branches_exact",    fallback="develop,main")
+    raw_contains = cfg.get("protection", "protected_branches_contains", fallback="release")
+    exact    = {b.strip() for b in raw_exact.split(",")    if b.strip()}
+    contains = [b.strip().lower() for b in raw_contains.split(",") if b.strip()]
+    return name, version, exact, contains
+
+
+def get_protected_config():
+    """Return protected branch config as {"exact": [...], "contains": [...]}."""
+    _, _, exact, contains = _load_app_config()
+    return {"exact": sorted(exact), "contains": sorted(contains)}
+
+
+def is_branch_protected(short_name):
+    """Return True if short_name matches any protection rule."""
+    _, _, exact, contains = _load_app_config()
+    if short_name in exact:
+        return True
+    low = short_name.lower()
+    return any(kw in low for kw in contains)
 
 
 def _run(cmd, cwd=None, timeout=120, env=None):
@@ -259,7 +278,7 @@ def display_branch():
 
 def get_project_info():
     """Return project display name, remote repo slug, app name and version from config."""
-    app_name, app_version = _load_app_config()
+    app_name, app_version, _, _ = _load_app_config()
     dir_name = os.path.basename(os.path.abspath(os.getcwd()))
     remote_slug = ""
     url_out, _, rc = _run(["git", "remote", "get-url", "origin"])

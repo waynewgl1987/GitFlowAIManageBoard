@@ -998,7 +998,17 @@ function loadBranches(page){
   document.getElementById('branches-pagination').innerHTML='';
   var _bpv=document.getElementById('branches-per-page').value;var perPage=_bpv===''?20:parseInt(_bpv);
   var url='/api/branches?page='+page+'&per_page='+perPage;
-  apiGet(url,function(data){
+  // Fetch protected config first so rendering always has up-to-date rules
+  fetch(API_BASE+'/api/protected-branches').then(function(r){return r.json();}).catch(function(){return{};}).then(function(pcfg){
+    if(pcfg&&pcfg.exact)    _protExact    = pcfg.exact;
+    if(pcfg&&pcfg.contains) _protContains = pcfg.contains.map(function(s){return s.toLowerCase();});
+    apiGet(url,function(data){
+      _renderBranches(data,perPage);
+    });
+  });
+}
+
+function _renderBranches(data,perPage){
     var container=document.getElementById('branches-content');
     var sortedLocal=_sortBranches(data.local||[]);
     var sortedRemote=_sortBranches(data.remote||[]);
@@ -1026,9 +1036,14 @@ function loadBranches(page){
       }
       html+='</div>';
       if(!isCur){
+        var _shortL=b.name.replace(/^.*\//,'');
         html+='<div class="branch-expand-panel" id="bpanel-l-'+bi+'">';
-        html+='<span style="font-size:12px;color:#9ca3af;flex:1">Danger zone</span>';
-        html+='<button class="btn-del-branch" onclick="promptDeleteBranch(\''+escapeAttr(b.name)+'\',\'local\')">🗑 Delete Branch</button>';
+        if(_isBranchProtected(_shortL)){
+          html+='<span style="font-size:12px;color:#f59e0b;flex:1">🔒 Protected branch — delete disabled</span>';
+        }else{
+          html+='<span style="font-size:12px;color:#9ca3af;flex:1">Danger zone</span>';
+          html+='<button class="btn-del-branch" onclick="promptDeleteBranch(\''+escapeAttr(b.name)+'\',\'local\')">🗑 Delete Branch</button>';
+        }
         html+='</div>';
       }
       html+='</div>';
@@ -1048,9 +1063,14 @@ function loadBranches(page){
       html+='</div>';
       html+='<button class="btn-branch-expand" onclick="event.stopPropagation();toggleBranchExpand(\''+wid+'\')" title="Expand">▶</button>';
       html+='</div>';
+      var _shortR=b.name.replace(/^.*\//,'');
       html+='<div class="branch-expand-panel" id="bpanel-r-'+bi+'">';
-      html+='<span style="font-size:12px;color:#9ca3af;flex:1">Danger zone</span>';
-      html+='<button class="btn-del-branch" onclick="promptDeleteBranch(\''+escapeAttr(b.name)+'\',\'remote\')">🗑 Delete Branch</button>';
+      if(_isBranchProtected(_shortR)){
+        html+='<span style="font-size:12px;color:#f59e0b;flex:1">🔒 Protected branch — delete disabled</span>';
+      }else{
+        html+='<span style="font-size:12px;color:#9ca3af;flex:1">Danger zone</span>';
+        html+='<button class="btn-del-branch" onclick="promptDeleteBranch(\''+escapeAttr(b.name)+'\',\'remote\')">🗑 Delete Branch</button>';
+      }
       html+='</div>';
       html+='</div>';
     });
@@ -1062,7 +1082,6 @@ function loadBranches(page){
     var phtml='<span class="page-info">Remote: '+data.total_remote+' total</span>';
     for(var i=1;i<=totalPages;i++){var cl=(i===data.page)?' page-num active':' page-num';phtml+='<span class="'+cl+'" onclick="loadBranches('+i+')">'+i+'</span>'}
     pag.innerHTML=phtml;
-  });
 }
 
 function createNewBranch(){
@@ -1139,15 +1158,11 @@ function _delBranchScope(branchName, scope){
       +'⛔ <strong>This cannot be undone</strong> — once deleted, the remote branch will no longer exist and anyone tracking it will lose access.</div>'
       +'</div>'
       +'<p style="margin:0;font-size:13px;color:#374151;font-weight:600">Are you absolutely sure you want to permanently delete this remote branch?</p>';
-    showModalDouble(
+    showModal(
       '⚠️ Delete Remote Branch',
       warnBody,
       '🗑 Yes, Delete Remote',
-      function(){ _doDeleteRemote(branchName, shortName); },
-      'Cancel',
-      null,
-      'btn-danger',
-      'btn-secondary'
+      function(){ _doDeleteRemote(branchName, shortName); }
     );
   }else{
     var localBody=
@@ -2084,11 +2099,21 @@ function toggleSquashSelect(cb){
 }
 function cancelSquash(){squashSelected={};updateSquashBar();document.getElementById('squash-msg').value='';if(currentLogData)renderLog(currentLogData)}
 // ═══════════ Protected Branch Guard ═══════════
-var _PROTECTED_BRANCHES = ['develop','release','main','master'];
+// Config loaded from server — refreshed every time loadBranches() runs
+var _protExact = [];    // exact-match names
+var _protContains = []; // lowercase keywords — branch name must contain one
+
+function _isBranchProtected(shortName){
+  if(!shortName) return false;
+  if(_protExact.indexOf(shortName) !== -1) return true;
+  var low = shortName.toLowerCase();
+  for(var i=0;i<_protContains.length;i++){ if(low.indexOf(_protContains[i]) !== -1) return true; }
+  return false;
+}
+// Used for commit/squash warnings (same rules, same config)
 function _isProtectedBranch(name){
   if(!name) return false;
-  var n = name.trim().toLowerCase();
-  return _PROTECTED_BRANCHES.some(function(p){ return n === p || n.indexOf(p) === 0 || n.indexOf('/'+p) >= 0; });
+  return _isBranchProtected(name.trim().replace(/^.*\//,''));
 }
 function _warnProtectedThenDo(actionKey, callback){
   var branchEl = document.getElementById('branch-name');

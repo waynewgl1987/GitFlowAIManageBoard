@@ -14,6 +14,7 @@ from git_ops import (
     PORT, _MSGLOG, _MSGLOG_LOCK, _PUSH_JOBS, _PUSH_JOBS_LOCK,
     _run, _run_push_streaming, _run_gitop_streaming,
     current_branch, display_branch, get_project_info,
+    get_protected_config, is_branch_protected,
     _ref_exists, _resolve_ref_for_compare,
     get_branches, has_uncommitted, stash_changes,
     stash_list, stash_diff, commit_diff, search_diff_code,
@@ -54,6 +55,10 @@ def handle_get(path, params, send_json, send_stream=None):
 
     elif path == "/api/project-name":
         send_json(get_project_info())
+        return True
+
+    elif path == "/api/protected-branches":
+        send_json(get_protected_config())
         return True
 
     elif path == "/api/branches":
@@ -291,6 +296,10 @@ def handle_post(path, data, send_json):
         force = data.get("force", False)
         if not name:
             send_json({"ok": False, "error": "branch name required"}, 400)
+            return True
+        short_name = name.replace("origin/", "", 1) if name.startswith("origin/") else name
+        if is_branch_protected(short_name):
+            send_json({"ok": False, "error": f"Branch '{short_name}' is protected and cannot be deleted."}, 403)
             return True
         if scope == "remote":
             stdout, stderr, rc = delete_branch_remote(name)
