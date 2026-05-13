@@ -1033,15 +1033,15 @@ function _renderBranches(data,perPage){
         html+='<button class="btn-branch-expand" style="visibility:hidden" disabled>▶</button>';
       }else{
         html+='<div class="branch-actions">';
-        html+='<button class="btn btn-sm btn-compare" onclick="event.stopPropagation();openCompare(\''+escapeAttr(b.name)+'\',\'local\')">⚖️ Compare</button>';
-        html+='<button class="btn btn-sm btn-merge" onclick="event.stopPropagation();mergeBranch(\''+escapeAttr(b.name)+'\')">⚡ Merge</button>';
-        html+='<button class="btn btn-sm btn-checkout" onclick="event.stopPropagation();checkoutBranch(\''+escapeAttr(b.name)+'\')">✅ Checkout</button>';
+        html+='<button class="btn btn-sm btn-compare" onclick="event.stopPropagation();openCompare(\''+escapeAttr(b.name)+'\',\'local\')"><span style="line-height:1">⚖️</span><span>Compare</span></button>';
+        html+='<button class="btn btn-sm btn-merge" onclick="event.stopPropagation();mergeBranch(\''+escapeAttr(b.name)+'\')"><span style="line-height:1">⚡</span><span>Merge</span></button>';
+        html+='<button class="btn btn-sm btn-checkout" onclick="event.stopPropagation();checkoutBranch(\''+escapeAttr(b.name)+'\')"><span style="line-height:1">✅</span><span>Checkout</span></button>';
         html+='</div>';
         html+='<button class="btn-branch-expand" onclick="event.stopPropagation();toggleBranchExpand(\''+wid+'\')" title="Expand">▶</button>';
       }
       html+='</div>';
       if(!isCur){
-        var _shortL=b.name.replace(/^.*\//,'');
+        var _shortL=b.name.replace(/^origin\//,'');
         html+='<div class="branch-expand-panel" id="bpanel-l-'+bi+'">';
         if(_isBranchProtected(_shortL)){
           html+='<span style="font-size:12px;color:#f59e0b;flex:1">🔒 Protected branch — delete disabled</span>';
@@ -1062,13 +1062,13 @@ function _renderBranches(data,perPage){
       html+='<span class="name" title="'+escapeAttr(b.name)+'">'+escapeHtml(b.name)+'</span>';
       html+='<span class="branch-date">'+escapeHtml(b.date||'')+'</span>';
       html+='<div class="branch-actions">';
-      html+='<button class="btn btn-sm btn-compare" onclick="event.stopPropagation();openCompare(\''+escapeAttr(b.name)+'\',\'remote\')">⚖️ Compare</button>';
-      html+='<button class="btn btn-sm btn-merge" onclick="event.stopPropagation();mergeBranch(\''+escapeAttr(b.name)+'\')">⚡ Merge</button>';
-      html+='<button class="btn btn-sm btn-checkout" onclick="event.stopPropagation();checkoutBranch(\''+escapeAttr(b.name)+'\')">✅ Checkout</button>';
+      html+='<button class="btn btn-sm btn-compare" onclick="event.stopPropagation();openCompare(\''+escapeAttr(b.name)+'\',\'remote\')"><span style="line-height:1">⚖️</span><span>Compare</span></button>';
+      html+='<button class="btn btn-sm btn-merge" onclick="event.stopPropagation();mergeBranch(\''+escapeAttr(b.name)+'\')"><span style="line-height:1">⚡</span><span>Merge</span></button>';
+      html+='<button class="btn btn-sm btn-checkout" onclick="event.stopPropagation();checkoutBranch(\''+escapeAttr(b.name)+'\')"><span style="line-height:1">✅</span><span>Checkout</span></button>';
       html+='</div>';
       html+='<button class="btn-branch-expand" onclick="event.stopPropagation();toggleBranchExpand(\''+wid+'\')" title="Expand">▶</button>';
       html+='</div>';
-      var _shortR=b.name.replace(/^.*\//,'');
+      var _shortR=b.name.replace(/^origin\//,'');
       html+='<div class="branch-expand-panel" id="bpanel-r-'+bi+'">';
       if(_isBranchProtected(_shortR)){
         html+='<span style="font-size:12px;color:#f59e0b;flex:1">🔒 Protected branch — delete disabled</span>';
@@ -1188,7 +1188,7 @@ function _delBranchScope(branchName, scope){
             +'Deleting it now will <strong>permanently lose those unmerged commits</strong>.</div>'
             +'</div>'
             +'<p style="margin:0;font-size:13px;color:#374151">Force delete anyway? (<code>git branch -D</code>)</p>';
-          showModalDouble(
+          showModal(
             '⚠️ Force Delete?',
             forceBody,
             '🗑 Force Delete (-D)',
@@ -1197,9 +1197,11 @@ function _delBranchScope(branchName, scope){
                 if(d.ok){addMsg('🗑 Branch "'+shortName+'" force deleted','success');loadBranches(1);}
                 else addMsg('❌ Failed: '+(d.error||''),'error');
               });
-            },
-            'Cancel', null, 'btn-danger', 'btn-secondary'
+            }
           );
+          // Restyle confirm button to danger (red)
+          var fb=document.querySelector('#modal-btns .btn-warning');
+          if(fb) fb.className='btn btn-danger';
         } else {
           addMsg('❌ Failed: '+(data.error||''),'error');
         }
@@ -2118,7 +2120,7 @@ function _isBranchProtected(shortName){
 // Used for commit/squash warnings (same rules, same config)
 function _isProtectedBranch(name){
   if(!name) return false;
-  return _isBranchProtected(name.trim().replace(/^.*\//,''));
+  return _isBranchProtected(name.trim().replace(/^origin\//, ''));
 }
 function _warnProtectedThenDo(actionKey, callback){
   var branchEl = document.getElementById('branch-name');
