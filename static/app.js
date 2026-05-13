@@ -2731,41 +2731,42 @@ function showRawEdit(filePath, fileIdx){
 // ═══════════ Post-resolve commit & push dialog ═══════════
 function showMergeCommitDialog(defaultMsg){
   var branchName=(document.getElementById('branch-name')||{textContent:''}).textContent||'';
-  // Detect if we're in a merge/rebase/cherry-pick state via the default msg hint
   var isMergeState=defaultMsg && (defaultMsg.indexOf('Merge')===0 || defaultMsg.indexOf('merge')!==-1 || defaultMsg.indexOf('cherry-pick')!==-1);
   var titleIcon=isMergeState?'🔀':'✅';
   var titleText=isMergeState?t('merge_all_resolved_title'):'All Conflicts Resolved!';
-  var descText=isMergeState
-    ? t('merge_all_resolved_desc')
-    : 'All conflict files have been resolved and staged. Commit these changes now?';
+  var descText='All conflict files have been resolved and staged.<br>'
+    +'<strong>Commit &amp; Push</strong> to commit and push immediately, or <strong>Commit Only</strong> to commit locally and push manually later.';
   var bodyHtml=
-    '<p style="margin:0 0 12px;color:#374151;font-size:13px">'+descText+'</p>'
+    '<p style="margin:0 0 12px;color:#374151;font-size:13px;line-height:1.5">'+descText+'</p>'
     +'<label style="font-size:12px;font-weight:600;color:#6b7280;display:block;margin-bottom:4px">'+t('commit_msg_label')+'</label>'
     +'<textarea id="merge-complete-msg" rows="4" style="width:100%;padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;outline:none;box-sizing:border-box">'+escapeHtml(defaultMsg)+'</textarea>';
-  showModal(titleIcon+' '+titleText, bodyHtml, t('commit_now_btn'), function(){
+
+  function _doCommit(thenPush){
     var msg=(document.getElementById('merge-complete-msg')||{value:''}).value.trim();
     if(!msg){addMsg('⚠️ '+t('enter_commit_msg_err'),'error');return;}
     apiPost('/api/complete-merge',{message:msg},function(data){
       if(data.ok){
         addMsg('✅ '+t('merge_commit_ok'),'success');
-        loadLog(1);loadFiles();loadCurrentBranch();
-        setTimeout(function(){
-          showModalDouble(
-            '🚀 '+t('push_after_merge_title'),
-            t('push_after_merge_desc').replace('{branch}',escapeHtml(branchName)),
-            t('push_now_btn'),
-            function(){ doPush(); },
-            t('push_later_btn'),
-            null,
-            'btn-success',
-            'btn-secondary'
-          );
-        },400);
+        checkConflicts();   // clear the conflict tab badge
+        loadLog(1);         // navigate to log tab and show the new commit
+        loadFiles();loadCurrentBranch();
+        if(thenPush) setTimeout(function(){ doPush(); },400);
       }else{
         addMsg('❌ '+t('merge_commit_fail')+(data.error||''),'error');
       }
     });
-  });
+  }
+
+  showModalDouble(
+    titleIcon+' '+titleText,
+    bodyHtml,
+    '🚀 Commit & Push',
+    function(){ _doCommit(true); },
+    '💾 Commit Only',
+    function(){ _doCommit(false); },
+    'btn-success',
+    'btn-secondary'
+  );
 }
 
 function jumpToConflict(filePath, fileIdx, dir){

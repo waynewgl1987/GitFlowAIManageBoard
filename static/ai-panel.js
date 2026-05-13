@@ -501,10 +501,37 @@ function aiQuickAction(action) {
     }
 
   } else if (action === 'accept-ours') {
-    _acceptAllConflicts('ours');
+    _confirmConflictAction(
+      '⬅️ Accept All Ours (HEAD)',
+      '⚠️ <b>This will overwrite ALL conflicts</b> in every conflicted file with your local HEAD version.<br><br>'
+      + '• The incoming (theirs) changes will be <b>discarded entirely</b><br>'
+      + '• All conflicted files will be staged automatically<br>'
+      + '• This action <b>cannot be undone</b> without resetting<br><br>'
+      + 'Are you sure you want to accept ALL ours?',
+      function(){ _acceptAllConflicts('ours'); }
+    );
 
   } else if (action === 'accept-theirs') {
-    _acceptAllConflicts('theirs');
+    _confirmConflictAction(
+      '➡️ Accept All Theirs (Incoming)',
+      '⚠️ <b>This will overwrite ALL conflicts</b> in every conflicted file with the incoming version.<br><br>'
+      + '• Your local HEAD changes in conflicts will be <b>discarded entirely</b><br>'
+      + '• All conflicted files will be staged automatically<br>'
+      + '• This action <b>cannot be undone</b> without resetting<br><br>'
+      + 'Are you sure you want to accept ALL theirs?',
+      function(){ _acceptAllConflicts('theirs'); }
+    );
+
+  } else if (action === 'accept-both') {
+    _confirmConflictAction(
+      '🔀 Accept Both (Ours + Theirs)',
+      '⚠️ <b>This will merge ALL conflicts</b> by keeping both sides for every conflicted file.<br><br>'
+      + '• HEAD (ours) content will appear <b>first</b>, followed by incoming (theirs)<br>'
+      + '• You may need to review the result for logical correctness<br>'
+      + '• All conflicted files will be staged automatically<br><br>'
+      + 'Are you sure you want to keep both sides for ALL conflicts?',
+      function(){ _acceptAllConflicts('both'); }
+    );
 
   } else if (action === 'analyze-branch') {
     _sendToAI('Analyze the current state of branch "' + branch + '". What is the typical purpose of this branch in a gitflow workflow? What should I be careful about when working here?');
@@ -540,6 +567,20 @@ function aiQuickAction(action) {
 }
 
 // ── One-click resolve all conflicts (ours or theirs) ─────────────────────
+function _confirmConflictAction(title, bodyHtml, onConfirm) {
+  if (typeof showModal === 'function') {
+    showModal(
+      title,
+      '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.7;color:#374151">'
+      + bodyHtml + '</div>',
+      '✅ Yes, Proceed',
+      onConfirm
+    );
+  } else {
+    if (confirm(title + '\n\n(See UI for details)')) onConfirm();
+  }
+}
+
 function _acceptAllConflicts(side) {
   fetch('/api/conflicts')
     .then(function(r){ return r.json(); })
@@ -549,21 +590,36 @@ function _acceptAllConflicts(side) {
         _appendSysMsg('✅ No conflicts to resolve.');
         return;
       }
-      _appendSysMsg('⏳ Resolving ' + files.length + ' file(s) using ' + (side === 'ours' ? '⬅️ HEAD (ours)' : '➡️ Theirs (incoming)') + '…');
+      var sideLabel = side === 'ours' ? '⬅️ HEAD (ours)' : side === 'theirs' ? '➡️ Theirs (incoming)' : '🔀 Both';
+      _appendSysMsg('⏳ Resolving ' + files.length + ' file(s) using ' + sideLabel + '…');
+      var resolution = side === 'both' ? 'both' : side;
       var promises = files.map(function(fp){
         return fetch('/api/resolve-conflict', {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ path: fp, resolution: side }),
+          body: JSON.stringify({ path: fp, resolution: resolution }),
         }).then(function(r){ return r.json(); });
       });
       Promise.all(promises).then(function(results){
         var ok = results.filter(function(r){ return r.ok; }).length;
         var fail = results.length - ok;
-        _appendSysMsg('✅ Resolved ' + ok + '/' + files.length + ' file(s)' + (fail ? ' (' + fail + ' failed)' : '') + '. Refresh the Conflicts tab to confirm.');
-        // Reload conflicts page if active
-        if ((document.querySelector('.page.active')||{}).id === 'page-conflicts') {
-          if (typeof loadConflicts === 'function') loadConflicts();
+        _appendSysMsg('✅ Resolved ' + ok + '/' + files.length + ' file(s)' + (fail ? ' (' + fail + ' failed)' : '') + '.');
+
+        // Refresh conflict tab badge (doesn't switch page)
+        if (typeof checkConflicts === 'function') checkConflicts();
+
+        // Only reload conflict list if user is already on the conflicts page
+        var activePage = (document.querySelector('.page.active') || {}).id;
+        if (activePage === 'page-conflicts' && typeof loadConflicts === 'function') loadConflicts();
+        if (typeof loadFiles === 'function') loadFiles();
+
+        // If all resolved, show commit+push dialog after a short delay
+        var allResolved = results.some(function(r){ return r.all_resolved; });
+        if (allResolved) {
+          var defaultMsg = (results.find(function(r){ return r.default_msg; }) || {}).default_msg || '';
+          setTimeout(function(){
+            if (typeof showMergeCommitDialog === 'function') showMergeCommitDialog(defaultMsg);
+          }, 400);
         }
       });
     })

@@ -281,16 +281,23 @@
 <!-- ═══════════ AI Chat Panel ═══════════ -->
 <div id="ai-chat-panel" class="ai-chat-panel">
   <div class="ai-chat-header">
-    <span class="ai-chat-header-title">🤖 AI Git Assistant</span>
-    <span class="ai-chat-header-model" id="ai-header-model"></span>
-    <button class="ai-header-model-info" id="ai-header-model-info" onclick="showAIModelNamePopover()" title="Show full model name" style="display:none">ℹ️</button>
-    <button class="ai-provider-settings-btn" onclick="openAIProviderModal()" title="Configure AI Provider">⚙️ AI Settings</button>
-    <button onclick="closeAIChatPanel()" title="Close">✕</button>
+    <div class="ai-chat-header-left">
+      <span class="ai-chat-header-title">🤖 AI Git Assistant</span>
+      <div class="ai-chat-header-model-row">
+        <span class="ai-chat-header-model" id="ai-header-model"></span>
+        <button class="ai-header-model-info" id="ai-header-model-info" onclick="showAIModelNamePopover()" title="Show full model name" style="display:none">ⓘ</button>
+      </div>
+    </div>
+    <div class="ai-chat-header-right">
+      <button class="ai-provider-settings-btn" onclick="openAIProviderModal()" title="Configure AI Provider">⚙️ AI Settings</button>
+      <button onclick="closeAIChatPanel()" title="Close">✕</button>
+    </div>
   </div>
   <div class="ai-quick-actions">
     <button class="ai-quick-btn" onclick="aiQuickAction('analyze-conflicts')">🔍 Analyze Conflicts</button>
     <button class="ai-quick-btn success" onclick="aiQuickAction('accept-ours')">⬅️ Accept All Ours</button>
     <button class="ai-quick-btn warning" onclick="aiQuickAction('accept-theirs')">➡️ Accept All Theirs</button>
+    <button class="ai-quick-btn" style="background:#0891b2;color:#fff" onclick="aiQuickAction('accept-both')">🔀 Accept Both</button>
     <button class="ai-quick-btn" onclick="aiQuickAction('analyze-branch')">🌿 Analyze Branch</button>
     <button class="ai-quick-btn" onclick="aiQuickAction('suggest-commit')">💬 Suggest Commit</button>
     <button class="ai-quick-btn" onclick="aiQuickAction('git-status')">📊 Git Status</button>

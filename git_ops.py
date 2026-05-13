@@ -657,10 +657,11 @@ def _complete_merge_step():
 
 
 def resolve_conflict(fp, resolution):
-    """Resolve a conflict file with 'ours', 'theirs', or custom text content.
+    """Resolve a conflict file with 'ours', 'theirs', 'both', or custom text content.
 
     ``resolution`` is either the literal string ``'ours'``/``'theirs'`` (which
-    runs ``git checkout --ours/--theirs``) or arbitrary text content to write.
+    runs ``git checkout --ours/--theirs``), ``'both'`` (which concatenates ours
+    then theirs), or arbitrary text content to write.
     Binary files must always use ``'ours'`` or ``'theirs'`` — passing empty
     content for a binary file is rejected to avoid corrupting the file.
     """
@@ -668,6 +669,12 @@ def resolve_conflict(fp, resolution):
         _run(["git", "checkout", "--ours", fp])
     elif resolution == "theirs":
         _run(["git", "checkout", "--theirs", fp])
+    elif resolution == "both":
+        ours, _, _ = _run(["git", "show", f":2:{fp}"])
+        theirs, _, _ = _run(["git", "show", f":3:{fp}"])
+        combined = ours.rstrip("\n") + "\n" + theirs.lstrip("\n")
+        with open(fp, "w", encoding="utf-8") as f:
+            f.write(combined)
     else:
         # Safety: never overwrite a binary file with empty text content
         if not resolution and _is_binary_file(fp):
