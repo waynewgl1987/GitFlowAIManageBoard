@@ -102,11 +102,30 @@
 }
 .ai-chat-header-model {
   font-size: 11px;
-  opacity: .75;
-  max-width: 130px;
+  opacity: .85;
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex-shrink: 1;
+}
+.ai-header-model-info {
+  background: rgba(255,255,255,.15) !important;
+  border: 1px solid rgba(255,255,255,.3) !important;
+  padding: 2px 5px !important;
+  font-size: 12px !important;
+  flex-shrink: 0;
+}
+.ai-provider-settings-btn {
+  background: rgba(255,255,255,.22) !important;
+  border: 1px solid rgba(255,255,255,.45) !important;
+  color: #fff !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+  letter-spacing: .3px;
+  padding: 5px 10px !important;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .ai-chat-header button {
   background: rgba(255,255,255,.18);

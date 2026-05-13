@@ -201,7 +201,6 @@ def handle_get(path, params, send_json, send_stream=None):
 
 def handle_post(path, data, send_json):
 
-
     if path == "/api/toggle":
         fp = data.get("path", "")
         action = data.get("action")

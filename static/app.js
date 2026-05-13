@@ -2174,9 +2174,10 @@ function showModalDouble(title,msg,btn1Label,btn1Cb,btn2Label,btn2Cb,btn1Class,b
   document.getElementById('modal-msg').innerHTML=msg;
   var btnsDiv=document.getElementById('modal-btns');
   btnsDiv.innerHTML='';
+  var cancel=document.createElement('button');cancel.className='btn btn-secondary';cancel.textContent='Cancel';cancel.onclick=closeModal;
   var b1=document.createElement('button');b1.className='btn '+(btn1Class||'btn-warning');b1.textContent=btn1Label;b1.onclick=function(){var c=btn1Cb;closeModal();if(c)c()};
   var b2=document.createElement('button');b2.className='btn '+(btn2Class||'btn-secondary');b2.textContent=btn2Label;b2.onclick=function(){var c=btn2Cb;closeModal();if(c)c()};
-  btnsDiv.appendChild(b2);btnsDiv.appendChild(b1);
+  btnsDiv.appendChild(cancel);btnsDiv.appendChild(b2);btnsDiv.appendChild(b1);
   document.getElementById('modal-bg').classList.add('show');
 }
 
@@ -2518,11 +2519,14 @@ function renderConflictDetail(filePath, fileIdx, data){
       var statusHtml='<span class="conflict-zone-status">Not resolved</span>';
       if(choice&&choice.type==='ours'){resolvedCls=' resolved-ours';statusHtml='<span class="conflict-zone-status chosen-ours">✅ Using Ours</span>';}
       else if(choice&&choice.type==='theirs'){resolvedCls=' resolved-theirs';statusHtml='<span class="conflict-zone-status chosen-theirs">🔵 Using Theirs</span>';}
+      else if(choice&&choice.type==='both'){resolvedCls=' resolved-manual';statusHtml='<span class="conflict-zone-status" style="color:#0891b2;font-weight:600">🔀 Keep Both</span>';}
       else if(choice&&choice.type==='manual'){resolvedCls=' resolved-manual';statusHtml='<span class="conflict-zone-status" style="color:#7c3aed;font-weight:600">✏️ Manual edit</span>';}
 
       var oursHL=_synHL(block.ours||'(empty)',lang);
       var theirsHL=_synHL(block.theirs||'(empty)',lang);
-      var initContent=(choice&&choice.type==='manual')?choice.content:(block.ours||block.theirs||'');
+      // Default manual-edit content: full raw conflict markers so user can see and edit everything
+      var rawConflict='<<<<<<< HEAD\n'+(block.ours||'')+'\n=======\n'+(block.theirs||'')+'\n>>>>>>>';
+      var initContent=(choice&&choice.type==='manual')?choice.content:rawConflict;
 
       html+='<div class="conflict-zone'+resolvedCls+'" id="cf-block-'+fileIdx+'-'+ci+'">';
       html+='<div class="conflict-zone-header">';
@@ -2533,6 +2537,7 @@ function renderConflictDetail(filePath, fileIdx, data){
       var bannerText='';
       if(choice&&choice.type==='ours') bannerText='✅  CONFLICT RESOLVED — Using HEAD (Ours)';
       else if(choice&&choice.type==='theirs') bannerText='✅  CONFLICT RESOLVED — Using Theirs (Incoming)';
+      else if(choice&&choice.type==='both') bannerText='✅  CONFLICT RESOLVED — Keeping Both (Ours + Theirs)';
       else if(choice&&choice.type==='manual') bannerText='✅  CONFLICT RESOLVED — Custom Manual Edit';
       html+='<div class="cf-resolved-banner">'+escapeHtml(bannerText)+'</div>';
       html+='<div class="conflict-sides">';
@@ -2542,6 +2547,7 @@ function renderConflictDetail(filePath, fileIdx, data){
       html+='<div class="conflict-zone-actions">';
       html+='<button class="btn btn-sm btn-success" onclick="chooseConflict(\''+escapeAttr(filePath)+'\','+fileIdx+','+ci+',\'ours\')">✅ Use HEAD (Ours)</button>';
       html+='<button class="btn btn-sm btn-primary" onclick="chooseConflict(\''+escapeAttr(filePath)+'\','+fileIdx+','+ci+',\'theirs\')">🔵 Use Theirs</button>';
+      html+='<button class="btn btn-sm" style="background:#0891b2;color:#fff;border:none;border-radius:6px;cursor:pointer" onclick="chooseConflict(\''+escapeAttr(filePath)+'\','+fileIdx+','+ci+',\'both\')">🔀 Keep Both</button>';
       html+='<button class="btn btn-sm btn-secondary" onclick="openManualEdit(\''+escapeAttr(filePath)+'\','+fileIdx+','+ci+')">✏️ Edit manually</button>';
       html+='<button class="ai-conflict-btn" onclick="aiAnalyzeConflictBlock(\''+escapeAttr(filePath)+'\','+ci+')">🤖 Ask AI</button>';
       html+='</div>';
@@ -2597,7 +2603,12 @@ function toggleNormalBlock(header){
 function chooseConflict(filePath, fileIdx, ci, side){
   if(!conflictChoices[filePath]) return;
   var block=_conflictData[filePath].blocks.filter(function(b){return b.type==='conflict'})[ci];
-  conflictChoices[filePath][ci]={type:side,content:side==='ours'?(block.ours||''):(block.theirs||'')};
+  var content;
+  if(side==='ours') content=block.ours||'';
+  else if(side==='theirs') content=block.theirs||'';
+  else if(side==='both') content=(block.ours||'')+(block.ours&&block.theirs?'\n':'')+(block.theirs||'');
+  else content=block.theirs||'';
+  conflictChoices[filePath][ci]={type:side,content:content};
   renderConflictDetail(filePath, fileIdx, _conflictData[filePath]);
   var el=document.getElementById('cf-block-'+fileIdx+'-'+ci);
   if(el) el.scrollIntoView({behavior:'smooth',block:'nearest'});

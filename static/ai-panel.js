@@ -61,8 +61,32 @@ function closeAIChatPanel() {
 // ── Badge (provider/model shown in panel header) ──────────────────────────
 function _updateAIBadge() {
   var cfg = getAIConfig();
+  var fullText = (AI_PROVIDERS[cfg.provider]?.name || cfg.provider) + ' · ' + cfg.model;
   var el = document.getElementById('ai-header-model');
-  if (el) el.textContent = (AI_PROVIDERS[cfg.provider]?.name || cfg.provider) + ' · ' + cfg.model;
+  var infoBtn = document.getElementById('ai-header-model-info');
+  if (el) {
+    el.textContent = fullText;
+    el.title = fullText;
+    // Show info icon if text overflows (checked after next paint)
+    if (infoBtn) {
+      requestAnimationFrame(function() {
+        var overflows = el.scrollWidth > el.offsetWidth + 2;
+        infoBtn.style.display = overflows ? '' : 'none';
+      });
+    }
+  }
+}
+
+function showAIModelNamePopover() {
+  var cfg = getAIConfig();
+  var fullText = (AI_PROVIDERS[cfg.provider]?.name || cfg.provider) + ' · ' + cfg.model;
+  if (typeof showModal === 'function') {
+    showModal('🤖 Current AI Model',
+      '<div style="font-size:14px;word-break:break-all;line-height:1.7"><b>Provider:</b> '
+      + (AI_PROVIDERS[cfg.provider]?.name || cfg.provider)
+      + '<br><b>Model:</b> ' + cfg.model + '</div>',
+      null, null);
+  }
 }
 
 // ── Provider modal ────────────────────────────────────────────────────────

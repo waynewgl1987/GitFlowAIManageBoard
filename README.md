@@ -198,26 +198,7 @@ Accessible from the Commit Log — restore any file to a specific historical ver
 
 #### 7 · Conflicts Tab
 
-**Reset Conflict State:**
-  - Click **Reset Conflict State** to abort any ongoing merge / rebase / cherry-pick and return to the last clean commit.
-
----
-
-#### 6 · Restore File Page
-
-Accessible from the Commit Log — restore any file to a specific historical version.
-
-- Displays the target file path and commit version.
-- Browse the file's **commit history** (paginated), with per-commit diffs showing only that file's changes.
-- Click **Restore to this** on any commit to overwrite the current working copy with that version.
-- A confirmation modal warns before proceeding.
-
----
-
-#### 7 · Conflicts Tab
-
-Triggered automatically when a merge, rebase, or cherry-pick produces conflicts.  
-The **Conflicts** tab badge shows the current conflict count in red.
+Triggered automatically when a merge, rebase, or cherry-pick produces conflicts.
 
 - Lists every conflicted file. **Auto-expand** the first file on load.
 - Expand a file to see **conflict zone rendering**:
@@ -368,7 +349,6 @@ All operation results (commits, pulls, pushes, resets, merges, …) are stored i
 - Toast notifications (top-right) confirm success or failure for every action.
 - All diff blocks support horizontal scrolling for long lines.
 - The last active tab is **persisted** in `localStorage` and restored on page reload.
-
 - Branch accordion rows: opening one row **auto-closes** others.
 
 ---
@@ -719,8 +699,7 @@ python3 /path/to/git_commit_tool.py
 
 #### 7 · 冲突 (Conflicts) 标签页
 
-**重置冲突状态：**
-  - 点击 **Reset Conflict State** 中止当前 merge / rebase / cherry-pick，回到最后干净状态。
+当 merge、rebase 或 cherry-pick 产生冲突时自动触发。
 
 - 列出所有冲突文件，页面加载时**自动展开**第一个文件。
 - 展开文件可查看**冲突区域渲染**：**我方（Ours）**（绿色面板）vs **他方（Theirs）**（蓝色面板）；上下文代码**默认收缩**，保持界面简洁。
@@ -854,7 +833,6 @@ version = v1.1.0
 - 右上角的 Toast 通知会确认每个操作的成功或失败。
 - 所有 diff 块支持横向滚动，方便查看长行代码。
 - 上次激活的标签页会被**记忆**在 `localStorage` 中，页面刷新后自动恢复。
-
 - 分支行展开/收起：展开一行会**自动收起**其他已展开的行。
 
 ---
