@@ -6,6 +6,10 @@ Dispatches GET and POST API requests to git_ops functions.
 """
 
 import os, json, re
+from ai_module.ai_provider import (
+    get_copilot_models, test_provider as ai_test_provider,
+    start_chat_job, get_job_status,
+)
 from git_ops import (
     PORT, _MSGLOG, _MSGLOG_LOCK, _PUSH_JOBS, _PUSH_JOBS_LOCK,
     _run, _run_push_streaming, _run_gitop_streaming,
@@ -178,11 +182,25 @@ def handle_get(path, params, send_json, send_stream=None):
         send_json({"entries": entries})
         return True
 
+    elif path == "/api/ai/copilot-models":
+        models = get_copilot_models()
+        send_json({"ok": True, "models": models})
+        return True
+
+    elif path == "/api/ai/chat-status":
+        job_id = params.get("jobId", [""])[0]
+        status = get_job_status(job_id)
+        if not status:
+            send_json({"ok": False, "error": "Job not found"}, 404)
+        else:
+            send_json(status)
+        return True
+
     return False
 
 
 def handle_post(path, data, send_json):
-    """Dispatch POST API requests. Returns True if handled."""
+
 
     if path == "/api/toggle":
         fp = data.get("path", "")
@@ -532,6 +550,31 @@ def handle_post(path, data, send_json):
             send_json({"ok": True, "stdout": stdout or "reset"})
         else:
             send_json({"ok": False, "error": stderr or stdout}, 400)
+        return True
+
+    elif path == "/api/ai/test-provider":
+        provider = data.get("provider", "")
+        api_key  = data.get("api_key", "")
+        base_url = data.get("base_url", "")
+        model    = data.get("model", "")
+        if not provider:
+            send_json({"ok": False, "error": "provider is required"}, 400)
+            return True
+        ok, msg = ai_test_provider(provider, api_key, base_url, model)
+        send_json({"ok": ok, "message": msg})
+        return True
+
+    elif path == "/api/ai/chat":
+        provider = data.get("provider", "copilot")
+        api_key  = data.get("api_key", "")
+        base_url = data.get("base_url", "")
+        model    = data.get("model", "")
+        messages = data.get("messages", [])
+        if not messages:
+            send_json({"ok": False, "error": "messages required"}, 400)
+            return True
+        job_id = start_chat_job(provider, api_key, base_url, model, messages)
+        send_json({"ok": True, "jobId": job_id})
         return True
 
     return False

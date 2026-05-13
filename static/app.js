@@ -2190,6 +2190,12 @@ function loadConflicts(){
   apiGet('/api/conflicts',function(data){
     if(data.count===0){document.getElementById('conflicts-content').innerHTML='<div class="empty">🎉 '+t('no_conflict')+'</div>';return}
     var html='';
+    // AI quick-resolve bar at the top
+    html+='<div class="ai-analyze-bar">';
+    html+='<button class="ai-conflict-btn" onclick="aiQuickAction(\'analyze-conflicts\')">🤖 AI Analyze All Conflicts</button>';
+    html+='<button class="ai-conflict-btn" style="background:linear-gradient(135deg,#10b981,#059669)" onclick="aiQuickAction(\'accept-ours\')">⬅️ Accept All Ours</button>';
+    html+='<button class="ai-conflict-btn" style="background:linear-gradient(135deg,#3b82f6,#2563eb)" onclick="aiQuickAction(\'accept-theirs\')">➡️ Accept All Theirs</button>';
+    html+='</div>';
     for(var i=0;i<data.files.length;i++){
       var fp=data.files[i];
       var extCls=expandedPaths[fp]?' expanded':'';
@@ -2537,6 +2543,7 @@ function renderConflictDetail(filePath, fileIdx, data){
       html+='<button class="btn btn-sm btn-success" onclick="chooseConflict(\''+escapeAttr(filePath)+'\','+fileIdx+','+ci+',\'ours\')">✅ Use HEAD (Ours)</button>';
       html+='<button class="btn btn-sm btn-primary" onclick="chooseConflict(\''+escapeAttr(filePath)+'\','+fileIdx+','+ci+',\'theirs\')">🔵 Use Theirs</button>';
       html+='<button class="btn btn-sm btn-secondary" onclick="openManualEdit(\''+escapeAttr(filePath)+'\','+fileIdx+','+ci+')">✏️ Edit manually</button>';
+      html+='<button class="ai-conflict-btn" onclick="aiAnalyzeConflictBlock(\''+escapeAttr(filePath)+'\','+ci+')">🤖 Ask AI</button>';
       html+='</div>';
       // Manual edit panel — side-by-side reference + live syntax-highlighted editor
       var wrapId='cf-wrap-'+fileIdx+'-'+ci;

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Git Tool</title>
 <link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/ai-panel.css">
 </head>
 <body>
 <div class="container">
@@ -243,6 +244,71 @@
 </div>
 
 <script src="/static/app.js"></script>
+<script src="/static/ai-panel.js"></script>
+
+<!-- ═══════════ AI Provider Modal ═══════════ -->
+<div id="ai-provider-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1300;display:none;align-items:center;justify-content:center">
+  <div class="ai-modal-box">
+    <div class="ai-modal-header">
+      <h3>🤖 AI Provider Settings</h3>
+      <button onclick="closeAIProviderModal()">✕</button>
+    </div>
+    <div id="ai-provider-tabs" class="ai-ptabs"></div>
+    <div class="ai-provider-fields">
+      <div id="ai-key-wrap">
+        <label class="ai-field-label">API Key</label>
+        <input type="password" id="ai-api-key" class="ai-field-input" placeholder="Paste your API key…">
+        <div id="ai-key-hint" class="ai-key-hint" style="display:none"></div>
+      </div>
+      <div>
+        <label class="ai-field-label">Base URL</label>
+        <input type="text" id="ai-base-url" class="ai-field-input" placeholder="https://api.openai.com/v1">
+      </div>
+      <div>
+        <label class="ai-field-label">Model</label>
+        <select id="ai-model-sel" class="ai-field-input"></select>
+        <input type="text" id="ai-model-custom" class="ai-field-input" placeholder="Or enter a custom model name…" style="margin-top:6px">
+      </div>
+    </div>
+    <div class="ai-modal-footer">
+      <span id="ai-test-status"></span>
+      <button class="btn-test" onclick="testAIProvider()">🔌 Test Connection</button>
+      <button class="btn-primary" onclick="saveAIProvider()">💾 Save</button>
+      <button onclick="closeAIProviderModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ AI Chat Panel ═══════════ -->
+<div id="ai-chat-panel" class="ai-chat-panel">
+  <div class="ai-chat-header">
+    <span class="ai-chat-header-title">🤖 AI Git Assistant</span>
+    <span class="ai-chat-header-model" id="ai-header-model"></span>
+    <button onclick="openAIProviderModal()" title="Configure AI Provider">⚙️</button>
+    <button onclick="closeAIChatPanel()" title="Close">✕</button>
+  </div>
+  <div class="ai-quick-actions">
+    <button class="ai-quick-btn" onclick="aiQuickAction('analyze-conflicts')">🔍 Analyze Conflicts</button>
+    <button class="ai-quick-btn success" onclick="aiQuickAction('accept-ours')">⬅️ Accept All Ours</button>
+    <button class="ai-quick-btn warning" onclick="aiQuickAction('accept-theirs')">➡️ Accept All Theirs</button>
+    <button class="ai-quick-btn" onclick="aiQuickAction('analyze-branch')">🌿 Analyze Branch</button>
+    <button class="ai-quick-btn" onclick="aiQuickAction('suggest-commit')">💬 Suggest Commit</button>
+    <button class="ai-quick-btn" onclick="aiQuickAction('git-status')">📊 Git Status</button>
+    <button class="ai-quick-btn" onclick="aiQuickAction('explain-diff')">🔀 Explain Changes</button>
+  </div>
+  <div id="ai-chat-history" class="ai-chat-history"></div>
+  <div class="ai-input-area">
+    <textarea id="ai-chat-input" placeholder="Ask anything about your git repo… (Enter to send, Shift+Enter for newline)"></textarea>
+    <button id="ai-send-btn" onclick="sendAIMessage()">Send</button>
+  </div>
+</div>
+
+<!-- ═══════════ AI Floating Button ═══════════ -->
+<button id="ai-fab" onclick="toggleAIChatPanel()" title="AI Git Assistant — Click to chat">
+  <span class="fab-emoji">🤖</span>
+  <span class="fab-hint">AI</span>
+  <span id="ai-fab-badge">?</span>
+</button>
 
 </body>
 </html>
