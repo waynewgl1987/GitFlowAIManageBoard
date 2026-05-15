@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>File Diff Viewer — Git Manage Board</title>
+<style>
+/* ── Reset & Base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f1f5f9; color: #1e293b; min-height: 100vh; display: flex; flex-direction: column; }
+
+/* ── Header ── */
+.tab-header {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: #fff; padding: 10px 20px; display: flex; align-items: center; gap: 12px;
+  box-shadow: 0 2px 12px rgba(99,102,241,.3); flex-shrink: 0;
+}
+.tab-header-title { font-size: 15px; font-weight: 700; flex: 1; min-width: 0; }
+.tab-header-file {
+  font-size: 12px; opacity: .8; font-family: ui-monospace, monospace;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 50vw;
+}
+.tab-header-btn {
+  background: rgba(255,255,255,.2); border: 1px solid rgba(255,255,255,.4);
+  color: #fff; border-radius: 8px; padding: 5px 12px; cursor: pointer;
+  font-size: 12px; font-weight: 600; white-space: nowrap; transition: background .15s; flex-shrink: 0;
+}
+.tab-header-btn:hover { background: rgba(255,255,255,.35); }
+
+/* ── Commit info bar ── */
+.commit-bar {
+  background: #fff; border-bottom: 1px solid #e2e8f0; padding: 10px 20px;
+  display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; flex-shrink: 0;
+}
+.commit-hash {
+  font-family: ui-monospace, monospace; font-size: 11px;
+  background: #e0e7ff; color: #4338ca; padding: 2px 8px; border-radius: 5px; font-weight: 700;
+}
+.commit-msg { font-size: 13px; font-weight: 600; color: #1e293b; }
+.commit-meta { font-size: 11px; color: #64748b; }
+.stat-add { color: #16a34a; font-weight: 700; }
+.stat-del { color: #dc2626; font-weight: 700; }
+
+/* ── Main layout ── */
+.tab-main {
+  flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0;
+}
+
+/* ── Diff pane ── */
+.diff-pane {
+  flex: 1; overflow: auto; background: #0b1120; min-height: 200px;
+}
+.diff-code-block {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px; line-height: 1.55; min-width: 100%;
+}
+.diff-line {
+  display: grid; grid-template-columns: 58px minmax(0, 1fr);
+  align-items: start; min-width: 100%; color: #dbe4f0;
+}
+.diff-line-num {
+  position: sticky; left: 0; padding: 0 10px; text-align: right;
+  color: #94a3b8; background: rgba(2,6,23,.82);
+  border-right: 1px solid rgba(148,163,184,.18); user-select: none;
+}
+.diff-line-content { padding: 0 14px; white-space: pre; }
+.diff-line.add { background: rgba(34,197,94,.16); color: #dcfce7; }
+.diff-line.del { background: rgba(239,68,68,.16); color: #fee2e2; }
+.diff-line.hunk { background: rgba(168,85,247,.18); color: #f3e8ff; }
+.diff-line.file-header { background: rgba(148,163,184,.12); color: #d1d5db; }
+.diff-line.context { background: transparent; }
+
+/* ── AI section (resizable) ── */
+.ai-resize-handle {
+  height: 6px; background: #e2e8f0; cursor: ns-resize; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s; border-top: 1px solid #cbd5e1;
+}
+.ai-resize-handle:hover, .ai-resize-handle.dragging { background: #a5b4fc; }
+.ai-resize-handle::before {
+  content: ''; width: 32px; height: 3px; background: currentColor;
+  border-radius: 2px; opacity: .4;
+}
+.ai-section {
+  background: #fff; flex-shrink: 0;
+  display: flex; flex-direction: column;
+  height: 40vh; min-height: 80px; max-height: 85vh; overflow: hidden;
+}
+.ai-section-header {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: #fff; padding: 10px 16px; display: flex; align-items: center; gap: 10px;
+  flex-shrink: 0;
+}
+.ai-section-header-title { font-size: 13px; font-weight: 700; flex: 1; }
+.ai-section-content { flex: 1; overflow-y: auto; padding: 14px 16px; min-height: 0; }
+.ai-bubble {
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+  padding: 12px 14px; font-size: 13px; line-height: 1.65; color: #1e293b; word-break: break-word;
+}
+/* ── Light theme for diff-pane ── */
+.diff-pane.theme-light { background: #ffffff; }
+.diff-pane.theme-light .diff-line { color: #24292f; }
+.diff-pane.theme-light .diff-line-num {
+  color: #57606a; background: #f6f8fa; border-right: 1px solid #d0d7de;
+}
+.diff-pane.theme-light .diff-line.add { background: #e6ffec; color: #1a1a1a; }
+.diff-pane.theme-light .diff-line.add .diff-line-num { background: #ccffd8; color: #1a7f37; }
+.diff-pane.theme-light .diff-line.del { background: #ffebe9; color: #1a1a1a; }
+.diff-pane.theme-light .diff-line.del .diff-line-num { background: #ffd7d5; color: #cf222e; }
+.diff-pane.theme-light .diff-line.hunk { background: #ddf4ff; color: #0550ae; }
+.diff-pane.theme-light .diff-line.hunk .diff-line-num { background: #cae8ff; color: #0550ae; }
+.diff-pane.theme-light .diff-line.file-header { background: #f6f8fa; color: #57606a; }
+.diff-pane.theme-light .diff-line.context { background: transparent; }
+
+/* ── AI bubble code blocks ── */
+.ai-bubble pre {
+  background: #1e1e2e; color: #cdd6f4; border-radius: 8px;
+  padding: 0; overflow-x: auto; font-size: 11.5px; margin: 8px 0;
+  border: 1px solid rgba(255,255,255,.08);
+}
+.ai-bubble pre .code-block-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 10px; background: rgba(255,255,255,.06);
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  border-radius: 8px 8px 0 0; font-size: 10px;
+}
+.ai-bubble pre .code-block-lang {
+  color: #89b4fa; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+}
+.ai-bubble pre .code-block-body {
+  display: block; padding: 10px 12px; overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: pre; line-height: 1.55;
+}
+/* Light theme AI bubble */
+.ai-section.theme-light .ai-bubble pre { background: #f6f8fa; color: #24292f; border: 1px solid #d0d7de; }
+.ai-section.theme-light .ai-bubble pre .code-block-header { background: rgba(0,0,0,.04); border-bottom: 1px solid #d0d7de; }
+.ai-section.theme-light .ai-bubble pre .code-block-lang { color: #0550ae; }
+.ai-bubble code {
+  background: rgba(99,102,241,.1); color: #4f46e5;
+  padding: 1px 5px; border-radius: 4px; font-size: 12px;
+}
+.ai-bubble strong { color: #1e293b; }
+/* Progress thinking block */
+.ai-thinking {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 16px; border-radius: 12px; background: rgba(99,102,241,.07); color: #4338ca;
+}
+.ai-thinking .progress-row { display: flex; align-items: center; gap: 8px; }
+.ai-thinking .progress-text { flex: 1; font-size: 13px; font-weight: 600; }
+.ai-thinking .progress-timer { font-size: 11px; font-family: monospace; color: #7c3aed; }
+.ai-dots { display: inline-flex; gap: 5px; }
+.ai-dots span {
+  width: 8px; height: 8px; border-radius: 50%; background: #6366f1;
+  animation: bounce .8s infinite alternate;
+}
+.ai-dots span:nth-child(2) { animation-delay: .15s; }
+.ai-dots span:nth-child(3) { animation-delay: .3s; }
+@keyframes bounce {
+  from { transform: translateY(0); opacity: .4; }
+  to   { transform: translateY(-6px); opacity: 1; }
+}
+.progress-bar {
+  width: 100%; height: 3px; background: rgba(99,102,241,.15);
+  border-radius: 2px; overflow: hidden;
+}
+.progress-fill {
+  height: 100%; background: linear-gradient(90deg, #6366f1, #8b5cf6);
+  animation: indeterminate 1.8s ease-in-out infinite;
+}
+@keyframes indeterminate {
+  0%   { width: 8%;  margin-left: 0; }
+  50%  { width: 55%; margin-left: 30%; }
+  100% { width: 8%;  margin-left: 92%; }
+}
+.ai-empty { color: #9ca3af; font-size: 13px; font-style: italic; padding: 8px 0; }
+
+/* ── AI Settings Modal ── */
+.modal-bg {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 999;
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-box {
+  background: #fff; border-radius: 16px; width: 500px; max-width: 96vw;
+  max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.25);
+}
+.modal-header {
+  display: flex; align-items: center; padding: 18px 20px 14px;
+  border-bottom: 1px solid #e5e7eb; gap: 10px;
+}
+.modal-header h3 { flex: 1; margin: 0; font-size: 16px; font-weight: 700; color: #111827; }
+.modal-close {
+  background: none; border: none; font-size: 18px; cursor: pointer;
+  color: #6b7280; padding: 2px 6px; border-radius: 6px; transition: background .15s;
+}
+.modal-close:hover { background: #f3f4f6; }
+.ptabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 14px 20px 10px; border-bottom: 1px solid #f3f4f6; }
+.ptab {
+  padding: 6px 14px; border-radius: 20px; border: 1px solid #e5e7eb;
+  background: #f9fafb; font-size: 12px; font-weight: 600; cursor: pointer; color: #374151; transition: all .15s;
+}
+.ptab:hover { border-color: #6366f1; color: #6366f1; }
+.ptab.active { background: #6366f1; color: #fff; border-color: #6366f1; }
+.pfields { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+.field-label { display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 5px; }
+.field-input {
+  width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px;
+  font-size: 13px; font-family: inherit; outline: none; box-sizing: border-box; transition: border-color .15s;
+}
+.field-input:focus { border-color: #6366f1; }
+.key-hint {
+  margin-top: 6px; padding: 7px 12px; background: #eff6ff;
+  border: 1px solid #bfdbfe; border-radius: 8px; font-size: 12px; color: #1d4ed8;
+}
+.modal-footer {
+  display: flex; align-items: center; gap: 8px; padding: 12px 20px 16px;
+  border-top: 1px solid #e5e7eb; flex-wrap: wrap;
+}
+.modal-footer button {
+  padding: 7px 18px; border-radius: 8px; border: 1px solid #d1d5db;
+  background: #f9fafb; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s;
+}
+.btn-primary { background: #6366f1 !important; color: #fff !important; border-color: #6366f1 !important; }
+.btn-primary:hover { background: #4f46e5 !important; }
+.btn-test { background: #fef3c7 !important; color: #92400e !important; border-color: #fde68a !important; }
+.btn-test:hover { background: #fde68a !important; }
+#test-status { font-size: 12px; flex: 1; padding: 4px 0; }
+
+/* ── Action bar ── */
+.action-bar {
+  background: #f8fafc; border-top: 1px solid #e2e8f0;
+  padding: 8px 14px; display: flex; gap: 8px; flex-wrap: wrap; flex-shrink: 0;
+}
+.action-btn {
+  padding: 6px 14px; border-radius: 8px; border: 1px solid #d1d5db;
+  background: #fff; font-size: 12px; font-weight: 600; cursor: pointer;
+  color: #374151; transition: all .15s; white-space: nowrap;
+}
+.action-btn:hover { background: #6366f1; color: #fff; border-color: #6366f1; }
+.action-btn.primary { background: #6366f1; color: #fff; border-color: #6366f1; }
+.action-btn.primary:hover { background: #4f46e5; }
+.action-btn:disabled { opacity: .6; cursor: wait; }
+
+/* ── History popup ── */
+.hist-btn {
+  padding: 6px 14px; border-radius: 8px; border: 1px solid #d1d5db;
+  background: #fff; font-size: 12px; font-weight: 600; cursor: pointer;
+  color: #374151; transition: all .15s; white-space: nowrap;
+}
+.hist-btn:hover { background: #f0f0ff; border-color: #6366f1; color: #4f46e5; }
+.diff-hist-popup {
+  position: fixed; z-index: 9999; background: #fff;
+  border: 1px solid #e5e7eb; border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.22);
+  resize: both; overflow: auto;
+  min-width: 300px; min-height: 200px;
+  width: 380px;
+  display: flex; flex-direction: column;
+}
+.diff-hist-popup-header {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff; padding: 10px 14px;
+  display: flex; align-items: center; gap: 8px;
+  cursor: grab; flex-shrink: 0; border-radius: 13px 13px 0 0;
+  user-select: none;
+}
+.diff-hist-popup-header:active { cursor: grabbing; }
+.diff-hist-popup-title { flex: 1; font-size: 12px; font-weight: 700; }
+.diff-hist-popup-close { background: none; border: none; color: rgba(255,255,255,.8); cursor: pointer; font-size: 16px; }
+.diff-hist-popup-body { flex: 1; overflow-y: auto; padding: 8px; }
+.diff-hist-popup-item {
+  padding: 10px 12px; border-radius: 10px; cursor: pointer;
+  border: 1px solid #f3f4f6; margin-bottom: 6px;
+  transition: background .12s;
+}
+.diff-hist-popup-item:hover { background: #f0f0ff; border-color: #c7d2fe; }
+.diff-hist-popup-item-title { font-size: 12px; font-weight: 700; color: #4f46e5; }
+.diff-hist-popup-item-time { font-size: 10px; color: #9ca3af; margin-top: 2px; }
+.diff-hist-popup-empty { color: #9ca3af; font-size: 13px; padding: 16px; text-align: center; }
+
+/* ── Error / empty ── */
+.error-box {
+  margin: 24px; padding: 16px; background: #fef2f2; border: 1px solid #fca5a5;
+  border-radius: 12px; color: #991b1b; font-size: 14px;
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════ Header ═══════════ -->
+<div class="tab-header">
+  <div>
+    <div class="tab-header-title">📄 File Diff Viewer</div>
+    <div class="tab-header-file" id="header-file-path">Loading…</div>
+  </div>
+  <button class="tab-header-btn" id="tab-theme-btn" onclick="toggleTabTheme()">☀️ Light</button>
+  <button class="tab-header-btn" onclick="openSettingsModal()">⚙️ AI Settings</button>
+</div>
+
+<!-- ═══════════ Commit Info ═══════════ -->
+<div class="commit-bar" id="commit-bar">
+  <span style="color:#9ca3af;font-size:12px">Loading…</span>
+</div>
+
+<!-- ═══════════ Main ═══════════ -->
+<div class="tab-main">
+  <!-- Diff -->
+  <div class="diff-pane" id="diff-pane">
+    <div style="display:flex;align-items:center;justify-content:center;height:200px;color:#64748b;font-size:14px">Loading diff…</div>
+  </div>
+
+  <!-- Resize handle between diff and AI section -->
+  <div class="ai-resize-handle" id="ai-resize-handle"></div>
+
+  <!-- Action bar -->
+  <div class="action-bar">
+    <button class="hist-btn" id="tab-hist-btn" onclick="toggleTabHistory()" style="display:none">📋 History (0)</button>
+    <button class="action-btn primary" id="analyze-btn" onclick="triggerAnalysis()">🤖 Analyze with AI</button>
+    <button class="action-btn" id="reanalyze-btn" onclick="triggerAnalysis()" style="display:none">🔄 Re-analyze</button>
+    <span id="analyze-status" style="font-size:11px;color:#6b7280;align-self:center"></span>
+  </div>
+
+  <!-- AI Analysis Section -->
+  <div class="ai-section" id="ai-section">
+    <div class="ai-section-header">
+      <span class="ai-section-header-title">🤖 AI Code Review</span>
+      <span id="ai-model-badge" style="font-size:10px;opacity:.75"></span>
+    </div>
+    <div class="ai-section-content" id="ai-section-content">
+      <div class="ai-empty">Click "🤖 Analyze with AI" to get a code review of this file's changes.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ AI Settings Modal ═══════════ -->
+<div class="modal-bg" id="settings-modal" style="display:none">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>🤖 AI Provider Settings</h3>
+      <button class="modal-close" onclick="closeSettingsModal()">✕</button>
+    </div>
+    <div id="provider-tabs" class="ptabs"></div>
+    <div class="pfields">
+      <div id="key-wrap">
+        <label class="field-label">API Key</label>
+        <input type="password" id="api-key-input" class="field-input" placeholder="Paste your API key…">
+        <div id="key-hint" class="key-hint" style="display:none"></div>
+      </div>
+      <div>
+        <label class="field-label">Base URL</label>
+        <input type="text" id="base-url-input" class="field-input" placeholder="https://api.openai.com/v1">
+      </div>
+      <div>
+        <label class="field-label">Model</label>
+        <select id="model-sel" class="field-input"></select>
+        <input type="text" id="model-custom" class="field-input" placeholder="Or enter a custom model name…" style="margin-top:6px">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <span id="test-status"></span>
+      <button class="btn-test" onclick="testConnection()">🔌 Test Connection</button>
+      <button class="btn-primary" onclick="saveSettings()">💾 Save</button>
+      <button onclick="closeSettingsModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Provider definitions ─────────────────────────────────────────────────
+var AI_PROVIDERS = {
+  openai:    { name:'OpenAI',         baseUrl:'https://api.openai.com/v1',                           needsKey:true,  hint:'', models:['gpt-4.1','gpt-4.1-mini','gpt-4o','gpt-4o-mini','gpt-3.5-turbo','o1-mini'] },
+  anthropic: { name:'Anthropic',      baseUrl:'https://api.anthropic.com',                           needsKey:true,  hint:'', models:['claude-sonnet-4.6','claude-opus-4.7','claude-opus-4.5','claude-haiku-4.5','claude-sonnet-4.5'] },
+  deepseek:  { name:'DeepSeek',       baseUrl:'https://api.deepseek.com/v1',                         needsKey:true,  hint:'', models:['deepseek-chat','deepseek-coder','deepseek-reasoner'] },
+  qwen:      { name:'Qwen',           baseUrl:'https://dashscope.aliyuncs.com/compatible-mode/v1',   needsKey:true,  hint:'', models:['qwen-max','qwen2.5-coder-32b-instruct','qwen-plus','qwen-turbo'] },
+  ollama:    { name:'Ollama (Local)', baseUrl:'http://localhost:11434/v1',                            needsKey:false, hint:'🔓 Ollama runs locally — no API key required.', models:['codellama','llama3','mistral','deepseek-coder-v2','qwen2.5-coder'] },
+  custom:    { name:'Custom',         baseUrl:'',                                                     needsKey:true,  hint:'', models:[] },
+};
+
+// ── Config from localStorage (shared with main panel via git-ai-cfg) ─────
+var _cfg = (function(){ try{ return JSON.parse(localStorage.getItem('git-ai-cfg')||'{}'); }catch(e){ return {}; } })();
+
+// Migrate old single-provider format → new per-provider format
+if (_cfg.provider && !_cfg.providers) {
+  var old = _cfg;
+  _cfg = { active: old.provider, panelWidth: old.panelWidth, providers: {} };
+  _cfg.providers[old.provider] = {
+    api_key: old.api_key || '',
+    base_url: old.base_url || '',
+    model: old.model || ''
+  };
+}
+if (!_cfg.active) _cfg.active = 'openai';
+if (!_cfg.providers) _cfg.providers = {};
+
+var _activeProv = _cfg.active || 'openai';
+
+function _saveCfg() { try{ localStorage.setItem('git-ai-cfg', JSON.stringify(_cfg)); }catch(e){} }
+
+function _getProvCfg(provider) {
+  provider = provider || _cfg.active || 'openai';
+  var pDef = AI_PROVIDERS[provider] || {};
+  var saved = _cfg.providers[provider] || {};
+  return {
+    api_key: saved.api_key != null ? saved.api_key : '',
+    base_url: saved.base_url || pDef.baseUrl || '',
+    model: saved.model || (pDef.models && pDef.models[0]) || ''
+  };
+}
+
+function getConfig() {
+  var active = _cfg.active || 'openai';
+  var pDef = AI_PROVIDERS[active] || {};
+  var saved = _cfg.providers[active] || {};
+  return {
+    provider: active,
+    api_key: saved.api_key != null ? saved.api_key : '',
+    base_url: saved.base_url || pDef.baseUrl || '',
+    model: saved.model || (pDef.models && pDef.models[0]) || 'claude-sonnet-4.6',
+  };
+}
+
+// ── Data from sessionStorage ─────────────────────────────────────────────
+var _data = null;
+try { _data = JSON.parse(sessionStorage.getItem('diff-tab-data')||'null'); } catch(e) {}
+
+// ── Theme (shared localStorage key with main panel) ───────────────────────
+var _tabTheme = localStorage.getItem('diff-theme') || 'dark';
+var _currentTabAnalysis = null; // {text, lang} for re-render on theme change
+
+function _applyTabTheme() {
+  var isLight = _tabTheme === 'light';
+  var diffPane = document.getElementById('diff-pane');
+  if (diffPane) diffPane.classList.toggle('theme-light', isLight);
+  var aiSec = document.getElementById('ai-section');
+  if (aiSec) aiSec.classList.toggle('theme-light', isLight);
+  var btn = document.getElementById('tab-theme-btn');
+  if (btn) btn.textContent = isLight ? '🌙 Dark' : '☀️ Light';
+}
+
+function toggleTabTheme() {
+  _tabTheme = _tabTheme === 'light' ? 'dark' : 'light';
+  localStorage.setItem('diff-theme', _tabTheme);
+  // Re-render diff with new theme colors
+  if (_data) document.getElementById('diff-pane').innerHTML = renderDiff(_data.diff || '');
+  _applyTabTheme();
+  // Re-render AI analysis if present
+  if (_currentTabAnalysis) {
+    var contentEl = document.getElementById('ai-section-content');
+    if (contentEl) {
+      contentEl.innerHTML = '<div class="ai-bubble">' + _mdTab(_currentTabAnalysis.text, _currentTabAnalysis.lang) + '</div>'
+        + '<div style="font-size:10px;color:#9ca3af;margin-top:6px;text-align:right">' + _esc(_currentTabAnalysis.meta) + '</div>';
+    }
+  }
+}
+
+// ── Analysis history (persisted per file path in localStorage) ───────────
+var _HIST_KEY = 'diff-tab-history-' + ((_data && _data.filePath) ? btoa(_data.filePath.slice(-60)) : 'unknown');
+var _tabHistory = (function() {
+  try { return JSON.parse(localStorage.getItem(_HIST_KEY)||'[]'); } catch(e) { return []; }
+})();
+
+function _saveTabHistory(text) {
+  var cfg = getConfig();
+  var ts = new Date().toLocaleString();
+  var entry = { text: text, ts: ts, model: (AI_PROVIDERS[cfg.provider]?.name||cfg.provider) + ' · ' + cfg.model };
+  _tabHistory.unshift(entry);
+  if (_tabHistory.length > 20) _tabHistory.pop();
+  try { localStorage.setItem(_HIST_KEY, JSON.stringify(_tabHistory)); } catch(e) {}
+  _updateTabHistBtn();
+}
+
+function _updateTabHistBtn() {
+  var btn = document.getElementById('tab-hist-btn');
+  if (btn) {
+    btn.style.display = _tabHistory.length ? '' : 'none';
+    btn.textContent = '📋 History (' + _tabHistory.length + ')';
+  }
+}
+
+function _removeTabHistPopup() {
+  var existing = document.querySelector('.diff-hist-popup');
+  if (existing) {
+    if (typeof existing._cleanup === 'function') existing._cleanup();
+    existing.remove();
+  }
+}
+
+function _makeTabHistPopupDraggable(popup, header) {
+  var dragging = false;
+  var offsetX = 0;
+  var offsetY = 0;
+
+  function onMove(e) {
+    if (!dragging) return;
+    var maxLeft = Math.max(12, window.innerWidth - popup.offsetWidth - 12);
+    var maxTop = Math.max(12, window.innerHeight - popup.offsetHeight - 12);
+    popup.style.left = Math.max(12, Math.min(e.clientX - offsetX, maxLeft)) + 'px';
+    popup.style.top = Math.max(12, Math.min(e.clientY - offsetY, maxTop)) + 'px';
+  }
+
+  function onUp() {
+    dragging = false;
+  }
+
+  function onDown(e) {
+    if (e.target.closest('.diff-hist-popup-close')) return;
+    dragging = true;
+    var rect = popup.getBoundingClientRect();
+    offsetX = e.clientX - rect.left;
+    offsetY = e.clientY - rect.top;
+    e.preventDefault();
+  }
+
+  header.addEventListener('mousedown', onDown);
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+
+  popup._dragCleanup = function() {
+    header.removeEventListener('mousedown', onDown);
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  };
+}
+
+function _showTabHistoryEntry(entry) {
+  var contentEl = document.getElementById('ai-section-content');
+  if (contentEl) {
+    contentEl.innerHTML = '<div style="font-size:10px;color:#9ca3af;margin-bottom:8px">📋 From history · '
+      + _esc(entry.ts) + ' · ' + _esc(entry.model) + '</div>'
+      + '<div class="ai-bubble">' + _mdTab(entry.text, _tabLang) + '</div>';
+  }
+  var reBtn = document.getElementById('reanalyze-btn');
+  var analyzeBtn = document.getElementById('analyze-btn');
+  if (analyzeBtn) analyzeBtn.style.display = 'none';
+  if (reBtn) { reBtn.style.display = ''; reBtn.disabled = false; }
+}
+
+function _openTabHistoryPopup() {
+  _removeTabHistPopup();
+
+  var popup = document.createElement('div');
+  popup.className = 'diff-hist-popup';
+  popup.style.left = Math.max(20, Math.round((window.innerWidth - 380) / 2)) + 'px';
+  popup.style.top = Math.max(20, Math.round((window.innerHeight - 320) / 2)) + 'px';
+  popup.style.height = '320px';
+  popup.innerHTML = '<div class="diff-hist-popup-header">'
+    + '<div class="diff-hist-popup-title">📋 Past Analyses</div>'
+    + '<button class="diff-hist-popup-close" type="button">✕</button>'
+    + '</div>'
+    + '<div class="diff-hist-popup-body"></div>';
+
+  var body = popup.querySelector('.diff-hist-popup-body');
+  if (!_tabHistory.length) {
+    body.innerHTML = '<div class="diff-hist-popup-empty">No history yet</div>';
+  } else {
+    _tabHistory.forEach(function(entry, i) {
+      var item = document.createElement('div');
+      item.className = 'diff-hist-popup-item';
+      item.innerHTML = '<div class="diff-hist-popup-item-title">Analysis #' + (i + 1) + '</div>'
+        + '<div class="diff-hist-popup-item-time">' + _esc(entry.ts) + ' · ' + _esc(entry.model) + '</div>';
+      item.onclick = function() {
+        closePopup();
+        _showTabHistoryEntry(entry);
+      };
+      body.appendChild(item);
+    });
+  }
+
+  function closePopup() {
+    _removeTabHistPopup();
+  }
+
+  popup.querySelector('.diff-hist-popup-close').onclick = function(e) {
+    e.stopPropagation();
+    closePopup();
+  };
+
+  document.body.appendChild(popup);
+  _makeTabHistPopupDraggable(popup, popup.querySelector('.diff-hist-popup-header'));
+
+  var onOutsideClick = function(e) {
+    if (!popup.contains(e.target)) closePopup();
+  };
+  var onEscape = function(e) {
+    if (e.key === 'Escape') closePopup();
+  };
+
+  popup._cleanup = function() {
+    document.removeEventListener('mousedown', onOutsideClick);
+    document.removeEventListener('keydown', onEscape);
+    if (typeof popup._dragCleanup === 'function') popup._dragCleanup();
+  };
+
+  setTimeout(function() {
+    document.addEventListener('mousedown', onOutsideClick);
+  }, 0);
+  document.addEventListener('keydown', onEscape);
+}
+
+function toggleTabHistory() {
+  if (!_tabHistory.length) {
+    alert('No history yet');
+    return;
+  }
+  _openTabHistoryPopup();
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+function _esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function _mdTab(text, fileLang) {
+  if (!text) return '';
+  var result = '';
+  var parts = text.split(/(```[\w]*\n[\s\S]*?```)/g);
+  for (var i = 0; i < parts.length; i++) {
+    var part = parts[i];
+    var fenceMatch = part.match(/^```([\w]*)\n([\s\S]*?)```$/);
+    if (fenceMatch) {
+      var rawLang = fenceMatch[1] || fileLang || '';
+      var langMap = { javascript:'js', typescript:'ts', python:'py', python3:'py', golang:'go',
+        kotlin:'kt', ruby:'rb', rust:'rust', shell:'sh', bash:'sh', zsh:'sh',
+        'c++':'c', 'cpp':'c', html:'html', css:'css', json:'json', jsx:'js', tsx:'ts' };
+      var lang = langMap[rawLang.toLowerCase()] || rawLang.toLowerCase();
+      var code = fenceMatch[2] || '';
+      var isDark = _tabTheme !== 'light';
+      // Highlight line by line so comment early-exit doesn't kill subsequent lines
+      var bodyHtml = code.trim().split('\n').map(function(ln) {
+        return lang ? _syntaxHL(ln, lang, isDark) : _esc(ln);
+      }).join('\n');
+      result += '<pre>'
+        + (lang ? '<span class="code-block-header"><span class="code-block-lang">' + _esc(lang) + '</span></span>' : '')
+        + '<span class="code-block-body">' + bodyHtml + '</span>'
+        + '</pre>';
+    } else {
+      result += part
+        .replace(/`([^`]+)`/g, function(_,c){ return '<code>'+_esc(c)+'</code>'; })
+        .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
+        .replace(/^### (.+)$/gm,'<strong style="font-size:13px;display:block;margin:10px 0 4px">$1</strong>')
+        .replace(/^## (.+)$/gm,'<strong style="font-size:14px;display:block;margin:12px 0 5px">$1</strong>')
+        .replace(/^# (.+)$/gm,'<strong style="font-size:15px;display:block;margin:14px 0 6px">$1</strong>')
+        .replace(/^(\d+\.) (.+)$/gm,'<div style="margin:2px 0 2px 12px">$1 $2</div>')
+        .replace(/^[-*] (.+)$/gm,'<div style="margin:2px 0 2px 8px">• $1</div>')
+        .replace(/\n/g,'<br>');
+    }
+  }
+  return result;
+}
+
+function _md(text) { return _mdTab(text, ''); }
+
+// ── Syntax Highlighter ────────────────────────────────────────────────────
+var _LANG_KW_TAB = {
+  js:  'async await break case catch class const continue debugger default delete do else export extends finally for from function if import in instanceof let new of return static super switch this throw try typeof var void while with yield true false null undefined NaN Infinity',
+  ts:  'async await break case catch class const continue default delete do else export extends finally for from function if import in instanceof let new of return static super switch this throw try typeof var void while with yield true false null undefined abstract any as declare enum implements interface keyof namespace never readonly type unknown',
+  py:  'and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield True False None',
+  swift:'as associativity break case catch class continue default defer deinit do else enum extension fallthrough false fileprivate final for func get guard if import in init inout internal is lazy let mutating nil nonmutating open operator optional override postfix prefix private protocol public rethrows return self Self set some static struct subscript super switch throw throws true try typealias unowned var weak where while willSet',
+  go:  'break case chan const continue default defer else fallthrough for func go goto if import interface map package range return select struct switch type var true false nil',
+  java:'abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new null package private protected public return short static strictfp super switch synchronized this throw throws transient try var void volatile while true false',
+  kt:  'abstract actual annotation as break by catch class companion const constructor continue data do else enum expect external final finally for fun if in init inline inner interface internal is it lateinit noinline null object open operator out override package private protected public reified return sealed super suspend tailrec this throw true try typealias val var vararg when where while',
+  rb:  'BEGIN END alias and begin break case class def do else elsif end ensure false for if in module next nil not or redo rescue retry return self super then true undef unless until when while yield',
+  rust:'as async await break const continue crate dyn else enum extern false fn for if impl in let loop match mod move mut pub ref return Self self static struct super trait true type union unsafe use where while',
+  c:   'auto break case char const continue default do double else enum extern float for goto if inline int long register restrict return short signed sizeof static struct switch typedef union unsigned void volatile while true false NULL nullptr',
+  sh:  'if then else elif fi for do done while until case esac function in break continue return exit export local readonly echo printf',
+  css: 'important media keyframes from to root hover focus active disabled checked before after not nth-child nth-of-type first-child last-child',
+};
+var _EXT_LANG_TAB = {
+  js:'js', ts:'ts', jsx:'js', tsx:'ts', mjs:'js', cjs:'js',
+  py:'py', pyw:'py', swift:'swift', go:'go',
+  java:'java', kt:'kt', kts:'kt', rb:'rb', rs:'rust',
+  c:'c', h:'c', cpp:'c', cc:'c', cxx:'c', hpp:'c',
+  sh:'sh', bash:'sh', zsh:'sh',
+  css:'css', scss:'css', less:'css',
+};
+
+function _detectTabLang(filePath) {
+  if (!filePath) return '';
+  var ext = (filePath.split('.').pop() || '').toLowerCase();
+  return _EXT_LANG_TAB[ext] || '';
+}
+
+function _syntaxHL(rawText, lang, isDark) {
+  if (!rawText || !lang) return _esc(rawText);
+  var kwStr = _LANG_KW_TAB[lang];
+  if (!kwStr) return _esc(rawText);
+  var D = {
+    kw:'#569cd6', str:'#ce9178', cmt:'#6a9955', num:'#b5cea8',
+    type:'#4ec9b0', fn:'#dcdcaa', prop:'#9cdcfe', dec:'#c586c0'
+  };
+  var L = {
+    kw:'#9b2393', str:'#c41a16', cmt:'#5c6e74', num:'#1c00cf',
+    type:'#3a60a0', fn:'#5c1a8a', prop:'#0033a0', dec:'#7b3fa0'
+  };
+  var C = (isDark === false) ? L : D;
+  var kwSet = {};
+  kwStr.split(' ').forEach(function(k) { if (k) kwSet[k] = true; });
+  var lineComment = { js:'//',ts:'//',go:'//',java:'//',kt:'//',swift:'//',c:'//',rust:'//',py:'#',rb:'#',sh:'#' }[lang] || null;
+  var rules = [];
+  if (lineComment === '//') {
+    rules.push({ re: /\/\/[^\n]*/, type: 'cmt' });
+    rules.push({ re: /\/\*[\s\S]*?\*\//, type: 'cmt' });
+  } else if (lineComment === '#') {
+    rules.push({ re: /#[^\n]*/, type: 'cmt' });
+  }
+  rules.push({ re: /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/, type: 'str' });
+  rules.push({ re: /\b0x[0-9a-fA-F]+[uUlL]*\b|\b\d+\.?\d*(?:[eE][+-]?\d+)?[fFdDlL]?\b/, type: 'num' });
+  rules.push({ re: /@[a-zA-Z_]\w*/, type: 'dec' });
+  rules.push({ re: /[a-zA-Z_$][a-zA-Z0-9_$]*/, type: 'ident' });
+  var text = rawText, len = text.length, result = '', pos = 0;
+  while (pos < len) {
+    var best = null, bestIdx = len, bestType = '';
+    for (var r = 0; r < rules.length; r++) {
+      var re = new RegExp(rules[r].re.source, 'g');
+      re.lastIndex = 0;
+      var m = re.exec(text.slice(pos));
+      if (m && (pos + m.index) < bestIdx) { best = m; bestIdx = pos + m.index; bestType = rules[r].type; }
+    }
+    if (!best) { result += _esc(text.slice(pos)); break; }
+    if (bestIdx > pos) result += _esc(text.slice(pos, bestIdx));
+    var matchText = best[0], color = null;
+    if (bestType === 'cmt') color = C.cmt;
+    else if (bestType === 'str') color = C.str;
+    else if (bestType === 'num') color = C.num;
+    else if (bestType === 'dec') color = C.dec;
+    else if (bestType === 'ident') {
+      if (kwSet[matchText]) color = C.kw;
+      else if (/^[A-Z]/.test(matchText)) color = C.type;
+      else if (text.slice(bestIdx + matchText.length).match(/^\s*\(/)) color = C.fn;
+      else if (bestIdx > 0 && text[bestIdx - 1] === '.') color = C.prop;
+    }
+    result += color ? '<span style="color:' + color + '">' + _esc(matchText) + '</span>' : _esc(matchText);
+    pos = bestIdx + matchText.length;
+    if (bestType === 'cmt') { result += _esc(text.slice(pos)); break; }
+  }
+  return result;
+}
+
+// ── Diff renderer ────────────────────────────────────────────────────────
+var _tabLang = _data ? _detectTabLang(_data.filePath) : '';
+
+function renderDiff(diffText) {
+  if (!diffText) return '<div style="color:#6b7280;padding:20px">No diff content</div>';
+  var lines = diffText.split('\n');
+  var html = '<div class="diff-code-block">';
+  var lineNum = { old: 0, new: 0 };
+
+  lines.forEach(function(line) {
+    var cls = 'context';
+    var numDisplay = '';
+
+    if (line.startsWith('diff --git') || line.startsWith('index ') ||
+        line.startsWith('--- ') || line.startsWith('+++ ')) {
+      cls = 'file-header';
+    } else if (line.startsWith('@@')) {
+      cls = 'hunk';
+      var m = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (m) { lineNum.old = parseInt(m[1])-1; lineNum.new = parseInt(m[2])-1; }
+    } else if (line.startsWith('+') && !line.startsWith('+++')) {
+      cls = 'add'; lineNum.new++; numDisplay = lineNum.new;
+    } else if (line.startsWith('-') && !line.startsWith('---')) {
+      cls = 'del'; lineNum.old++; numDisplay = lineNum.old;
+    } else if (line !== '' && !line.startsWith('diff') && !line.startsWith('index') &&
+               !line.startsWith('---') && !line.startsWith('+++')) {
+      lineNum.old++; lineNum.new++; numDisplay = lineNum.new;
+    }
+
+    var contentHtml;
+    if (_tabLang && (cls === 'add' || cls === 'del' || cls === 'context')) {
+      var pfx = (cls === 'add' || cls === 'del') ? line[0] : '';
+      contentHtml = (pfx ? _esc(pfx) : '') + _syntaxHL(pfx ? line.slice(1) : line, _tabLang, _tabTheme !== 'light');
+    } else {
+      contentHtml = _esc(line);
+    }
+
+    html += '<div class="diff-line '+cls+'">'
+      + '<span class="diff-line-num">'+_esc(numDisplay||'')+'</span>'
+      + '<span class="diff-line-content">'+contentHtml+'</span>'
+      + '</div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+// ── AI analysis ──────────────────────────────────────────────────────────
+var _progressTimer = null;
+var _progressStart = 0;
+
+function _startProgress() {
+  _progressStart = Date.now();
+  var timerEl = document.getElementById('ai-progress-timer');
+  _progressTimer = setInterval(function() {
+    if (timerEl) timerEl.textContent = ((Date.now() - _progressStart)/1000).toFixed(1) + 's';
+  }, 200);
+}
+function _stopProgress() {
+  if (_progressTimer) { clearInterval(_progressTimer); _progressTimer = null; }
+}
+function _thinkingHTML() {
+  return '<div class="ai-thinking">'
+    + '<div class="progress-row">'
+    + '<div class="ai-dots"><span></span><span></span><span></span></div>'
+    + '<span class="progress-text">AI is reviewing the code…</span>'
+    + '<span class="progress-timer" id="ai-progress-timer">0.0s</span>'
+    + '</div>'
+    + '<div class="progress-bar"><div class="progress-fill"></div></div>'
+    + '</div>';
+}
+
+function triggerAnalysis() {
+  if (!_data) return;
+  var analyzeBtn = document.getElementById('analyze-btn');
+  var reBtn = document.getElementById('reanalyze-btn');
+  var statusEl = document.getElementById('analyze-status');
+  var contentEl = document.getElementById('ai-section-content');
+  if (analyzeBtn) analyzeBtn.disabled = true;
+  if (reBtn) reBtn.disabled = true;
+  if (statusEl) statusEl.textContent = '';
+  contentEl.innerHTML = _thinkingHTML();
+  _startProgress();
+
+  var cfg = getConfig();
+  var ci = _data.commitInfo || {};
+  var prompt = 'Analyze this git diff for file "' + (_data.filePath||'unknown') + '":\n\n'
+    + 'Commit: ' + (ci.short_hash||'') + ' — ' + (ci.message||'') + '\n'
+    + 'Author: ' + (ci.author||'') + ' · ' + (ci.date||'') + '\n'
+    + 'Changes: +' + (_data.added||0) + ' -' + (_data.removed||0) + ' lines\n\n'
+    + '```diff\n' + (_data.diff||'').slice(0, 8000) + '\n```\n\n'
+    + 'Provide a thorough code review:\n'
+    + '1. Summary of what changed\n'
+    + '2. Potential bugs or logic issues\n'
+    + '3. Security concerns (if any)\n'
+    + '4. Code quality & best practices\n'
+    + '5. Specific improvement suggestions';
+
+  var messages = [
+    { role: 'system', content: 'You are an expert code reviewer. Analyze the provided git diff and give concise, actionable insights. Use markdown formatting with headers and bullet points for clarity.' },
+    { role: 'user', content: prompt }
+  ];
+
+  fetch('/api/ai/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider: cfg.provider, api_key: cfg.api_key, base_url: cfg.base_url, model: cfg.model, messages: messages }),
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    if (!d.ok) { showAnalysisError(d.error||'AI request failed'); return; }
+    pollAnalysis(d.jobId);
+  })
+  .catch(function(e){ showAnalysisError('Network error: '+e.message); });
+}
+
+function pollAnalysis(jobId) {
+  fetch('/api/ai/chat-status?jobId='+jobId)
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (!d.done) { setTimeout(function(){ pollAnalysis(jobId); }, 800); return; }
+      _stopProgress();
+      var analyzeBtn = document.getElementById('analyze-btn');
+      var reBtn = document.getElementById('reanalyze-btn');
+      var statusEl = document.getElementById('analyze-status');
+      if (analyzeBtn) { analyzeBtn.disabled = false; analyzeBtn.style.display = 'none'; }
+      if (reBtn) { reBtn.disabled = false; reBtn.style.display = ''; }
+      if (statusEl) statusEl.textContent = '';
+      if (d.ok) {
+        var cfg = getConfig();
+        var meta = (AI_PROVIDERS[cfg.provider]?.name||cfg.provider) + ' · ' + cfg.model;
+        _currentTabAnalysis = { text: d.text, lang: _tabLang, meta: meta };
+        document.getElementById('ai-section-content').innerHTML =
+          '<div class="ai-bubble">'+_mdTab(d.text, _tabLang)+'</div>'
+          +'<div style="font-size:10px;color:#9ca3af;margin-top:6px;text-align:right">'+_esc(meta)+'</div>';
+        _saveTabHistory(d.text);
+      } else {
+        showAnalysisError(d.error||'AI analysis failed');
+      }
+    })
+    .catch(function(){ setTimeout(function(){ pollAnalysis(jobId); }, 1200); });
+}
+
+function showAnalysisError(msg) {
+  _stopProgress();
+  var analyzeBtn = document.getElementById('analyze-btn');
+  var reBtn = document.getElementById('reanalyze-btn');
+  var statusEl = document.getElementById('analyze-status');
+  if (analyzeBtn) { analyzeBtn.disabled = false; }
+  if (reBtn) { reBtn.disabled = false; }
+  if (statusEl) statusEl.textContent = '';
+  document.getElementById('ai-section-content').innerHTML =
+    '<div style="color:#ef4444;font-size:13px">❌ '+_esc(msg)+'</div>';
+}
+
+// ── Settings modal ───────────────────────────────────────────────────────
+function openSettingsModal() {
+  document.getElementById('settings-modal').style.display = 'flex';
+  buildProviderTabs();
+  selectProvider(_activeProv, true);
+  document.getElementById('test-status').textContent = '';
+}
+function closeSettingsModal() { document.getElementById('settings-modal').style.display = 'none'; }
+
+function buildProviderTabs() {
+  var el = document.getElementById('provider-tabs');
+  el.innerHTML = Object.entries(AI_PROVIDERS).map(function(pair){
+    var k=pair[0], v=pair[1];
+    return '<button class="ptab'+(_activeProv===k?' active':'')+'" onclick="selectProvider(\''+k+'\')">'+v.name+'</button>';
+  }).join('');
+}
+
+function selectProvider(key, silent) {
+  _activeProv = key;
+  _cfg.active = key;
+  _saveCfg();
+  var p = AI_PROVIDERS[key]; if (!p) return;
+  document.querySelectorAll('.ptab').forEach(function(b){ b.classList.toggle('active', b.textContent.trim()===p.name); });
+
+  var cfg = _getProvCfg(key);
+  var apiKeyEl = document.getElementById('api-key-input');
+  if (apiKeyEl) apiKeyEl.value = cfg.api_key || '';
+  document.getElementById('base-url-input').value = cfg.base_url || p.baseUrl;
+
+  var kw = document.getElementById('key-wrap');
+  if (kw) kw.style.display = p.needsKey ? '' : 'none';
+  var hint = document.getElementById('key-hint');
+  if (hint) { hint.style.display = p.hint ? '' : 'none'; hint.textContent = p.hint; }
+  var sel = document.getElementById('model-sel');
+  var customEl = document.getElementById('model-custom');
+  var model = cfg.model || '';
+
+  sel.innerHTML = p.models.map(function(m){ return '<option value="'+m+'">'+m+'</option>'; }).join('') || '<option value="">— enter below —</option>';
+  if (model && p.models.indexOf(model) >= 0) {
+    sel.value = model;
+    if (customEl) customEl.value = '';
+  } else if (model) {
+    sel.value = '';
+    if (customEl) customEl.value = model;
+  } else {
+    sel.value = p.models[0] || '';
+    if (customEl) customEl.value = '';
+  }
+}
+
+function testConnection() {
+  var statusEl = document.getElementById('test-status');
+  var p = AI_PROVIDERS[_activeProv]||{};
+  var api_key = document.getElementById('api-key-input').value.trim();
+  var base_url = document.getElementById('base-url-input').value.trim();
+  var model = document.getElementById('model-custom').value.trim() || document.getElementById('model-sel').value || '';
+  if (p.needsKey && !api_key) { statusEl.textContent='❌ API key required'; statusEl.style.color='#ef4444'; return; }
+  statusEl.textContent='🔄 Testing…'; statusEl.style.color='#6b7280';
+  fetch('/api/ai/test-provider',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({provider:_activeProv,api_key:api_key,base_url:base_url,model:model})})
+  .then(function(r){ return r.json(); })
+  .then(function(d){ statusEl.textContent=d.ok?('✅ '+(d.message||'Connected')):('❌ '+(d.error||'Failed')); statusEl.style.color=d.ok?'#10b981':'#ef4444'; })
+  .catch(function(e){ statusEl.textContent='❌ Network error: '+e.message; statusEl.style.color='#ef4444'; });
+}
+
+function saveSettings() {
+  var provider = _activeProv || 'openai';
+  var api_key  = document.getElementById('api-key-input').value.trim();
+  var base_url = document.getElementById('base-url-input').value.trim();
+  var model    = document.getElementById('model-custom').value.trim() || document.getElementById('model-sel').value || 'claude-sonnet-4.6';
+  _cfg.providers[provider] = { api_key: api_key, base_url: base_url, model: model };
+  _saveCfg();
+  var badge = document.getElementById('ai-model-badge');
+  if (badge) badge.textContent = (AI_PROVIDERS[_activeProv]?.name||_activeProv)+' · '+model;
+  closeSettingsModal();
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────
+(function init() {
+  var cfg = getConfig();
+  var badge = document.getElementById('ai-model-badge');
+  if (badge) badge.textContent = (AI_PROVIDERS[cfg.provider]?.name||cfg.provider)+' · '+cfg.model;
+
+  // Init history button
+  _updateTabHistBtn();
+
+  // Restore saved AI section height
+  var aiSection = document.getElementById('ai-section');
+  var savedH = localStorage.getItem('diff-tab-ai-height');
+  if (savedH && aiSection) aiSection.style.height = savedH;
+
+  // Drag-resize: handle between diff-pane and AI section
+  var handle = document.getElementById('ai-resize-handle');
+  if (handle && aiSection) {
+    var dragging = false;
+    var startY = 0;
+    var startH = 0;
+
+    handle.addEventListener('mousedown', function(e) {
+      dragging = true;
+      startY = e.clientY;
+      startH = aiSection.getBoundingClientRect().height;
+      handle.classList.add('dragging');
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'ns-resize';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!dragging) return;
+      var delta = startY - e.clientY; // drag up → bigger section
+      var newH = Math.max(80, Math.min(window.innerHeight * 0.85, startH + delta));
+      aiSection.style.height = newH + 'px';
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!dragging) return;
+      dragging = false;
+      handle.classList.remove('dragging');
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      try { localStorage.setItem('diff-tab-ai-height', aiSection.style.height); } catch(e) {}
+    });
+  }
+
+  if (!_data) {
+    document.getElementById('header-file-path').textContent = 'No data — open from the AI panel';
+    document.getElementById('commit-bar').innerHTML = '<span style="color:#ef4444;font-size:13px">❌ No diff data found. Please use the "↗ Tab" button in the AI panel diff viewer.</span>';
+    document.getElementById('diff-pane').innerHTML = '<div class="error-box">No diff data was passed to this page. Please go back to the AI panel, load the latest commit diff, and click the "↗ Tab" button on a file.</div>';
+    return;
+  }
+
+  // File path in header
+  document.title = (_data.filePath||'File Diff') + ' — Git Manage Board';
+  document.getElementById('header-file-path').textContent = _data.filePath || '(unknown file)';
+
+  // Commit info
+  var ci = _data.commitInfo || {};
+  document.getElementById('commit-bar').innerHTML =
+    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+    + '<span class="commit-hash">'+_esc(ci.short_hash||ci.hash||'')+'</span>'
+    + '<span class="commit-msg">'+_esc(ci.message||'')+'</span>'
+    + '</div>'
+    + '<div class="commit-meta">'
+    + _esc(ci.author||'') + ' · ' + _esc(ci.date||'')
+    + ' &nbsp;|&nbsp; '
+    + '<span class="stat-add">+'+(_data.added||0)+'</span>&nbsp;'
+    + '<span class="stat-del">-'+(_data.removed||0)+'</span>'
+    + '</div>';
+
+  // Render diff
+  document.getElementById('diff-pane').innerHTML = renderDiff(_data.diff || '');
+  // Apply stored theme
+  _applyTabTheme();
+})();
+</script>
+</body>
+</html>
