@@ -11,10 +11,10 @@ from ai_module.ai_provider import (
     start_chat_job, get_job_status,
 )
 from git_ops import (
-    PORT, _MSGLOG, _MSGLOG_LOCK, _PUSH_JOBS, _PUSH_JOBS_LOCK,
+    PORT, set_project_path, _MSGLOG, _MSGLOG_LOCK, _PUSH_JOBS, _PUSH_JOBS_LOCK,
     _run, _run_push_streaming, _run_gitop_streaming,
     current_branch, display_branch, get_project_info,
-    get_protected_config, is_branch_protected,
+    get_project_path, get_protected_config, is_branch_protected,
     _ref_exists, _resolve_ref_for_compare,
     get_branches, has_uncommitted, stash_changes,
     stash_list, stash_diff, commit_diff, search_diff_code,
@@ -55,6 +55,19 @@ def handle_get(path, params, send_json, send_stream=None):
 
     elif path == "/api/project-name":
         send_json(get_project_info())
+        return True
+
+    elif path == "/api/project-path":
+        send_json({"path": get_project_path()})
+        return True
+
+    elif path == "/api/check-project-path":
+        import os as _os
+        check_path = params.get("path", [""])[0]
+        check_path = _os.path.abspath(_os.path.expanduser(check_path))
+        git_dir = _os.path.join(check_path, ".git")
+        valid = _os.path.isdir(check_path) and (_os.path.isdir(git_dir) or _os.path.isfile(git_dir))
+        send_json({"valid": valid, "path": check_path})
         return True
 
     elif path == "/api/protected-branches":
@@ -144,7 +157,7 @@ def handle_get(path, params, send_json, send_stream=None):
         if not base or not head:
             send_json({"ok": False, "error": "base and head required"}, 400)
             return True
-        cwd = os.getcwd()
+        cwd = get_project_path()
         base_ref = _resolve_ref_for_compare(base, base_source)
         head_ref = _resolve_ref_for_compare(head, head_source)
         if not _ref_exists(base_ref):
@@ -177,7 +190,7 @@ def handle_get(path, params, send_json, send_stream=None):
         return True
 
     elif path == "/api/ignored-list":
-        gitignore_path = os.path.join(os.getcwd(), '.gitignore')
+        gitignore_path = os.path.join(get_project_path(), '.gitignore')
         try:
             with open(gitignore_path, 'r') as gf:
                 entries = [l.strip() for l in gf.read().splitlines()
@@ -216,6 +229,61 @@ def handle_get(path, params, send_json, send_stream=None):
 
 def handle_post(path, data, send_json):
 
+    if path == "/api/switch-project":
+        new_path = data.get("path", "").strip()
+        if not new_path:
+            send_json({"ok": False, "error": "path required"}, 400)
+            return True
+        ok, msg = set_project_path(new_path)
+        send_json({"ok": ok, "path": msg if ok else "", "error": msg if not ok else ""})
+        return True
+
+    if path == "/api/browse-project":
+        import subprocess, platform
+        selected = ""
+        try:
+            system = platform.system()
+            if system == "Darwin":
+                r = subprocess.run(
+                    ["osascript", "-e",
+                     'POSIX path of (choose folder with prompt "Select Git Project")'],
+                    capture_output=True, text=True, timeout=300,
+                )
+                selected = r.stdout.strip()
+            elif system == "Windows":
+                import tempfile, os as _os
+                vbs = (
+                    'Set objShell = CreateObject("Shell.Application")\r\n'
+                    'Set objFolder = objShell.BrowseForFolder(0, "Select Git Project", 0, 17)\r\n'
+                    'If Not objFolder Is Nothing Then\r\n'
+                    '    WScript.Echo objFolder.Self.Path\r\n'
+                    'End If'
+                )
+                tmp = tempfile.NamedTemporaryFile(suffix=".vbs", delete=False, mode="w")
+                tmp.write(vbs)
+                tmp.close()
+                r = subprocess.run(
+                    ["cscript", "//Nologo", tmp.name],
+                    capture_output=True, text=True, timeout=300,
+                )
+                _os.unlink(tmp.name)
+                selected = r.stdout.strip()
+            else:
+                # Linux: try zenity, then kdialog
+                for cmd in (["zenity", "--file-selection", "--directory", "--title=Select Git Project"],
+                             ["kdialog", "--getexistingdirectory"]):
+                    try:
+                        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+                        if r.returncode == 0 and r.stdout.strip():
+                            selected = r.stdout.strip()
+                            break
+                    except Exception:
+                        pass
+        except Exception:
+            selected = ""
+        send_json({"ok": True, "path": selected if selected else ""})
+        return True
+
     if path == "/api/toggle":
         fp = data.get("path", "")
         action = data.get("action")
@@ -234,9 +302,9 @@ def handle_post(path, data, send_json):
         if not fp:
             send_json({"ok": False, "error": "No path"}, 400)
             return True
-        abs_fp = os.path.join(os.getcwd(), fp)
+        abs_fp = os.path.join(get_project_path(), fp)
         entry = fp.rstrip('/') + ('/' if (os.path.isdir(abs_fp) or fp.endswith('/')) else '')
-        gitignore_path = os.path.join(os.getcwd(), '.gitignore')
+        gitignore_path = os.path.join(get_project_path(), '.gitignore')
         try:
             with open(gitignore_path, 'r') as gf: lines = gf.read().splitlines()
         except FileNotFoundError:
@@ -250,7 +318,7 @@ def handle_post(path, data, send_json):
 
     elif path == "/api/unignore":
         entry = data.get("entry", "").strip()
-        gitignore_path = os.path.join(os.getcwd(), '.gitignore')
+        gitignore_path = os.path.join(get_project_path(), '.gitignore')
         try:
             with open(gitignore_path, 'r') as gf: lines = gf.read().splitlines()
             lines = [l for l in lines if l.strip() != entry]
@@ -511,7 +579,7 @@ def handle_post(path, data, send_json):
 
     elif path == "/api/complete-merge":
         msg = data.get("message", "")
-        cwd = os.getcwd()
+        cwd = get_project_path()
         env = {"GIT_EDITOR": "true"}
         if os.path.exists(os.path.join(cwd, ".git", "CHERRY_PICK_HEAD")):
             stdout, stderr, rc = _run(["git", "cherry-pick", "--continue"], env=env)

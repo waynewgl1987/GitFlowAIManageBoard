@@ -11,7 +11,10 @@
 <div class="container">
 
 <div class="project-banner" id="project-banner">
-  <span class="project-banner-icon">📁</span>
+  <button class="project-switcher-btn" onclick="toggleProjectSwitcher()" title="Switch Git Project">
+    <span class="project-switcher-icon">📁</span>
+    <span class="project-switcher-arrow">▾</span>
+  </button>
   <div class="project-banner-info">
     <span class="project-banner-name" id="project-banner-name">Loading…</span>
     <span class="project-banner-remote" id="project-banner-remote"></span>
@@ -411,5 +414,14 @@
     <span id="ai-fab-badge">?</span>
   </button>
 </div>
+
+<!-- Project Switcher Popup (body-level to avoid clipping) -->
+<div class="project-switcher-popup" id="project-switcher-popup" style="display:none">
+  <div class="psp-header">📂 Switch Git Project</div>
+  <button class="psp-browse-btn" onclick="browseProjectFolder()">📁 Browse & Select Project Folder…</button>
+  <div class="psp-current">Current: <code id="psp-current-path"></code></div>
+  <div class="psp-history" id="psp-history"></div>
+</div>
+
 </body>
 </html>

@@ -26,9 +26,13 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",sans-s
 .top-bar-row{display:flex;align-items:center;gap:10px;}
 .top-bar-row--branch{padding:12px 20px;background:#fafafa;border-bottom:1px solid #f0f0f0;}
 .top-bar-row--tabs{flex-wrap:wrap;padding:8px 16px 10px;justify-content:center;gap:4px;}
-.project-banner{display:flex;align-items:center;gap:12px;padding:10px 20px;margin-bottom:10px;border-radius:12px;background:linear-gradient(135deg,#1e3a8a 0%,#1d4ed8 50%,#7c3aed 100%);box-shadow:0 4px 16px rgba(30,58,138,.35);overflow:hidden;position:relative;}
-.project-banner::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(45deg,transparent,transparent 18px,rgba(255,255,255,.03) 18px,rgba(255,255,255,.03) 36px);}
+.project-banner{display:flex;align-items:center;gap:12px;padding:10px 20px;margin-bottom:10px;border-radius:12px;background:linear-gradient(135deg,#1e3a8a 0%,#1d4ed8 50%,#7c3aed 100%);box-shadow:0 4px 16px rgba(30,58,138,.35);overflow:visible;position:relative;}
+.project-banner::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(45deg,transparent,transparent 18px,rgba(255,255,255,.03) 18px,rgba(255,255,255,.03) 36px);border-radius:12px;}
 .project-banner-icon{font-size:26px;line-height:1;flex-shrink:0;position:relative;z-index:1;}
+.project-switcher-btn{display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.3);border-radius:10px;padding:6px 10px;cursor:pointer;transition:all .2s;flex-shrink:0;position:relative;z-index:1;}
+.project-switcher-btn:hover{background:rgba(255,255,255,.25);border-color:rgba(255,255,255,.5);transform:scale(1.04);}
+.project-switcher-icon{font-size:22px;line-height:1;}
+.project-switcher-arrow{font-size:12px;color:rgba(255,255,255,.7);line-height:1;}
 .project-banner-info{display:flex;flex-direction:column;gap:2px;position:relative;z-index:1;}
 .project-banner-name{font-size:20px;font-weight:800;color:#fff;letter-spacing:0.5px;line-height:1.1;text-shadow:0 1px 4px rgba(0,0,0,.3);}
 .project-banner-remote{font-size:11px;color:rgba(255,255,255,.7);font-family:monospace;letter-spacing:0.3px;}
@@ -314,3 +318,22 @@ mark{background:#fef3c7;border-radius:2px;padding:0 1px}
   0%,100%{box-shadow:0 0 0 3px rgba(99,102,241,.25),0 4px 12px rgba(29,78,216,.4)}
   50%{box-shadow:0 0 0 6px rgba(99,102,241,.15),0 4px 18px rgba(29,78,216,.55)}
 }
+
+/* ── Project Switcher Popup ─────────────────────────────────── */
+.project-switcher-popup{position:fixed;background:#fff;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.18);padding:16px;width:460px;z-index:10001;animation:psp-in .2s ease;display:none;}
+@keyframes psp-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.psp-header{font-size:15px;font-weight:800;color:#1e3a8a;margin-bottom:12px;}
+.psp-browse-btn{display:block;width:100%;padding:12px;border-radius:10px;border:2px dashed #c7d2fe;background:#eef2ff;color:#4338ca;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:14px;transition:all .15s;text-align:center;}
+.psp-browse-btn:hover{background:#e0e7ff;border-color:#a5b4fc;color:#3730a3;}
+.psp-current{font-size:12px;color:#6b7280;margin-bottom:14px;padding:6px 10px;background:#f3f4f6;border-radius:6px;}
+.psp-current code{font-family:monospace;font-size:11px;color:#374151;word-break:break-all;}
+.psp-history{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto;}
+.psp-history-label{font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;}
+.psp-hist-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;cursor:pointer;transition:background .15s;border:1px solid #e5e7eb;}
+.psp-hist-item:hover{background:#eff6ff;border-color:#bfdbfe;}
+.psp-hist-item-icon{font-size:16px;flex-shrink:0;}
+.psp-hist-item-info{flex:1;min-width:0;}
+.psp-hist-item-path{font-size:12px;font-family:monospace;color:#374151;word-break:break-all;line-height:1.3;}
+.psp-hist-item-time{font-size:10px;color:#9ca3af;margin-top:2px;}
+.psp-hist-item-del{background:none;border:none;color:#9ca3af;font-size:14px;cursor:pointer;padding:2px 6px;flex-shrink:0;border-radius:4px;transition:all .15s;}
+.psp-hist-item-del:hover{color:#ef4444;background:#fef2f2;}

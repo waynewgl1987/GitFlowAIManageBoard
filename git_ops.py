@@ -8,10 +8,30 @@ All git operations, state globals, and streaming helpers live here.
 import os, json, subprocess, socket, configparser, threading
 
 PORT    = 8989
+PROJECT_PATH = os.getcwd()  # current git project directory
 _MSGLOG = []          # in-memory operation log
 _PUSH_JOBS = {}       # {job_id: {lines:[], done:bool, ok:bool, error:str, authRequired:bool}}
 _PUSH_JOBS_LOCK = threading.Lock()
 _MSGLOG_LOCK    = threading.Lock()
+
+
+def set_project_path(path):
+    """Switch to a new git project directory. Returns (ok, message)."""
+    global PROJECT_PATH
+    path = os.path.abspath(os.path.expanduser(path))
+    if not os.path.isdir(path):
+        return False, f"Directory not found: {path}"
+    git_dir = os.path.join(path, ".git")
+    if not os.path.isdir(git_dir):
+        return False, f"Not a git repository (no .git): {path}"
+    PROJECT_PATH = path
+    os.chdir(path)
+    return True, path
+
+
+def get_project_path():
+    """Return the current project path (always up-to-date)."""
+    return PROJECT_PATH
 
 
 def _get_git_env(extra=None):
@@ -59,7 +79,7 @@ def _run(cmd, cwd=None, timeout=120, env=None):
     run_env = _get_git_env(env)
     try:
         r = subprocess.run(cmd, capture_output=True,
-                           cwd=cwd or os.getcwd(), timeout=timeout, env=run_env)
+                           cwd=cwd or PROJECT_PATH, timeout=timeout, env=run_env)
         stdout = r.stdout.decode("utf-8", errors="replace").strip()
         stderr = r.stderr.decode("utf-8", errors="replace").strip()
         return stdout, stderr, r.returncode
@@ -105,7 +125,7 @@ def _run_push_streaming(job_id, branch, extra_env=None, force=False, is_ssh=Fals
         _append_raw('$ ' + ' '.join(cmd))
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               text=True, cwd=os.getcwd(), env=run_env)
+                               text=True, cwd=PROJECT_PATH, env=run_env)
         except Exception as e:
             _append('ERROR: ' + str(e))
             return -1, False
@@ -230,7 +250,7 @@ def _run_gitop_streaming(job_id, op, mode=None):
 
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               text=True, cwd=os.getcwd(), env=run_env)
+                               text=True, cwd=PROJECT_PATH, env=run_env)
         except Exception as e:
             _append(f'ERROR: {e}')
             with _PUSH_JOBS_LOCK:
@@ -279,7 +299,7 @@ def display_branch():
 def get_project_info():
     """Return project display name, remote repo slug, app name and version from config."""
     app_name, app_version, _, _ = _load_app_config()
-    dir_name = os.path.basename(os.path.abspath(os.getcwd()))
+    dir_name = os.path.basename(os.path.abspath(PROJECT_PATH))
     remote_slug = ""
     url_out, _, rc = _run(["git", "remote", "get-url", "origin"])
     if rc == 0 and url_out.strip():
@@ -661,7 +681,7 @@ def _parse_blocks(raw):
 
 def _get_merge_type():
     """Return the current in-progress merge type: 'merge', 'rebase', 'cherry-pick', or None."""
-    cwd = os.getcwd()
+    cwd = PROJECT_PATH
     if os.path.exists(os.path.join(cwd, ".git", "CHERRY_PICK_HEAD")):
         return "cherry-pick"
     if os.path.exists(os.path.join(cwd, ".git", "rebase-merge")) or \
@@ -674,7 +694,7 @@ def _get_merge_type():
 
 def _get_merge_default_msg():
     """Return the default commit message for the current merge (reads .git/MERGE_MSG)."""
-    cwd = os.getcwd()
+    cwd = PROJECT_PATH
     merge_msg_file = os.path.join(cwd, ".git", "MERGE_MSG")
     if os.path.exists(merge_msg_file):
         try:
@@ -688,7 +708,7 @@ def _get_merge_default_msg():
 def _complete_merge_step():
     """After all conflicts are resolved, complete the merge/rebase/cherry-pick."""
     env = {"GIT_EDITOR": "true"}
-    cwd = os.getcwd()
+    cwd = PROJECT_PATH
     if os.path.exists(os.path.join(cwd, ".git", "CHERRY_PICK_HEAD")):
         return _run(["git", "cherry-pick", "--continue"], env=env)
     if os.path.exists(os.path.join(cwd, ".git", "rebase-merge")) or \

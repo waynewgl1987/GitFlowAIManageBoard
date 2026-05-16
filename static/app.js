@@ -633,6 +633,138 @@ function loadProjectName(){
   });
 }
 
+// ═══════════ Project Switcher ═══════════
+var PROJECT_HISTORY_KEY = 'git-projects-history';
+
+function _getProjectHistory(){
+  try { return JSON.parse(localStorage.getItem(PROJECT_HISTORY_KEY)||'[]'); } catch(e) { return []; }
+}
+function _saveProjectHistory(list){
+  try { localStorage.setItem(PROJECT_HISTORY_KEY, JSON.stringify(list)); } catch(e) {}
+}
+
+function toggleProjectSwitcher(){
+  var popup = document.getElementById('project-switcher-popup');
+  if (!popup) return;
+  if (popup.style.display === 'none' || !popup.style.display){
+    var btn = document.querySelector('.project-switcher-btn');
+    if (btn) {
+      var rect = btn.getBoundingClientRect();
+      popup.style.top = (rect.bottom + 8) + 'px';
+      popup.style.left = Math.max(8, rect.left) + 'px';
+    }
+    popup.style.display = 'block';
+    _renderProjectSwitcher();
+  } else {
+    popup.style.display = 'none';
+  }
+}
+
+function _renderProjectSwitcher(){
+  apiGet('/api/project-path', function(d){
+    if (d && d.path) {
+      document.getElementById('psp-current-path').textContent = d.path;
+    }
+  });
+  var hist = _getProjectHistory();
+  // Normalize and deduplicate
+  var seen = {}, clean = [];
+  for (var i = 0; i < hist.length; i++) {
+    if (typeof hist[i] === 'string') hist[i] = {path: hist[i], ts: 0};
+    if (!seen[hist[i].path]) {
+      seen[hist[i].path] = true;
+      clean.push(hist[i]);
+    }
+  }
+  if (clean.length !== hist.length) _saveProjectHistory(clean);
+  hist = clean;
+  var histEl = document.getElementById('psp-history');
+  if (!hist.length) {
+    histEl.innerHTML = '<div style="font-size:12px;color:#9ca3af;text-align:center;padding:20px 0">No project history yet — click Browse to add</div>';
+    return;
+  }
+  var html = '<div class="psp-history-label">Recent Projects</div>';
+  hist.forEach(function(entry, i){
+    var path = typeof entry === 'string' ? entry : entry.path;
+    var ts = typeof entry === 'string' ? 0 : (entry.ts || 0);
+    var timeStr = ts ? new Date(ts).toLocaleString() : '';
+    html += '<div class="psp-hist-item" onclick="switchToProject(\'' + escapeJS(path) + '\')">';
+    html += '<span class="psp-hist-item-icon">📁</span>';
+    html += '<span class="psp-hist-item-info">';
+    html += '<div class="psp-hist-item-path">' + escapeHtml(path) + '</div>';
+    if (timeStr) html += '<div class="psp-hist-item-time">Last opened: ' + timeStr + '</div>';
+    html += '</span>';
+    html += '<button class="psp-hist-item-del" onclick="event.stopPropagation();removeProjectHistory(' + i + ')" title="Remove">✕</button>';
+    html += '</div>';
+  });
+  histEl.innerHTML = html;
+}
+
+function addToProjectHistory(path){
+  var hist = _getProjectHistory();
+  // Normalize old format entries
+  for (var i = 0; i < hist.length; i++) {
+    if (typeof hist[i] === 'string') hist[i] = {path: hist[i], ts: 0};
+  }
+  // Deduplicate — remove existing entry for this path
+  hist = hist.filter(function(e){ return e.path !== path; });
+  // Add to front
+  hist.unshift({path: path, ts: Date.now()});
+  // Keep max 15
+  if (hist.length > 15) hist.pop();
+  _saveProjectHistory(hist);
+}
+
+function removeProjectHistory(i){
+  var hist = _getProjectHistory();
+  hist.splice(i, 1);
+  _saveProjectHistory(hist);
+  _renderProjectSwitcher();
+}
+
+function switchToProject(path){
+  var popup = document.getElementById('project-switcher-popup');
+  if (popup) popup.style.display = 'none';
+  _showSpinner('Switching project...');
+  fetch(API_BASE+'/api/switch-project',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:path})})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      _hideSpinner();
+      if (d.ok) {
+        addToProjectHistory(d.path);
+        setTimeout(function(){ window.location.reload(); }, 300);
+      } else {
+        addMsg('❌ Project switch failed: ' + (d.error||'unknown'), 'error');
+      }
+    })
+    .catch(function(e){
+      _hideSpinner();
+      addMsg('❌ Project switch failed: ' + (e.message||'network error'), 'error');
+    });
+}
+
+function browseProjectFolder(){
+  _showSpinner('Opening folder picker…');
+  fetch(API_BASE+'/api/browse-project', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      _hideSpinner();
+      if (d.path) {
+        switchToProject(d.path);
+      }
+    })
+    .catch(function(){ _hideSpinner(); });
+}
+
+// Close popup on outside click
+document.addEventListener('click', function(e){
+  var popup = document.getElementById('project-switcher-popup');
+  var btn = document.querySelector('.project-switcher-btn');
+  if (popup && popup.style.display !== 'none' && !popup.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+    popup.style.display = 'none';
+  }
+});
+
 function _updateConflictTabBadge(count){
   var tab=document.getElementById('tab-conflicts');
   if(!tab) return;
