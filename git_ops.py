@@ -22,7 +22,7 @@ def set_project_path(path):
     if not os.path.isdir(path):
         return False, f"Directory not found: {path}"
     git_dir = os.path.join(path, ".git")
-    if not os.path.isdir(git_dir):
+    if not os.path.isdir(git_dir) and not os.path.isfile(git_dir):
         return False, f"Not a git repository (no .git): {path}"
     PROJECT_PATH = path
     os.chdir(path)
@@ -489,6 +489,74 @@ def create_branch(name, base=None):
     if base:
         cmd.append(base)
     return _run(cmd)
+
+
+# ── Git Worktree Operations ──────────────────────────────────────────────
+
+def worktree_list():
+    """List all worktrees for the main repository.
+    Returns a list of dicts: {path, head, branch, detached, is_current, is_main}"""
+    out, err, rc = _run(["git", "worktree", "list", "--porcelain"])
+    if rc != 0:
+        return [], err, rc
+    worktrees = []
+    current = None
+    for line in out.splitlines():
+        if line.startswith("worktree "):
+            current = {"path": line[9:].strip(), "head": "", "branch": "", "detached": False, "is_current": False, "is_main": False}
+            worktrees.append(current)
+        elif line.startswith("HEAD "):
+            if current:
+                current["head"] = line[5:].strip()
+        elif line.startswith("branch "):
+            if current:
+                current["branch"] = line[7:].strip()
+        elif line.startswith("detached"):
+            if current:
+                current["detached"] = True
+        elif line == "bare":
+            pass  # bare worktree — skip
+    # Mark current worktree (the one matching PROJECT_PATH)
+    main = get_project_path()
+    for wt in worktrees:
+        if os.path.realpath(wt["path"]) == os.path.realpath(main):
+            wt["is_current"] = True
+        # Main worktree has .git as a directory; worktrees have .git as a file
+        git_path = os.path.join(wt["path"], ".git")
+        if os.path.isdir(git_path):
+            wt["is_main"] = True
+    return worktrees, "", 0
+
+
+def worktree_add(path, branch):
+    """Create a new worktree at `path` for `branch`.
+    Branch is required — creates a new branch if it doesn't exist (via -b flag).
+    Returns (stdout, stderr, returncode)."""
+    path = os.path.abspath(os.path.expanduser(path))
+    if not branch:
+        return "", "Branch name is required", -1
+    # Check if path already exists
+    if os.path.exists(path):
+        return "", f"Path already exists: {path}", -1
+    return _run(["git", "worktree", "add", path, branch])
+
+
+def worktree_remove(path, force=False):
+    """Remove a worktree at `path`.
+    Uses `git worktree remove` (safe) or `--force` for dirty worktrees.
+    Returns (stdout, stderr, returncode)."""
+    path = os.path.abspath(os.path.expanduser(path))
+    cmd = ["git", "worktree", "remove"]
+    if force:
+        cmd.append("--force")
+    cmd.append(path)
+    return _run(cmd)
+
+
+def worktree_prune():
+    """Prune stale worktree metadata (after manual deletion).
+    Returns (stdout, stderr, returncode)."""
+    return _run(["git", "worktree", "prune"])
 
 
 def delete_branch_local(name, force=False):

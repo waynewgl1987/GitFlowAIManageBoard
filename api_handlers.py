@@ -27,6 +27,7 @@ from git_ops import (
     resolve_conflict, get_file_commits,
     get_uncommitted_changes, get_commit_log,
     reset_to, revert_commit, drop_commit, squash_commits, abort_merge_or_rebase,
+    worktree_list, worktree_add, worktree_remove, worktree_prune,
 )
 
 
@@ -222,6 +223,11 @@ def handle_get(path, params, send_json, send_stream=None):
             send_json({"ok": False, "error": "base commit hash required"}, 400)
             return True
         send_json(get_commit_diff_compare(base_hash, head_hash))
+        return True
+
+    elif path == "/api/worktrees":
+        trees, err, rc = worktree_list()
+        send_json({"ok": rc == 0, "worktrees": trees, "error": err if rc != 0 else ""})
         return True
 
     return False
@@ -675,6 +681,35 @@ def handle_post(path, data, send_json):
             return True
         job_id = start_chat_job(provider, api_key, base_url, model, messages)
         send_json({"ok": True, "jobId": job_id})
+        return True
+
+    elif path == "/api/worktree-add":
+        path = data.get("path", "").strip()
+        branch = data.get("branch", "").strip()
+        stdout, stderr, rc = worktree_add(path, branch)
+        if rc == 0:
+            send_json({"ok": True, "stdout": stdout})
+        else:
+            send_json({"ok": False, "error": stderr or stdout}, 400)
+        return True
+
+    elif path == "/api/worktree-remove":
+        path = data.get("path", "").strip()
+        force = data.get("force", False)
+        stdout, stderr, rc = worktree_remove(path, force=force)
+        if rc == 0:
+            send_json({"ok": True, "stdout": stdout})
+        else:
+            send_json({"ok": False, "error": stderr or stdout}, 400)
+        return True
+
+    elif path == "/api/worktree-switch":
+        new_path = data.get("path", "").strip()
+        if not new_path:
+            send_json({"ok": False, "error": "path required"}, 400)
+            return True
+        ok, msg = set_project_path(new_path)
+        send_json({"ok": ok, "path": msg if ok else "", "error": msg if not ok else ""})
         return True
 
     return False

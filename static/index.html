@@ -46,6 +46,11 @@
     <button class="btn-tab" id="tab-log" onclick="loadLog(1)" data-i18n="tab_log">Commit Log</button>
     <button class="btn-tab" id="tab-conflicts" onclick="loadConflicts()" data-i18n="tab_conflicts">Conflicts</button>
     <button class="btn-tab" id="tab-stash" onclick="loadStash()" data-i18n="tab_stash">Stash</button>
+    <span class="top-bar-sep">|</span>
+    <button class="btn-tab btn-tab--worktree" id="tab-worktree" onclick="toggleWorktreePopup()" title="Worktrees">
+      <span id="worktree-btn-label">🌲 Worktrees</span>
+      <span class="project-switcher-arrow" style="margin-left:2px">▾</span>
+    </button>
     <div class="sync-section">
       <span style="font-size:10px;color:#9ca3af;font-weight:700;letter-spacing:0.8px;margin-right:2px;">REMOTE</span>
       <button class="git-action-btn fetch-btn" onclick="doFetch()">
@@ -321,53 +326,53 @@
     <!-- Row 1: title + model + close -->
     <div class="ai-header-row ai-header-row--top">
       <div class="ai-chat-header-left">
-        <span class="ai-chat-header-title">🤖 AI Git Assistant</span>
+        <span class="ai-chat-header-title" data-i18n="ai_title">🤖 AI Git Assistant</span>
         <div class="ai-chat-header-model-row">
           <span class="ai-chat-header-model" id="ai-header-model"></span>
-          <button class="ai-header-model-info" id="ai-header-model-info" onclick="showAIModelNamePopover()" title="Show full model name" style="display:none">ⓘ</button>
+          <button class="ai-header-model-info" id="ai-header-model-info" onclick="showAIModelNamePopover()" data-i18n-title="ai_show_model_name" title="Show full model name" style="display:none">ⓘ</button>
         </div>
       </div>
-      <button onclick="closeAIChatPanel()" title="Close" style="padding:4px 8px;flex-shrink:0">✕</button>
+      <button onclick="closeAIChatPanel()" data-i18n-title="ai_close" title="Close" style="padding:4px 8px;flex-shrink:0">✕</button>
     </div>
     <!-- Row 2: mode tabs + width + settings -->
     <div class="ai-header-row ai-header-row--bottom">
       <div class="ai-mode-tabs">
-        <button class="ai-mode-tab active" id="ai-tab-chat" onclick="switchAIMode('chat')">💬 Chat</button>
-        <button class="ai-mode-tab" id="ai-tab-diff" onclick="switchAIMode('diff');loadLatestCommitDiff()">📊 Diff</button>
+        <button class="ai-mode-tab active" id="ai-tab-chat" onclick="switchAIMode('chat')" data-i18n="ai_tab_chat">💬 Chat</button>
+        <button class="ai-mode-tab" id="ai-tab-diff" onclick="switchAIMode('diff');loadLatestCommitDiff()" data-i18n="ai_tab_diff">📊 Diff</button>
       </div>
-      <div class="ai-width-input-wrap" title="Panel width in pixels" style="margin-left:auto">
-        <input type="number" id="ai-width-input" class="ai-width-input" min="320" max="1400" step="10" onchange="onWidthInputChange(this.value)" title="Panel width (px)">
+      <div class="ai-width-input-wrap" data-i18n-title="ai_width_tooltip" title="Panel width in pixels" style="margin-left:auto">
+        <input type="number" id="ai-width-input" class="ai-width-input" min="320" max="1400" step="10" onchange="onWidthInputChange(this.value)" data-i18n-title="ai_width_px" title="Panel width (px)">
         <span style="font-size:9px;opacity:.65;color:#fff">px</span>
       </div>
-      <button class="ai-provider-settings-btn" onclick="openAIProviderModal()" title="Configure AI Provider">⚙️ Settings</button>
+      <button class="ai-provider-settings-btn" onclick="openAIProviderModal()" data-i18n="ai_settings" data-i18n-title="ai_configure_provider" title="Configure AI Provider">⚙️ Settings</button>
     </div>
   </div>
 
   <!-- ── Chat mode body ── -->
   <div id="ai-chat-body" style="display:flex;flex-direction:column;flex:1;overflow:hidden;min-height:0">
     <div class="ai-quick-actions">
-      <div class="ai-quick-section-label">🔀 Conflict Resolution</div>
-      <button class="ai-quick-btn" onclick="aiQuickAction('analyze-conflicts')">🔍 Analyze Conflicts</button>
-      <button class="ai-quick-btn success" onclick="aiQuickAction('accept-ours')">⬅️ Accept All Ours</button>
-      <button class="ai-quick-btn warning" onclick="aiQuickAction('accept-theirs')">➡️ Accept All Theirs</button>
-      <button class="ai-quick-btn" onclick="aiQuickAction('accept-both')">🔀 Accept Both</button>
-      <button class="ai-quick-btn danger" onclick="aiQuickAction('abort-merge')">🛑 Abort Merge</button>
-      <div class="ai-quick-section-label">🔧 General Git</div>
-      <button class="ai-quick-btn" onclick="aiQuickAction('git-status')">📊 Git Status</button>
-      <button class="ai-quick-btn" onclick="aiQuickAction('suggest-commit')">💬 Suggest Commit</button>
-      <button class="ai-quick-btn" onclick="aiQuickAction('explain-diff')">🔀 Explain Changes</button>
-      <button class="ai-quick-btn" onclick="aiQuickAction('recent-commits')">📜 Recent Commits</button>
-      <button class="ai-quick-btn" onclick="aiQuickAction('analyze-branch')">🌿 Analyze Branch</button>
-      <button class="ai-quick-btn" onclick="aiQuickAction('stash-help')">📦 Stash Help</button>
-      <button class="ai-quick-btn" onclick="aiQuickAction('clean-branch')">🧹 Clean Suggestions</button>
-      <div class="ai-quick-section-label">📊 Commit Analysis</div>
-      <button class="ai-quick-btn" style="background:#7c3aed;color:#fff;border-color:#7c3aed" onclick="switchAIMode('diff');loadLatestCommitDiff()">🔍 Analyze Latest Commit</button>
-      <button class="ai-quick-btn" style="background:#6d28d9;color:#fff;border-color:#6d28d9" onclick="openCommitPickerModal()">📋 Analyze Specific Commit</button>
+      <div class="ai-quick-section-label" data-i18n="ai_section_conflict">🔀 Conflict Resolution</div>
+      <button class="ai-quick-btn" onclick="aiQuickAction('analyze-conflicts')" data-i18n="ai_btn_analyze_conflicts">🔍 Analyze Conflicts</button>
+      <button class="ai-quick-btn success" onclick="aiQuickAction('accept-ours')" data-i18n="ai_btn_accept_ours">⬅️ Accept All Ours</button>
+      <button class="ai-quick-btn warning" onclick="aiQuickAction('accept-theirs')" data-i18n="ai_btn_accept_theirs">➡️ Accept All Theirs</button>
+      <button class="ai-quick-btn" onclick="aiQuickAction('accept-both')" data-i18n="ai_btn_accept_both">🔀 Accept Both</button>
+      <button class="ai-quick-btn danger" onclick="aiQuickAction('abort-merge')" data-i18n="ai_btn_abort_merge">🛑 Abort Merge</button>
+      <div class="ai-quick-section-label" data-i18n="ai_section_general">🔧 General Git</div>
+      <button class="ai-quick-btn" onclick="aiQuickAction('git-status')" data-i18n="ai_btn_git_status">📊 Git Status</button>
+      <button class="ai-quick-btn" onclick="aiQuickAction('suggest-commit')" data-i18n="ai_btn_suggest_commit">💬 Suggest Commit</button>
+      <button class="ai-quick-btn" onclick="aiQuickAction('explain-diff')" data-i18n="ai_btn_explain_changes">🔀 Explain Changes</button>
+      <button class="ai-quick-btn" onclick="aiQuickAction('recent-commits')" data-i18n="ai_btn_recent_commits">📜 Recent Commits</button>
+      <button class="ai-quick-btn" onclick="aiQuickAction('analyze-branch')" data-i18n="ai_btn_analyze_branch">🌿 Analyze Branch</button>
+      <button class="ai-quick-btn" onclick="aiQuickAction('stash-help')" data-i18n="ai_btn_stash_help">📦 Stash Help</button>
+      <button class="ai-quick-btn" onclick="aiQuickAction('clean-branch')" data-i18n="ai_btn_clean_suggestions">🧹 Clean Suggestions</button>
+      <div class="ai-quick-section-label" data-i18n="ai_section_commit">📊 Commit Analysis</div>
+      <button class="ai-quick-btn" style="background:#7c3aed;color:#fff;border-color:#7c3aed" onclick="switchAIMode('diff');loadLatestCommitDiff()" data-i18n="ai_btn_analyze_latest">🔍 Analyze Latest Commit</button>
+      <button class="ai-quick-btn" style="background:#6d28d9;color:#fff;border-color:#6d28d9" onclick="openCommitPickerModal()" data-i18n="ai_btn_analyze_specific">📋 Analyze Specific Commit</button>
     </div>
     <div id="ai-chat-history" class="ai-chat-history"></div>
     <div class="ai-input-area">
-      <textarea id="ai-chat-input" placeholder="Ask anything about your git repo… (Enter to send, Shift+Enter for newline)"></textarea>
-      <button id="ai-send-btn" onclick="sendAIMessage()">Send</button>
+      <textarea id="ai-chat-input" data-i18n-placeholder="ai_input_placeholder" placeholder="Ask anything about your git repo… (Enter to send, Shift+Enter for newline)"></textarea>
+      <button id="ai-send-btn" onclick="sendAIMessage()" data-i18n="ai_send">Send</button>
     </div>
   </div>
 
@@ -375,25 +380,25 @@
   <div id="diff-viewer-wrap" style="display:none;flex:1;flex-direction:column;overflow:hidden;min-height:0">
     <div class="diff-toolbar" id="diff-toolbar">
       <div class="diff-commit-info" id="diff-commit-info">
-        <span style="color:#9ca3af;font-size:12px">Loading commit info…</span>
+        <span style="color:#9ca3af;font-size:12px" data-i18n="ai_diff_loading">Loading commit info…</span>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
-        <button class="diff-toolbar-btn" onclick="loadLatestCommitDiff()">🔄 Refresh</button>
-        <button class="diff-toolbar-btn" id="diff-theme-btn" onclick="toggleDiffTheme()">☀️ Light</button>
-        <button class="diff-toolbar-btn primary" id="diff-analyze-all-btn" onclick="analyzeAllDiff()" style="display:none">🤖 Analyze All</button>
+        <button class="diff-toolbar-btn" onclick="loadLatestCommitDiff()" data-i18n="ai_diff_refresh">🔄 Refresh</button>
+        <button class="diff-toolbar-btn" id="diff-theme-btn" onclick="toggleDiffTheme()" data-i18n="ai_diff_light">☀️ Light</button>
+        <button class="diff-toolbar-btn primary" id="diff-analyze-all-btn" onclick="analyzeAllDiff()" style="display:none" data-i18n="ai_diff_analyze_all">🤖 Analyze All</button>
       </div>
     </div>
     <div style="flex:1;display:flex;overflow:hidden;min-height:0">
       <div class="diff-files-pane" id="diff-files-pane">
-        <div class="diff-empty-state">No commit diff loaded. Click 🔄 Refresh.</div>
+        <div class="diff-empty-state" data-i18n="ai_diff_empty">No commit diff loaded. Click 🔄 Refresh.</div>
       </div>
       <div class="diff-analysis-pane" id="diff-analysis-pane" style="display:none">
         <div class="diff-analysis-header">
-          <span id="diff-analysis-title">🤖 AI Analysis</span>
+          <span id="diff-analysis-title" data-i18n="ai_diff_analysis_title">🤖 AI Analysis</span>
           <button onclick="closeDiffAnalysisPane()" style="background:none;border:none;color:rgba(255,255,255,.8);cursor:pointer;font-size:16px;line-height:1;padding:0 2px">✕</button>
         </div>
         <div class="diff-analysis-content" id="diff-analysis-content">
-          <div class="diff-analysis-empty">Select a file and click 🤖 Analyze to see AI insights here.</div>
+          <div class="diff-analysis-empty" data-i18n="ai_diff_analysis_empty">Select a file and click 🤖 Analyze to see AI insights here.</div>
         </div>
       </div>
     </div>
@@ -403,12 +408,12 @@
 <!-- ═══════════ AI Floating Button ═══════════ -->
 <div id="ai-fab-wrap">
   <div id="ai-fab-bubble" class="ai-fab-bubble">
-    <div class="ai-fab-bubble-title">🤖 AI Git 助手</div>
-    <div class="ai-fab-bubble-desc">智能分析代码 · 解答 Git 问题<br>处理 Commit / 冲突 / 分支</div>
-    <button class="ai-fab-bubble-cta" onclick="toggleAIChatPanel()">立即体验 →</button>
+    <div class="ai-fab-bubble-title" data-i18n="ai_fab_title">🤖 AI Git Assistant</div>
+    <div class="ai-fab-bubble-desc" id="ai-fab-bubble-desc" data-i18n-html="ai_fab_desc">Smart code analysis · Git Q&A<br>Commit / Conflicts / Branches</div>
+    <button class="ai-fab-bubble-cta" onclick="toggleAIChatPanel()" data-i18n="ai_fab_cta">Try Now →</button>
     <div class="ai-fab-bubble-arrow"></div>
   </div>
-  <button id="ai-fab" onclick="toggleAIChatPanel();hideFabBubble()" title="AI Git Assistant — Click to chat">
+  <button id="ai-fab" onclick="toggleAIChatPanel();hideFabBubble()" data-i18n-title="ai_fab_tooltip" title="AI Git Assistant — Click to chat">
     <span class="fab-emoji">🤖</span>
     <span class="fab-hint">AI</span>
     <span id="ai-fab-badge">?</span>
@@ -421,6 +426,35 @@
   <button class="psp-browse-btn" onclick="browseProjectFolder()">📁 Browse & Select Project Folder…</button>
   <div class="psp-current">Current: <code id="psp-current-path"></code></div>
   <div class="psp-history" id="psp-history"></div>
+</div>
+
+<!-- Worktree Popup (body-level to avoid clipping) -->
+<div class="worktree-popup" id="worktree-popup" style="display:none">
+  <div class="wtp-header">
+    <span class="wtp-header-title" data-i18n="wtp_header">🌲 Worktrees</span>
+    <button class="wtp-help-btn" onclick="toggleWorktreeHelp()" data-i18n-title="wtp_help_tooltip" title="What are worktrees?">?</button>
+  </div>
+
+  <!-- Help panel (rendered by JS for i18n support) -->
+  <div class="wtp-help-panel" id="wtp-help-panel"></div>
+
+  <!-- Create new worktree -->
+  <div class="wtp-create-section">
+    <div class="wtp-create-title" data-i18n="wtp_create_title">➕ New Worktree</div>
+    <div class="wtp-create-row">
+      <input type="text" id="wtp-branch-input" class="wtp-input" data-i18n-placeholder="wtp_branch_placeholder" placeholder="Branch name (e.g. feature/xxx)">
+      <input type="text" id="wtp-path-input" class="wtp-input" data-i18n-placeholder="wtp_path_placeholder" placeholder="Worktree path (e.g. ~/projects/my-feature)">
+      <button class="wtp-create-btn" onclick="createWorktree()" data-i18n="wtp_create_btn">Create</button>
+    </div>
+    <div class="wtp-create-hint" data-i18n="worktree_create_hint">Creates a new worktree directory linked to this repo</div>
+    <div class="wtp-occupied" id="wtp-occupied-hint" style="display:none"></div>
+  </div>
+
+  <!-- Worktree list -->
+  <div class="wtp-list-label" data-i18n="wtp_list_label">📋 Active Worktrees</div>
+  <div class="wtp-list" id="wtp-list">
+    <div style="font-size:12px;color:#9ca3af;text-align:center;padding:20px 0" data-i18n="wtp_loading">Loading…</div>
+  </div>
 </div>
 
 </body>

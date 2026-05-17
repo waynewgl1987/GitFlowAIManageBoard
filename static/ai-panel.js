@@ -4,6 +4,9 @@
 // Uses: /api/ai/test-provider  /api/ai/chat  /api/ai/chat-status
 // ═══════════════════════════════════════════════════════════════════════════
 
+var _t = typeof t === 'function' ? t : function(k) { return k; };
+var _tf = typeof tf === 'function' ? tf : function(k, l, r) { return _t(k, l); };
+
 // ── Provider definitions ──────────────────────────────────────────────────
 var AI_PROVIDERS = {
   openai:    { name:'OpenAI',         baseUrl:'https://api.openai.com/v1',                             needsKey:true,  hint:'',  models:['gpt-4.1','gpt-4.1-mini','gpt-4o','gpt-4o-mini','gpt-3.5-turbo','o1-mini'] },
@@ -118,10 +121,10 @@ function showAIModelNamePopover() {
   var cfg = getAIConfig();
   var fullText = (AI_PROVIDERS[cfg.provider]?.name || cfg.provider) + ' · ' + cfg.model;
   if (typeof showModal === 'function') {
-    showModal('🤖 Current AI Model',
-      '<div style="font-size:14px;word-break:break-all;line-height:1.7"><b>Provider:</b> '
+    showModal(t('ai_model_title'),
+      '<div style="font-size:14px;word-break:break-all;line-height:1.7"><b>' + t('ai_provider_label') + '</b> '
       + (AI_PROVIDERS[cfg.provider]?.name || cfg.provider)
-      + '<br><b>Model:</b> ' + cfg.model + '</div>',
+      + '<br><b>' + t('ai_model_label') + '</b> ' + cfg.model + '</div>',
       null, null);
   }
 }
@@ -210,15 +213,15 @@ function testAIProvider() {
                || document.getElementById('ai-model-sel')?.value || '';
 
   if (pDef.needsKey && !api_key) {
-    if (statusEl) { statusEl.textContent = '❌ API key required for ' + (pDef.name || provider); statusEl.style.color = '#ef4444'; }
+    if (statusEl) { statusEl.textContent = t('ai_key_required') + (pDef.name || provider); statusEl.style.color = '#ef4444'; }
     return;
   }
   if (provider === 'custom' && !(base_url || '').trim()) {
-    if (statusEl) { statusEl.textContent = '❌ Base URL required for Custom provider'; statusEl.style.color = '#ef4444'; }
+    if (statusEl) { statusEl.textContent = t('ai_base_url_required'); statusEl.style.color = '#ef4444'; }
     return;
   }
 
-  if (statusEl) { statusEl.textContent = '🔄 Testing…'; statusEl.style.color = '#6b7280'; }
+  if (statusEl) { statusEl.textContent = t('ai_testing'); statusEl.style.color = '#6b7280'; }
 
   fetch('/api/ai/test-provider', {
     method: 'POST',
@@ -228,12 +231,12 @@ function testAIProvider() {
   .then(function(r){ return r.json(); })
   .then(function(data){
     if (statusEl) {
-      statusEl.textContent = data.ok ? ('✅ ' + (data.message || 'Connected')) : ('❌ ' + (data.error || 'Failed'));
+      statusEl.textContent = data.ok ? (t('ai_connected')) : (t('ai_error') + (data.error || t('ai_unknown_error')));
       statusEl.style.color = data.ok ? '#10b981' : '#ef4444';
     }
   })
   .catch(function(e){
-    if (statusEl) { statusEl.textContent = '❌ Network error: ' + e.message; statusEl.style.color = '#ef4444'; }
+    if (statusEl) { statusEl.textContent = t('ai_network_error') + e.message; statusEl.style.color = '#ef4444'; }
   });
 }
 
@@ -247,7 +250,7 @@ function saveAIProvider() {
   _saveAiCfg();
   _updateAIBadge();
   closeAIProviderModal();
-  _appendSysMsg('✅ Provider saved: ' + (AI_PROVIDERS[provider]?.name || provider) + ' · ' + model);
+  _appendSysMsg(t('ai_provider_saved') + (AI_PROVIDERS[provider]?.name || provider) + ' · ' + model);
 }
 
 // ── Chat rendering ────────────────────────────────────────────────────────
@@ -382,7 +385,7 @@ function _showThinking() {
   var div = document.createElement('div');
   div.className = 'ai-msg assistant';
   div.id = 'ai-thinking-indicator';
-  div.innerHTML = '<div class="ai-thinking"><div class="ai-dots"><span></span><span></span><span></span></div><span>Thinking…</span></div>';
+  div.innerHTML = '<div class="ai-thinking"><div class="ai-dots"><span></span><span></span><span></span></div><span>' + t('ai_thinking') + '</span></div>';
   hist.appendChild(div);
   hist.scrollTop = hist.scrollHeight;
   return div;
@@ -442,7 +445,7 @@ function _sendToAI(userText, systemExtra) {
     .then(function(data){
       if (!data.ok) {
         _removeThinking();
-        _appendErrorMsg('assistant', '❌ Error: ' + (data.error || 'Unknown error'), null, userText);
+        _appendErrorMsg('assistant', t('ai_error') + (data.error || t('ai_unknown_error')), null, userText);
         if (sendBtn) sendBtn.disabled = false;
         return;
       }
@@ -450,7 +453,7 @@ function _sendToAI(userText, systemExtra) {
     })
     .catch(function(e){
       _removeThinking();
-      _appendErrorMsg('assistant', '❌ Network error: ' + e.message, null, userText);
+      _appendErrorMsg('assistant', t('ai_network_error') + e.message, null, userText);
       if (sendBtn) sendBtn.disabled = false;
     });
   });
@@ -471,7 +474,7 @@ function _pollChatJob(jobId, sendBtn, userText) {
       if (data.ok) {
         _appendMsg('assistant', data.text, meta);
       } else {
-        _appendErrorMsg('assistant', '❌ ' + (data.error || 'LLM call failed'), meta, userText);
+        _appendErrorMsg('assistant', '❌ ' + (data.error || t('ai_llm_failed')), meta, userText);
       }
     })
     .catch(function(){
@@ -599,7 +602,7 @@ function aiQuickAction(action) {
         .then(function(r){ return r.json(); })
         .then(function(data){
           if (!data.count) {
-            _appendSysMsg('✅ No conflicts found in the current repository.');
+            _appendSysMsg(t('ai_no_conflicts'));
           } else {
             _sendToAI('Please analyze the current git conflicts and suggest the best resolution strategy for each one. Explain the differences between the ours (HEAD) and theirs (incoming) sides.');
           }
@@ -662,7 +665,7 @@ function aiQuickAction(action) {
       .then(function(data){
         var files = (data.files || []);
         if (!files.length) {
-          _appendSysMsg('✅ Working tree is clean — no uncommitted changes.');
+          _appendSysMsg(t('ai_clean_tree'));
         } else {
           var summary = files.map(function(f){ return (f.status||'?') + '  ' + f.path; }).join('\n');
           _sendToAI('Explain this git status output and tell me what actions I should take:\n\n' + summary);
@@ -678,7 +681,7 @@ function aiQuickAction(action) {
       .then(function(data){
         var commits = data.commits || [];
         if (!commits.length) {
-          _appendSysMsg('ℹ️ No commits found on this branch.');
+          _appendSysMsg(t('ai_no_commits'));
         } else {
           var summary = commits.map(function(c){
             return '• ' + (c.short_hash || c.hash || '?') + '  ' + (c.message || '') + '  (' + (c.author || '') + ', ' + (c.date || '') + ')';
@@ -696,7 +699,7 @@ function aiQuickAction(action) {
       .then(function(data){
         var list = data.stash || [];
         if (!list.length) {
-          _appendSysMsg('ℹ️ Your stash is empty — no stashed changes.');
+          _appendSysMsg(t('ai_stash_empty'));
         } else {
           var summary = list.slice(0, 8).map(function(s){ return '• ' + s.ref + ': ' + s.message; }).join('\n');
           _sendToAI('I have these stashed changes:\n\n' + summary + '\n\nExplain what each stash is likely for, and recommend which ones I should apply, drop, or keep. Give me the git commands to manage them.');
@@ -722,11 +725,11 @@ function aiQuickAction(action) {
           .then(function(r){ return r.json(); })
           .then(function(data){
             if (data.ok) {
-              _appendSysMsg('✅ Merge/rebase aborted. Returned to previous state.');
+              _appendSysMsg(t('ai_merge_aborted'));
               if (typeof checkConflicts === 'function') checkConflicts();
               if (typeof loadFiles === 'function') loadFiles();
             } else {
-              _appendSysMsg('❌ Abort failed: ' + (data.error || 'No merge in progress?'));
+              _appendSysMsg(t('ai_abort_failed') + (data.error || t('ai_no_merge')));
             }
           })
           .catch(function(e){ _appendSysMsg('❌ Network error: ' + e.message); });
@@ -756,11 +759,11 @@ function _acceptAllConflicts(side) {
     .then(function(data){
       var files = data.files || [];
       if (!files.length) {
-        _appendSysMsg('✅ No conflicts to resolve.');
+        _appendSysMsg(t('ai_no_conflicts_resolve'));
         return;
       }
       var sideLabel = side === 'ours' ? '⬅️ HEAD (ours)' : side === 'theirs' ? '➡️ Theirs (incoming)' : '🔀 Both';
-      _appendSysMsg('⏳ Resolving ' + files.length + ' file(s) using ' + sideLabel + '…');
+      _appendSysMsg(tf('ai_resolving', null, {n: files.length}) + sideLabel + '…');
       var resolution = side === 'both' ? 'both' : side;
       var promises = files.map(function(fp){
         return fetch('/api/resolve-conflict', {
@@ -772,9 +775,9 @@ function _acceptAllConflicts(side) {
       Promise.all(promises).then(function(results){
         var ok = results.filter(function(r){ return r.ok; }).length;
         var fail = results.length - ok;
-        var msg = '✅ Resolved ' + ok + '/' + files.length + ' file(s)';
+        var msg = tf('ai_resolved', null, {ok: ok, total: files.length});
         if (fail) {
-          msg += ' (' + fail + ' skipped/failed)';
+          msg += tf('ai_skipped', null, {skip: fail});
           // Show per-file errors so users know why structured files were skipped
           for (var ri = 0; ri < results.length; ri++) {
             if (!results[ri].ok && results[ri].error) {
@@ -809,14 +812,14 @@ function _acceptAllConflicts(side) {
 function aiAnalyzeConflictBlock(filePath, blockIdx) {
   var data = (typeof _conflictData !== 'undefined') ? _conflictData[filePath] : null;
   if (!data || !data.blocks) {
-    _appendSysMsg('⚠️ Conflict data not loaded. Please expand the file first.');
+    _appendSysMsg(t('ai_conflict_not_loaded'));
     if (!document.getElementById('ai-chat-panel').classList.contains('open')) toggleAIChatPanel();
     return;
   }
   var cblocks = data.blocks.filter(function(b){ return b.type === 'conflict'; });
   var block = cblocks[blockIdx];
   if (!block) {
-    _appendSysMsg('⚠️ Conflict block #' + (blockIdx+1) + ' not found.');
+    _appendSysMsg(tf('ai_conflict_block_not_found', null, {idx: blockIdx+1}));
     return;
   }
   if (!document.getElementById('ai-chat-panel').classList.contains('open')) toggleAIChatPanel();
@@ -936,8 +939,8 @@ function loadLatestCommitDiff() {
   var infoEl = document.getElementById('diff-commit-info');
   var filesEl = document.getElementById('diff-files-pane');
   var analyzeAllBtn = document.getElementById('diff-analyze-all-btn');
-  if (infoEl) infoEl.innerHTML = '<span style="color:#6b7280;font-size:12px">⏳ Loading latest commit diff…</span>';
-  if (filesEl) filesEl.innerHTML = '<div class="diff-empty-state"><div class="diff-loading-dots"><span></span><span></span><span></span></div>Fetching diff…</div>';
+  if (infoEl) infoEl.innerHTML = '<span style="color:#6b7280;font-size:12px">⏳ ' + t('ai_diff_loading') + '</span>';
+  if (filesEl) filesEl.innerHTML = '<div class="diff-empty-state"><div class="diff-loading-dots"><span></span><span></span><span></span></div>' + t('ai_diff_fetching') + '</div>';
   if (analyzeAllBtn) analyzeAllBtn.style.display = 'none';
 
   fetch('/api/latest-commit-diff')
@@ -945,8 +948,8 @@ function loadLatestCommitDiff() {
     .then(function(data) {
       if (!data.ok) {
         _currentDiffData = null;
-        if (infoEl) infoEl.innerHTML = '<span style="color:#ef4444;font-size:12px">❌ ' + _escHtml(data.error || 'Failed to load diff') + '</span>';
-        if (filesEl) filesEl.innerHTML = '<div class="diff-empty-state" style="color:#ef4444">Failed to load diff.</div>';
+        if (infoEl) infoEl.innerHTML = '<span style="color:#ef4444;font-size:12px">❌ ' + _escHtml(data.error || t('ai_diff_fail_load')) + '</span>';
+        if (filesEl) filesEl.innerHTML = '<div class="diff-empty-state" style="color:#ef4444">' + t('ai_diff_fail_load') + '</div>';
         return;
       }
       _currentDiffData = data;
@@ -959,8 +962,8 @@ function loadLatestCommitDiff() {
     })
     .catch(function(e) {
       _currentDiffData = null;
-      if (infoEl) infoEl.innerHTML = '<span style="color:#ef4444;font-size:12px">❌ Network error</span>';
-      if (filesEl) filesEl.innerHTML = '<div class="diff-empty-state" style="color:#ef4444">Network error: ' + _escHtml(e.message) + '</div>';
+      if (infoEl) infoEl.innerHTML = '<span style="color:#ef4444;font-size:12px">❌ ' + t('ai_diff_network_error') + '</span>';
+      if (filesEl) filesEl.innerHTML = '<div class="diff-empty-state" style="color:#ef4444">' + t('ai_diff_network_error') + ': ' + _escHtml(e.message) + '</div>';
     });
 }
 
@@ -984,7 +987,7 @@ function _renderDiffFileSections(data) {
   var el = document.getElementById('diff-files-pane');
   if (!el) return;
   if (!data.files || !data.files.length) {
-    el.innerHTML = '<div class="diff-empty-state">No file changes found in this commit.</div>';
+    el.innerHTML = '<div class="diff-empty-state">' + t('ai_diff_empty_commit') + '</div>';
     _applyDiffTheme();
     _refreshFileHistBtns();
     return;
@@ -1037,7 +1040,7 @@ function _renderDiffFileSections(data) {
     var analyzeBtn = document.createElement('button');
     analyzeBtn.className = 'diff-file-btn';
     analyzeBtn.id = 'diff-analyze-btn-' + idx;
-    analyzeBtn.textContent = '🤖 Analyze';
+    analyzeBtn.textContent = t('ai_analyze_btn');
     analyzeBtn.addEventListener('click', (function(i) {
       return function() { analyzeSingleFileDiff(i); };
     })(idx));
@@ -1053,7 +1056,7 @@ function _renderDiffFileSections(data) {
 
     var tabBtn = document.createElement('button');
     tabBtn.className = 'diff-file-btn tab-btn';
-    tabBtn.textContent = '↗ Tab';
+    tabBtn.textContent = t('ai_tab_btn');
     tabBtn.addEventListener('click', (function(i) {
       return function() { openDiffInTab(i); };
     })(idx));
@@ -1491,7 +1494,7 @@ function _applyDiffTheme() {
   if (analysisPane) analysisPane.classList.toggle('theme-light', isLight);
   // Toggle button label
   var btn = document.getElementById('diff-theme-btn');
-  if (btn) btn.textContent = isLight ? '🌙 Dark' : '☀️ Light';
+  if (btn) btn.textContent = isLight ? t('ai_diff_dark') : t('ai_diff_light');
 }
 
 function toggleDiffTheme() {
@@ -1631,7 +1634,7 @@ function analyzeAllDiff() {
 
   _diffAIRequest(prompt, function(text, err) {
     _stopProgressTimer();
-    if (btn) { btn.disabled = false; btn.textContent = '🤖 Analyze All'; }
+    if (btn) { btn.disabled = false; btn.textContent = t('ai_diff_analyze_all'); }
     if (err) {
       showDiffAnalysisPane('All Files', '<div style="color:#ef4444;padding:8px;font-size:12px">❌ ' + _escHtml(err) + '</div>');
     } else {
@@ -1965,7 +1968,7 @@ function analyzeCommitVsHead(commitHash, commitMsg) {
           + '<span style="color:#b45309;font-size:11px">' + _escHtml(fromText) + _escHtml(data.base_message || commitMsg || '') + '</span>'
           + ' · <span class="diff-stat-add">+' + (data.total_added || 0) + '</span>'
           + ' <span class="diff-stat-del">-' + (data.total_removed || 0) + '</span>'
-          + ' · ' + (data.files ? data.files.length : 0) + ' file(s)'
+    + ' · ' + tf('ai_diff_files_count', null, {n: (data.files ? data.files.length : 0)})
           + '</div>';
       }
       _renderDiffFileSections(data);

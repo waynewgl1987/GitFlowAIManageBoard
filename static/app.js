@@ -121,6 +121,142 @@ var T = {
   confirm_commit_title: {en:'Confirm Commit', zh:'确认提交'},
   stashing_pulling: {en:'Stashing & pulling...', zh:'正在暂存并拉取...'},
   all_mode_slow: {en:'⚠️ Loading all may be slow', zh:'⚠️ All 模式可能加载缓慢'},
+  worktree_create_hint: {en:'Creates a new worktree directory linked to this repo. Use an absolute path like <code>~/projects/my-feature</code> or <code>../my-hotfix</code>.', zh:'创建一个链接到当前仓库的新工作树目录。请使用绝对路径，如 <code>~/projects/my-feature</code> 或 <code>../my-hotfix</code>。'},
+  wtp_header: {en:'🌲 Worktrees', zh:'🌲 工作树'},
+  wtp_help_tooltip: {en:'What are worktrees?', zh:'什么是工作树？'},
+  wtp_help_title: {en:'What are Git Worktrees?', zh:'什么是 Git 工作树？'},
+  wtp_help_intro: {en:'Worktrees let you check out <b>multiple branches</b> from the same repo into separate directories — without cloning again. Each worktree has its own working directory but shares the same <code>.git</code> history.', zh:'工作树允许你从同一个仓库中<b>同时检出多个分支</b>到不同的目录 — 无需再次克隆。每个工作树拥有独立的工作目录，但共享同一个 <code>.git</code> 历史。'},
+  wtp_help_uses_title: {en:'📌 Common uses:', zh:'📌 常见用途：'},
+  wtp_help_use_1: {en:'⚡ <b>紧急修复</b> <code>main</code> 上的 bug，同时继续开发 <code>feature/xxx</code>', zh:'⚡ <b>紧急修复</b> <code>main</code> 上的 bug，同时继续开发 <code>feature/xxx</code>'},
+  wtp_help_use_2: {en:'🔀 <b>Review PRs</b> by checking out branches side-by-side', zh:'🔀 同时检出多个分支，<b>并行审查 PR</b>'},
+  wtp_help_use_3: {en:'🧪 <b>Test</b> changes in an isolated directory without affecting your main workspace', zh:'🧪 在隔离目录中<b>测试</b>变更，不影响主工作区'},
+  wtp_help_use_4: {en:'🏗️ <b>Build</b> or run CI tasks in parallel on different branches', zh:'🏗️ 在不同分支上<b>并行构建</b>或运行 CI 任务'},
+  wtp_help_note: {en:'⚠️ Note: Each branch can only be in <b>one worktree</b> at a time. The list below shows which branches are occupied.', zh:'⚠️ 注意：每个分支只能存在于<b>一个工作树</b>中。下方列表会显示哪些分支已被占用。'},
+  wtp_create_title: {en:'➕ New Worktree', zh:'➕ 新建工作树'},
+  wtp_branch_placeholder: {en:'Branch name (e.g. feature/xxx)', zh:'分支名（如 feature/xxx）'},
+  wtp_path_placeholder: {en:'Worktree path (e.g. ~/projects/my-feature)', zh:'工作树路径（如 ~/projects/my-feature）'},
+  wtp_create_btn: {en:'Create', zh:'创建'},
+  wtp_list_label: {en:'📋 Active Worktrees', zh:'📋 当前工作树'},
+  wtp_loading: {en:'Loading…', zh:'加载中…'},
+  wtp_load_fail: {en:'⚠️ Failed to load', zh:'⚠️ 加载失败'},
+  wtp_empty: {en:'No worktrees found. Create one above.', zh:'暂无工作树，请在上方创建。'},
+  wtp_detached_head: {en:'(detached HEAD)', zh:'（游离 HEAD）'},
+  wtp_bare: {en:'(bare)', zh:'（裸仓库）'},
+  wtp_tag_current: {en:'current', zh:'当前'},
+  wtp_tag_detached: {en:'detached', zh:'游离'},
+  wtp_tag_main: {en:'main', zh:'主'},
+  wtp_switch_btn: {en:'🔄 Switch', zh:'🔄 切换'},
+  wtp_active_label: {en:'✓ Active', zh:'✓ 当前'},
+  wtp_enter_branch: {en:'Please enter a branch name', zh:'请输入分支名'},
+  wtp_enter_path: {en:'Please enter a worktree path', zh:'请输入工作树路径'},
+  wtp_branch_occupied: {en:'Branch "{branch}" is already checked out in another worktree. Use a different branch.', zh:'分支 "{branch}" 已在其他工作树中检出，请使用其他分支。'},
+  wtp_creating: {en:'Creating worktree...', zh:'正在创建工作树...'},
+  wtp_created: {en:'Worktree created successfully', zh:'工作树创建成功'},
+  wtp_create_failed: {en:'Create failed: ', zh:'创建失败: '},
+  wtp_switching: {en:'Switching worktree...', zh:'正在切换工作树...'},
+  wtp_switch_failed: {en:'Switch failed: ', zh:'切换失败: '},
+  wtp_remove_title: {en:'Remove Worktree?', zh:'删除工作树？'},
+  wtp_remove_desc: {en:'This will remove the worktree at:<br><code style="font-size:11px;word-break:break-all">{path}</code><br><br>Files on disk will remain but the git link will be removed.', zh:'将删除以下位置的工作树：<br><code style="font-size:11px;word-break:break-all">{path}</code><br><br>磁盘上的文件将保留，但 git 链接会被移除。'},
+  wtp_remove_btn: {en:'Remove', zh:'删除'},
+  wtp_force_remove_title: {en:'⚠️ Force Remove Worktree?', zh:'⚠️ 强制删除工作树？'},
+  wtp_force_remove_desc: {en:'This worktree has <b>uncommitted changes</b> that will be <b>lost forever</b>.<br><br>Path: <code style="font-size:11px;word-break:break-all">{path}</code><br><br>Force delete anyway?', zh:'该工作树有<b>未提交的更改</b>，强制删除将<b>永久丢失</b>这些更改。<br><br>路径：<code style="font-size:11px;word-break:break-all">{path}</code><br><br>确定强制删除？'},
+  wtp_force_remove_btn: {en:'⚠️ Force Delete', zh:'⚠️ 强制删除'},
+  wtp_removing: {en:'Removing worktree...', zh:'正在删除工作树...'},
+  wtp_removed: {en:'Worktree removed', zh:'工作树已删除'},
+  wtp_remove_failed: {en:'Remove failed: ', zh:'删除失败: '},
+  wtp_btn_label: {en:'🌲 Worktrees', zh:'🌲 工作树'},
+  wtp_occupied_prefix: {en:'⚠️ Branches already in use: ', zh:'⚠️ 已被占用的分支: '},
+
+  // ── AI Panel ───────────────────────────────────────────────────
+  ai_title: {en:'🤖 AI Git Assistant', zh:'🤖 AI Git 助手'},
+  ai_close: {en:'Close', zh:'关闭'},
+  ai_tab_chat: {en:'💬 Chat', zh:'💬 聊天'},
+  ai_tab_diff: {en:'📊 Diff', zh:'📊 差异'},
+  ai_width_tooltip: {en:'Panel width in pixels', zh:'面板宽度（像素）'},
+  ai_width_px: {en:'Panel width (px)', zh:'面板宽度 (px)'},
+  ai_settings: {en:'⚙️ Settings', zh:'⚙️ 设置'},
+  ai_configure_provider: {en:'Configure AI Provider', zh:'配置 AI 服务商'},
+  ai_show_model_name: {en:'Show full model name', zh:'显示完整模型名'},
+  ai_section_conflict: {en:'🔀 Conflict Resolution', zh:'🔀 冲突解决'},
+  ai_btn_analyze_conflicts: {en:'🔍 Analyze Conflicts', zh:'🔍 分析冲突'},
+  ai_btn_accept_ours: {en:'⬅️ Accept All Ours', zh:'⬅️ 全部接受本地'},
+  ai_btn_accept_theirs: {en:'➡️ Accept All Theirs', zh:'➡️ 全部接受传入'},
+  ai_btn_accept_both: {en:'🔀 Accept Both', zh:'🔀 双方保留'},
+  ai_btn_abort_merge: {en:'🛑 Abort Merge', zh:'🛑 中止合并'},
+  ai_section_general: {en:'🔧 General Git', zh:'🔧 通用 Git'},
+  ai_btn_git_status: {en:'📊 Git Status', zh:'📊 Git 状态'},
+  ai_btn_suggest_commit: {en:'💬 Suggest Commit', zh:'💬 建议提交信息'},
+  ai_btn_explain_changes: {en:'🔀 Explain Changes', zh:'🔀 解释变更'},
+  ai_btn_recent_commits: {en:'📜 Recent Commits', zh:'📜 最近提交'},
+  ai_btn_analyze_branch: {en:'🌿 Analyze Branch', zh:'🌿 分析分支'},
+  ai_btn_stash_help: {en:'📦 Stash Help', zh:'📦 Stash 帮助'},
+  ai_btn_clean_suggestions: {en:'🧹 Clean Suggestions', zh:'🧹 清理建议'},
+  ai_section_commit: {en:'📊 Commit Analysis', zh:'📊 提交分析'},
+  ai_btn_analyze_latest: {en:'🔍 Analyze Latest Commit', zh:'🔍 分析最新提交'},
+  ai_btn_analyze_specific: {en:'📋 Analyze Specific Commit', zh:'📋 分析指定提交'},
+  ai_input_placeholder: {en:'Ask anything about your git repo… (Enter to send, Shift+Enter for newline)', zh:'询问 Git 仓库相关问题…（回车发送，Shift+回车换行）'},
+  ai_send: {en:'Send', zh:'发送'},
+  ai_diff_loading: {en:'Loading commit info…', zh:'正在加载提交信息…'},
+  ai_diff_refresh: {en:'🔄 Refresh', zh:'🔄 刷新'},
+  ai_diff_light: {en:'☀️ Light', zh:'☀️ 浅色'},
+  ai_diff_dark: {en:'🌙 Dark', zh:'🌙 深色'},
+  ai_diff_analyze_all: {en:'🤖 Analyze All', zh:'🤖 全部分析'},
+  ai_diff_empty: {en:'No commit diff loaded. Click 🔄 Refresh.', zh:'未加载提交差异。点击 🔄 刷新。'},
+  ai_diff_analysis_title: {en:'🤖 AI Analysis', zh:'🤖 AI 分析'},
+  ai_diff_analysis_empty: {en:'Select a file and click 🤖 Analyze to see AI insights here.', zh:'选择文件并点击 🤖 Analyze 查看 AI 分析结果。'},
+  ai_fab_title: {en:'🤖 AI Git Assistant', zh:'🤖 AI Git 助手'},
+  ai_fab_desc: {en:'Smart code analysis · Git Q&A<br>Commit / Conflicts / Branches', zh:'智能分析代码 · 解答 Git 问题<br>处理 Commit / 冲突 / 分支'},
+  ai_fab_cta: {en:'Try Now →', zh:'立即体验 →'},
+  ai_fab_tooltip: {en:'AI Git Assistant — Click to chat', zh:'AI Git 助手 — 点击对话'},
+  ai_model_title: {en:'🤖 Current AI Model', zh:'🤖 当前 AI 模型'},
+  ai_provider_label: {en:'Provider:', zh:'服务商:'},
+  ai_model_label: {en:'Model:', zh:'模型:'},
+  ai_thinking: {en:'Thinking…', zh:'思考中…'},
+  ai_testing: {en:'🔄 Testing…', zh:'🔄 测试中…'},
+  ai_connected: {en:'✅ Connected', zh:'✅ 连接成功'},
+  ai_provider_saved: {en:'✅ Provider saved: ', zh:'✅ 服务商已保存: '},
+  ai_error: {en:'❌ Error: ', zh:'❌ 错误: '},
+  ai_unknown_error: {en:'Unknown error', zh:'未知错误'},
+  ai_network_error: {en:'❌ Network error: ', zh:'❌ 网络错误: '},
+  ai_llm_failed: {en:'LLM call failed', zh:'LLM 调用失败'},
+  ai_key_required: {en:'❌ API key required for ', zh:'❌ 需要 API key: '},
+  ai_base_url_required: {en:'❌ Base URL required for Custom provider', zh:'❌ 自定义服务商需要填写 Base URL'},
+  ai_no_conflicts: {en:'✅ No conflicts found in the current repository.', zh:'✅ 当前仓库没有冲突。'},
+  ai_no_conflicts_resolve: {en:'✅ No conflicts to resolve.', zh:'✅ 没有需要解决的冲突。'},
+  ai_clean_tree: {en:'✅ Working tree is clean — no uncommitted changes.', zh:'✅ 工作区干净 — 没有未提交的更改。'},
+  ai_no_commits: {en:'ℹ️ No commits found on this branch.', zh:'ℹ️ 该分支没有提交记录。'},
+  ai_stash_empty: {en:'ℹ️ Your stash is empty — no stashed changes.', zh:'ℹ️ 暂存区为空 — 没有暂存的更改。'},
+  ai_resolving: {en:'⏳ Resolving {n} file(s) using ', zh:'⏳ 正在使用 '},
+  ai_resolved: {en:'✅ Resolved {ok}/{total} file(s)', zh:'✅ 已解决 {ok}/{total} 个文件'},
+  ai_skipped: {en:' ({skip} skipped/failed)', zh:'（{skip} 个跳过/失败）'},
+  ai_merge_aborted: {en:'✅ Merge/rebase aborted. Returned to previous state.', zh:'✅ 合并/变基已中止。已恢复到之前的状态。'},
+  ai_abort_failed: {en:'❌ Abort failed: ', zh:'❌ 中止失败: '},
+  ai_no_merge: {en:'No merge in progress?', zh:'没有进行中的合并？'},
+  ai_conflict_not_loaded: {en:'⚠️ Conflict data not loaded. Please expand the file first.', zh:'⚠️ 冲突数据未加载。请先展开文件。'},
+  ai_conflict_block_not_found: {en:'⚠️ Conflict block #{idx} not found.', zh:'⚠️ 未找到第 {idx} 个冲突块。'},
+  ai_diff_fetching: {en:'Fetching diff…', zh:'正在获取差异…'},
+  ai_diff_fail_load: {en:'Failed to load diff', zh:'加载差异失败'},
+  ai_diff_network_error: {en:'Network error', zh:'网络错误'},
+  ai_diff_empty_commit: {en:'No file changes found in this commit.', zh:'该提交中没有文件变更。'},
+  ai_diff_files_count: {en:'{n} file(s)', zh:'{n} 个文件'},
+  ai_analyze_btn: {en:'🤖 Analyze', zh:'🤖 分析'},
+  ai_tab_btn: {en:'↗ Tab', zh:'↗ 标签'},
+  err_copy_prompt: {en:'Copy Prompt', zh:'复制提示词'},
+  err_copied: {en:'Copied!', zh:'已复制！'},
+  err_retry: {en:'Retry', zh:'重试'},
+  ai_confirm_yes: {en:'✅ Yes, Proceed', zh:'✅ 确认执行'},
+  ai_provider_api_key: {en:'API Key', zh:'API Key'},
+  ai_provider_key_placeholder: {en:'Paste your API key…', zh:'粘贴你的 API key…'},
+  ai_provider_base_url: {en:'Base URL', zh:'Base URL'},
+  ai_provider_custom_model: {en:'Or enter a custom model name…', zh:'或输入自定义模型名…'},
+  ai_provider_test: {en:'🔌 Test Connection', zh:'🔌 测试连接'},
+  ai_provider_save: {en:'💾 Save', zh:'💾 保存'},
+  ai_provider_cancel: {en:'Cancel', zh:'取消'},
+  ai_commit_picker_title: {en:'📋 Select a Commit to Analyze', zh:'📋 选择要分析的提交'},
+  ai_commit_picker_subtitle: {en:'Compares the selected commit against the latest HEAD', zh:'将选中的提交与最新 HEAD 对比'},
+  ai_commit_picker_search: {en:'🔍 Search hash / author / message...', zh:'🔍 搜索 hash / 作者 / 消息...'},
+  ai_commit_picker_loading: {en:'Loading…', zh:'加载中…'},
+
   squash_root_error: {en:'Cannot squash: the oldest selected commit is the initial (root) commit and has no parent. Please deselect it.', zh:'无法 Squash：选中的最旧提交是初始 commit（没有父节点），请取消勾选它。'},
   force_push_title: {en:'🎉 Squash Successful!', zh:'🎉 Squash 成功！'},
   force_push_desc: {en:'Squash rewrites commit history. To update the remote branch you must <b>force push</b> (<code>--force-with-lease</code>).<br><br>Force push now?', zh:'Squash 会改写提交历史，远端分支需要使用 <b>force push</b>（<code>--force-with-lease</code>）才能更新。<br><br>现在立即执行吗？'},
@@ -141,6 +277,7 @@ var T = {
   tab_log: {en:'Commit Log', zh:'提交日志'},
   tab_conflicts: {en:'Conflicts', zh:'冲突'},
   tab_stash: {en:'Stash', zh:'暂存'},
+  tab_worktree: {en:'Worktrees', zh:'工作树'},
   tab_fetch: {en:'Fetch', zh:'Fetch'},
   tab_fetch_title: {en:'Fetch from remote (download only)', zh:'从远端拉取最新信息（仅下载，不合并）'},
   tab_pull: {en:'Pull', zh:'Pull'},
@@ -278,6 +415,8 @@ function switchLang(lang) {
   var sel = document.getElementById('lang-sel');
   if (sel) sel.value = lang;
   applyI18n();
+  var helpPanel = document.getElementById('wtp-help-panel');
+  if (helpPanel) { helpPanel._rendered = false; if (helpPanel.classList.contains('show')) _renderHelpPanel(); }
   var active = document.querySelector('.page.active');
   if (active) {
     var id = active.id;
@@ -296,6 +435,11 @@ function applyI18n() {
     var el = els[i];
     var key = el.getAttribute('data-i18n');
     el.textContent = t(key);
+  }
+  var htmlEls = document.querySelectorAll('[data-i18n-html]');
+  for (var i=0; i<htmlEls.length; i++) {
+    var el = htmlEls[i];
+    el.innerHTML = t(el.getAttribute('data-i18n-html'));
   }
   var phEls = document.querySelectorAll('[data-i18n-placeholder]');
   for (var i=0; i<phEls.length; i++) {
@@ -763,7 +907,214 @@ document.addEventListener('click', function(e){
   if (popup && popup.style.display !== 'none' && !popup.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
     popup.style.display = 'none';
   }
+  // Also close worktree popup on outside click
+  var wtp = document.getElementById('worktree-popup');
+  var wtpBtn = document.getElementById('tab-worktree');
+  if (wtp && wtp.style.display !== 'none' && !wtp.contains(e.target) && e.target !== wtpBtn && !wtpBtn.contains(e.target)) {
+    wtp.style.display = 'none';
+  }
 });
+
+// ── Worktree Management ──────────────────────────────────────────────────
+
+function _renderHelpPanel(){
+  var panel = document.getElementById('wtp-help-panel');
+  if (panel._rendered) return;
+  panel._rendered = true;
+  var html = '<b>' + t('wtp_help_title') + '</b><br>' +
+    t('wtp_help_intro') + '<br><br>' +
+    '<b>' + t('wtp_help_uses_title') + '</b>' +
+    '<ul><li>' + t('wtp_help_use_1') + '</li>' +
+    '<li>' + t('wtp_help_use_2') + '</li>' +
+    '<li>' + t('wtp_help_use_3') + '</li>' +
+    '<li>' + t('wtp_help_use_4') + '</li></ul>' +
+    '<b>' + t('wtp_help_note') + '</b>';
+  panel.innerHTML = html;
+}
+
+function toggleWorktreePopup(){
+  var popup = document.getElementById('worktree-popup');
+  if (!popup) return;
+  if (popup.style.display === 'none' || !popup.style.display){
+    var btn = document.getElementById('tab-worktree');
+    if (btn) {
+      var rect = btn.getBoundingClientRect();
+      popup.style.top = (rect.bottom + 8) + 'px';
+      popup.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 546)) + 'px';
+    }
+    popup.style.display = 'block';
+    document.getElementById('wtp-help-panel').classList.remove('show');
+    _loadWorktreeList();
+  } else {
+    popup.style.display = 'none';
+  }
+}
+
+function toggleWorktreeHelp(){
+  var panel = document.getElementById('wtp-help-panel');
+  _renderHelpPanel();
+  panel.classList.toggle('show');
+}
+
+function _loadWorktreeList(){
+  var listEl = document.getElementById('wtp-list');
+  listEl.innerHTML = '<div style="font-size:12px;color:#9ca3af;text-align:center;padding:20px 0"><span class="spinner" style="width:16px;height:16px;border-width:2px;margin-right:8px;display:inline-block;vertical-align:middle"></span> ' + t('wtp_loading') + '</div>';
+  apiGet('/api/worktrees', function(d){
+    if (!d || !d.ok) {
+      listEl.innerHTML = '<div class="wtp-empty">' + t('wtp_load_fail') + '</div>';
+      return;
+    }
+    _renderWorktreeList(d.worktrees || []);
+  });
+}
+
+function _renderWorktreeList(worktrees){
+  var listEl = document.getElementById('wtp-list');
+  if (!worktrees.length) {
+    listEl.innerHTML = '<div class="wtp-empty">' + t('wtp_empty') + '</div>';
+    return;
+  }
+  var html = '';
+  worktrees.forEach(function(wt){
+    var isCurrent = wt.is_current;
+    var itemClass = isCurrent ? 'wtp-item wtp-item--current' : 'wtp-item';
+    var branchDisplay = wt.branch ? wt.branch.replace('refs/heads/', '') : (wt.detached ? t('wtp_detached_head') : t('wtp_bare'));
+    var shortPath = wt.path;
+    var parts = wt.path.split('/');
+    if (parts.length > 3) shortPath = '…/' + parts.slice(-2).join('/');
+    
+    html += '<div class="' + itemClass + '">';
+    html += '<span class="wtp-item-icon">' + (isCurrent ? '📍' : '🌿') + '</span>';
+    html += '<div class="wtp-item-info">';
+    html += '<div class="wtp-item-branch">' + escapeHtml(branchDisplay);
+    if (isCurrent) html += '<span class="wtp-item-tag wtp-item-tag--current">' + t('wtp_tag_current') + '</span>';
+    else if (wt.detached) html += '<span class="wtp-item-tag wtp-item-tag--detached">' + t('wtp_tag_detached') + '</span>';
+    if (wt.is_main) html += '<span class="wtp-item-tag wtp-item-tag--main">' + t('wtp_tag_main') + '</span>';
+    html += '</div>';
+    html += '<div class="wtp-item-path" title="' + escapeHtml(wt.path) + '">' + escapeHtml(shortPath) + '</div>';
+    html += '</div>';
+    html += '<div class="wtp-item-actions">';
+    if (!isCurrent) {
+      html += '<button class="wtp-btn wtp-btn-switch" onclick="switchToWorktree(\'' + escapeJS(wt.path) + '\')">' + t('wtp_switch_btn') + '</button>';
+    } else {
+      html += '<span style="font-size:10px;color:#22c55e;font-weight:700;padding:4px 8px">' + t('wtp_active_label') + '</span>';
+    }
+    if (!isCurrent && !wt.is_main) {
+      html += '<button class="wtp-btn wtp-btn-delete" onclick="removeWorktree(\'' + escapeJS(wt.path) + '\')">🗑</button>';
+    }
+    html += '</div>';
+    html += '</div>';
+  });
+  listEl.innerHTML = html;
+  
+  var occupied = [];
+  worktrees.forEach(function(wt){
+    if (wt.branch) occupied.push(wt.branch.replace('refs/heads/', ''));
+  });
+  var hintEl = document.getElementById('wtp-occupied-hint');
+  if (occupied.length && hintEl) {
+    hintEl.style.display = 'block';
+    hintEl.innerHTML = t('wtp_occupied_prefix') + '<b>' + occupied.join(', ') + '</b>';
+  } else if (hintEl) {
+    hintEl.style.display = 'none';
+  }
+  
+  var currentWt = null;
+  for (var i = 0; i < worktrees.length; i++) {
+    if (worktrees[i].is_current) { currentWt = worktrees[i]; break; }
+  }
+  var label = document.getElementById('worktree-btn-label');
+  if (label && currentWt && currentWt.branch) {
+    var shortBranch = currentWt.branch.replace('refs/heads/', '');
+    label.textContent = '🌲 ' + (shortBranch.length > 16 ? shortBranch.substring(0,15) + '…' : shortBranch);
+  } else if (label) {
+    label.textContent = t('wtp_btn_label');
+  }
+}
+
+function createWorktree(){
+  var branch = document.getElementById('wtp-branch-input').value.trim();
+  var path = document.getElementById('wtp-path-input').value.trim();
+  if (!branch) { showToast(t('wtp_enter_branch'), 'error', 3000); return; }
+  if (!path) { showToast(t('wtp_enter_path'), 'error', 3000); return; }
+  
+  var occupiedHint = document.getElementById('wtp-occupied-hint');
+  if (occupiedHint && occupiedHint.style.display !== 'none') {
+    var text = occupiedHint.textContent || '';
+    var prefix = t('wtp_occupied_prefix').replace(/<[^>]*>/g, '');
+    var branches = text.replace(prefix, '').split(',').map(function(s){return s.trim();});
+    if (branches.indexOf(branch) >= 0) {
+      showToast(tf('wtp_branch_occupied', null, {branch: branch}), 'error', 5000);
+      return;
+    }
+  }
+  
+  _showSpinner(t('wtp_creating'));
+  apiPost('/api/worktree-add', {branch: branch, path: path}, function(d){
+    _hideSpinner();
+    if (d.ok) {
+      showToast(t('wtp_created'));
+      document.getElementById('wtp-branch-input').value = '';
+      document.getElementById('wtp-path-input').value = '';
+      _loadWorktreeList();
+    } else {
+      showToast(t('wtp_create_failed') + (d.error || 'unknown'), 'error', 5000);
+    }
+  });
+}
+
+function switchToWorktree(path){
+  var popup = document.getElementById('worktree-popup');
+  if (popup) popup.style.display = 'none';
+  _showSpinner(t('wtp_switching'));
+  apiPost('/api/worktree-switch', {path: path}, function(d){
+    _hideSpinner();
+    if (d.ok) {
+      setTimeout(function(){ window.location.reload(); }, 300);
+    } else {
+      showToast(t('wtp_switch_failed') + (d.error || 'unknown'), 'error', 5000);
+    }
+  });
+}
+
+function removeWorktree(path){
+  _doRemoveWorktree(path, false);
+}
+
+function _doRemoveWorktree(path, force){
+  showModal(
+    force ? t('wtp_force_remove_title') : t('wtp_remove_title'),
+    force ? tf('wtp_force_remove_desc', null, {path: escapeHtml(path)}) : tf('wtp_remove_desc', null, {path: escapeHtml(path)}),
+    force ? t('wtp_force_remove_btn') : t('wtp_remove_btn'),
+    function(){
+      _showSpinner(t('wtp_removing'));
+      var body = {path: path};
+      if (force) body.force = true;
+      apiPost('/api/worktree-remove', body, function(d){
+        _hideSpinner();
+        if (d.ok) {
+          showToast(t('wtp_removed'));
+          _loadWorktreeList();
+        } else {
+          var err = d.error || '';
+          if (!force && (err.indexOf('modified or untracked') >= 0 || err.indexOf('--force') >= 0)) {
+            _doRemoveWorktree(path, true);
+          } else {
+            showToast(t('wtp_remove_failed') + (d.error || 'unknown'), 'error', 5000);
+          }
+        }
+      });
+    }
+  );
+}
+
+function loadWorktreeLabel(){
+  apiGet('/api/worktrees', function(d){
+    if (d && d.ok && d.worktrees) {
+      _renderWorktreeList(d.worktrees);
+    }
+  });
+}
 
 function _updateConflictTabBadge(count){
   var tab=document.getElementById('tab-conflicts');
@@ -3316,6 +3667,7 @@ document.getElementById('reset-btn').addEventListener('click',function(){
 // ═══════════ Init ═══════════
 loadCurrentBranch();
 loadProjectName();
+loadWorktreeLabel();
 // Restore last active tab
 (function(){
   var saved=null;
