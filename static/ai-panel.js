@@ -1418,7 +1418,7 @@ function _openDiffHistoryPopup(title, entries, onSelect) {
 
   var body = popup.querySelector('.diff-hist-popup-body');
   if (!entries.length) {
-    body.innerHTML = '<div class="diff-hist-popup-empty">No history yet</div>';
+    body.innerHTML = '<div class="diff-hist-popup-empty">' + t('ai_no_history') + '</div>';
   } else {
     entries.forEach(function(entry) {
       var item = document.createElement('div');
@@ -1578,7 +1578,7 @@ function analyzeSingleFileDiff(idx) {
 
   _diffAIRequest(prompt, function(text, err) {
     _stopProgressTimer();
-    if (btn) { btn.textContent = '🔄 Re-analyze'; btn.disabled = false; }
+    if (btn) { btn.textContent = t('ai_re_analyze'); btn.disabled = false; }
     // Switch from "analyzing" to "analyzed"
     _analyzingIdx = null;
     _analyzedIdx = idx;
