@@ -127,7 +127,7 @@ var T = {
   wtp_help_title: {en:'What are Git Worktrees?', zh:'什么是 Git 工作树？'},
   wtp_help_intro: {en:'Worktrees let you check out <b>multiple branches</b> from the same repo into separate directories — without cloning again. Each worktree has its own working directory but shares the same <code>.git</code> history.', zh:'工作树允许你从同一个仓库中<b>同时检出多个分支</b>到不同的目录 — 无需再次克隆。每个工作树拥有独立的工作目录，但共享同一个 <code>.git</code> 历史。'},
   wtp_help_uses_title: {en:'📌 Common uses:', zh:'📌 常见用途：'},
-  wtp_help_use_1: {en:'⚡ <b>紧急修复</b> <code>main</code> 上的 bug，同时继续开发 <code>feature/xxx</code>', zh:'⚡ <b>紧急修复</b> <code>main</code> 上的 bug，同时继续开发 <code>feature/xxx</code>'},
+  wtp_help_use_1: {en:'⚡ <b>Hotfix</b> a bug on <code>main</code> while working on <code>feature/xxx</code>', zh:'⚡ <b>紧急修复</b> <code>main</code> 上的 bug，同时继续开发 <code>feature/xxx</code>'},
   wtp_help_use_2: {en:'🔀 <b>Review PRs</b> by checking out branches side-by-side', zh:'🔀 同时检出多个分支，<b>并行审查 PR</b>'},
   wtp_help_use_3: {en:'🧪 <b>Test</b> changes in an isolated directory without affecting your main workspace', zh:'🧪 在隔离目录中<b>测试</b>变更，不影响主工作区'},
   wtp_help_use_4: {en:'🏗️ <b>Build</b> or run CI tasks in parallel on different branches', zh:'🏗️ 在不同分支上<b>并行构建</b>或运行 CI 任务'},
@@ -238,8 +238,10 @@ var T = {
   ai_diff_fail_load: {en:'Failed to load diff', zh:'加载差异失败'},
   ai_diff_network_error: {en:'Network error', zh:'网络错误'},
   ai_diff_empty_commit: {en:'No file changes found in this commit.', zh:'该提交中没有文件变更。'},
+  ai_no_history: {en:'No history yet', zh:'暂无历史'},
   ai_diff_files_count: {en:'{n} file(s)', zh:'{n} 个文件'},
   ai_analyze_btn: {en:'🤖 Analyze', zh:'🤖 分析'},
+  ai_re_analyze: {en:'🔄 Re-analyze', zh:'🔄 重新分析'},
   ai_tab_btn: {en:'↗ Tab', zh:'↗ 标签'},
   err_copy_prompt: {en:'Copy Prompt', zh:'复制提示词'},
   err_copied: {en:'Copied!', zh:'已复制！'},
@@ -248,10 +250,12 @@ var T = {
   ai_provider_api_key: {en:'API Key', zh:'API Key'},
   ai_provider_key_placeholder: {en:'Paste your API key…', zh:'粘贴你的 API key…'},
   ai_provider_base_url: {en:'Base URL', zh:'Base URL'},
+  ai_provider_model_label: {en:'Model', zh:'模型'},
   ai_provider_custom_model: {en:'Or enter a custom model name…', zh:'或输入自定义模型名…'},
   ai_provider_test: {en:'🔌 Test Connection', zh:'🔌 测试连接'},
   ai_provider_save: {en:'💾 Save', zh:'💾 保存'},
   ai_provider_cancel: {en:'Cancel', zh:'取消'},
+  ai_provider_title: {en:'🤖 AI Provider Settings', zh:'🤖 AI 服务商设置'},
   ai_commit_picker_title: {en:'📋 Select a Commit to Analyze', zh:'📋 选择要分析的提交'},
   ai_commit_picker_subtitle: {en:'Compares the selected commit against the latest HEAD', zh:'将选中的提交与最新 HEAD 对比'},
   ai_commit_picker_search: {en:'🔍 Search hash / author / message...', zh:'🔍 搜索 hash / 作者 / 消息...'},
@@ -939,7 +943,15 @@ function toggleWorktreePopup(){
     var btn = document.getElementById('tab-worktree');
     if (btn) {
       var rect = btn.getBoundingClientRect();
-      popup.style.top = (rect.bottom + 8) + 'px';
+      var popupH = Math.min(530, window.innerHeight * 0.85);
+      var spaceBelow = window.innerHeight - rect.bottom - 16;
+      if (spaceBelow < 280) {
+        popup.style.top = Math.max(8, rect.top - popupH - 8) + 'px';
+        popup.style.maxHeight = Math.min(popupH, rect.top - 16) + 'px';
+      } else {
+        popup.style.top = (rect.bottom + 8) + 'px';
+        popup.style.maxHeight = Math.min(popupH, spaceBelow) + 'px';
+      }
       popup.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 546)) + 'px';
     }
     popup.style.display = 'block';
@@ -1684,11 +1696,28 @@ function _renderBranches(data,perPage){
     pag.innerHTML = _renderSmartPaginationHTML('branches');
 }
 
+function sanitizeBranchName(name){
+  // Replace whitespace and git-invalid chars with underscore, per git check-ref-format rules
+  var s = name
+    .replace(/[\s~^:?*\[\\]/g, '_')   // spaces and explicitly forbidden chars
+    .replace(/@\{/g, '_')              // @{ sequence
+    .replace(/\.\./g, '_')             // consecutive dots
+    .replace(/\/\//g, '/')             // consecutive slashes
+    .replace(/\.lock$/i, '_lock')      // cannot end with .lock
+    .replace(/^[.\-]/, '_')            // cannot start with . or -
+    .replace(/\.$/, '_')               // cannot end with .
+    .replace(/_+/g, '_');              // collapse multiple underscores
+  return s;
+}
+
 function createNewBranch(){
-  var name=document.getElementById('new-branch-name').value.trim();
-  if(!name){addMsg(t('enter_branch_name'),'error');return}
+  var raw=document.getElementById('new-branch-name').value.trim();
+  if(!raw){addMsg(t('enter_branch_name'),'error');return}
+  var name=sanitizeBranchName(raw);
   var curName=document.getElementById('branch-name').textContent;
-  showModal('Create Branch','Create new branch <b>'+escapeHtml(name)+'</b><br><br>Based on: <span style="background:#1e40af;color:#fff;padding:2px 10px;border-radius:99px;font-weight:700">'+escapeHtml(curName)+'</span>','Create',function(){
+  var nameInfo='<b>'+escapeHtml(name)+'</b>';
+  if(name!==raw) nameInfo='<b>'+escapeHtml(name)+'</b><br><small style="color:#facc15">⚠ Renamed from: '+escapeHtml(raw)+'</small>';
+  showModal('Create Branch','Create new branch '+nameInfo+'<br><br>Based on: <span style="background:#1e40af;color:#fff;padding:2px 10px;border-radius:99px;font-weight:700">'+escapeHtml(curName)+'</span>','Create',function(){
     apiPost('/api/create-branch',{name:name},function(data){
       if(data.ok){
         document.getElementById('new-branch-name').value='';loadBranches();loadCurrentBranch();
