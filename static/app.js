@@ -106,6 +106,16 @@ var T = {
   push_after_merge_desc: {en:'Merge committed! Push <b>{branch}</b> to remote now?', zh:'合并已提交！是否立即将 <b>{branch}</b> 推送到远端？'},
   push_now_btn: {en:'Push Now', zh:'立即推送'},
   push_later_btn: {en:'Cancel (Push Manually)', zh:'取消（手动推送）'},
+  rebase_now_btn: {en:'Rebase Now', zh:'立即 Rebase'},
+  rebase_progress: {en:'🔀 Rebasing onto ', zh:'🔀 正在 Rebase 到 '},
+  rebase_ok: {en:'✅ Rebase succeeded — history is now linear', zh:'✅ Rebase 成功 — 历史已线性化'},
+  rebase_ok_title: {en:'✅ Rebase Succeeded', zh:'✅ Rebase 成功'},
+  rebase_up_to_date: {en:'ℹ️ Already up to date — nothing to rebase', zh:'ℹ️ 已是最新 — 无需 Rebase'},
+  rebase_conflict_title: {en:'⚠️ Rebase Conflicts!', zh:'⚠️ Rebase 冲突！'},
+  rebase_fail_title: {en:'❌ Rebase Failed', zh:'❌ Rebase 失败'},
+  rebase_push_desc: {en:'Rebase rewrites history. Force push <b>{branch}</b> to remote now?', zh:'Rebase 改写了历史，是否立即 Force Push <b>{branch}</b> 到远端？'},
+  merge_op_title: {en:'Merge / Rebase', zh:'Merge / Rebase'},
+  mrh_title: {en:'Merge vs Rebase — What\'s the difference?', zh:'Merge vs Rebase — 有什么区别？'},
   stash_failed: {en:'Stash failed: ', zh:'Stash 失败: '},
   pull_ok_pop: {en:'Pull OK, popping stash...', zh:'Pull 成功，恢复 stash...'},
   stash_conflict: {en:'Stash pop conflict! Resolve in Conflicts tab.', zh:'Stash pop 冲突！请在 Conflicts 页面解决。'},
@@ -1948,99 +1958,282 @@ function doCheckout(branchName, hadStash){
 }
 
 // ═══════════ Merge ═══════════
+var _mergeCurrentMode = 'merge';
+
 function mergeBranch(sourceBranch){
   var curBranch=document.getElementById('branch-name').textContent.trim();
   var defaultMsg='Merge branch \''+sourceBranch+'\' into '+curBranch;
-  var warnBox='<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:10px;padding:14px 16px;margin-bottom:14px">'
-    +'<div style="font-size:15px;font-weight:800;color:#b91c1c;margin-bottom:10px">⚠️ HIGH-RISK OPERATION — Read before continuing!</div>'
-    +'<div style="background:#fff3;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px;line-height:1.8">'
-    +'Merging: <span style="font-family:monospace;background:#fee2e2;color:#7c3aed;padding:1px 7px;border-radius:4px;font-weight:700">'+escapeHtml(sourceBranch)+'</span>'
-    +' &nbsp;→&nbsp; <span style="font-family:monospace;background:#dbeafe;color:#1d4ed8;padding:1px 7px;border-radius:4px;font-weight:700">'+escapeHtml(curBranch)+'</span> (current)'
+  _mergeCurrentMode='merge';
+
+  // ── Mode selector row ──────────────────────────────────────────────
+  var html='<div class="merge-mode-selector">'
+    +'<div class="merge-mode-tabs">'
+    +'<button id="op-btn-merge" class="merge-mode-btn active" onclick="switchMergeMode(\'merge\')">⚡ Merge</button>'
+    +'<button id="op-btn-rebase" class="merge-mode-btn" onclick="switchMergeMode(\'rebase\')">🔀 Rebase</button>'
+    +'</div>'
+    +'<button class="merge-help-btn" onclick="showMergeRebaseHelp()" title="'+(L==='zh'?'Merge 与 Rebase 的区别':'Learn about Merge vs Rebase')+'">?</button>'
+    +'</div>';
+
+  // ── Merge content ──────────────────────────────────────────────────
+  html+='<div id="op-content-merge">'
+    +'<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:10px;padding:14px 16px;margin-bottom:14px">'
+    +'<div style="font-size:15px;font-weight:800;color:#b91c1c;margin-bottom:10px">⚠️ '+(L==='zh'?'高风险操作 — 请确认后再继续':'HIGH-RISK OPERATION — Read before continuing!')+'</div>'
+    +'<div style="background:rgba(255,255,255,.6);border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px;line-height:1.8">'
+    +(L==='zh'?'合并: ':'Merging: ')+'<span style="font-family:monospace;background:#fee2e2;color:#7c3aed;padding:1px 7px;border-radius:4px;font-weight:700">'+escapeHtml(sourceBranch)+'</span>'
+    +' &nbsp;→&nbsp; <span style="font-family:monospace;background:#dbeafe;color:#1d4ed8;padding:1px 7px;border-radius:4px;font-weight:700">'+escapeHtml(curBranch)+'</span>'+(L==='zh'?' (当前)':' (current)')
     +'</div>'
     +'<ul style="margin:0 0 12px;padding-left:18px;font-size:13px;color:#7f1d1d;line-height:1.9">'
-    +'<li>All commits from <b>'+escapeHtml(sourceBranch)+'</b> will be <b>squashed into one single commit</b></li>'
-    +'<li>If conflicts arise, you must resolve them in the <b>Conflicts tab</b></li>'
-    +'<li>Ensure all local changes are <b>committed or stashed</b> first</li>'
-    +'<li>This modifies your branch history — coordinate with your team</li>'
+    +(L==='zh'
+      ?'<li><b>'+escapeHtml(sourceBranch)+'</b> 的所有 commit 将被 <b>Squash 合并为一个新 commit</b></li>'
+       +'<li>如有冲突，请在 <b>Conflicts 标签页</b> 解决</li>'
+       +'<li>请确保本地改动已 <b>commit 或 stash</b></li>'
+       +'<li>此操作会修改分支历史 — 请与团队确认</li>'
+      :'<li>All commits from <b>'+escapeHtml(sourceBranch)+'</b> will be <b>squashed into one single commit</b></li>'
+       +'<li>If conflicts arise, resolve them in the <b>Conflicts tab</b></li>'
+       +'<li>Ensure all local changes are <b>committed or stashed</b> first</li>'
+       +'<li>This modifies your branch history — coordinate with your team</li>')
     +'</ul>'
     +'</div>'
-    +'<label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px">Commit message <span style="color:#dc2626">*</span></label>'
-    +'<textarea id="merge-msg-input" rows="3" style="width:100%;padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;outline:none;box-sizing:border-box" placeholder="Required — describe what this merge brings in">'+escapeHtml(defaultMsg)+'</textarea>';
-  showModal(
-    '🚨 Confirm Merge',
-    warnBox,
-    'Merge Now',
-    function(){
+    +'<label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px">'+(L==='zh'?'Commit 消息':'Commit message')+' <span style="color:#dc2626">*</span></label>'
+    +'<textarea id="merge-msg-input" rows="3" style="width:100%;padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;outline:none;box-sizing:border-box" placeholder="'+(L==='zh'?'必填 — 描述本次合并带来的内容':'Required — describe what this merge brings in')+'">'+escapeHtml(defaultMsg)+'</textarea>'
+    +'</div>';
+
+  // ── Rebase content ─────────────────────────────────────────────────
+  html+='<div id="op-content-rebase" style="display:none">'
+    +'<div style="background:#eff6ff;border:2px solid #3b82f6;border-radius:10px;padding:14px 16px;margin-bottom:12px">'
+    +'<div style="font-size:15px;font-weight:800;color:#1d4ed8;margin-bottom:10px">🔀 Rebase onto '+escapeHtml(sourceBranch)+'</div>'
+    +'<div style="background:rgba(255,255,255,.7);border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px;line-height:1.8">'
+    +(L==='zh'?'变基: ':'Rebasing: ')+'<span style="font-family:monospace;background:#dbeafe;color:#1d4ed8;padding:1px 7px;border-radius:4px;font-weight:700">'+escapeHtml(curBranch)+'</span>'+(L==='zh'?' (当前)':' (current)')
+    +' &nbsp;→&nbsp; onto <span style="font-family:monospace;background:#f0fdf4;color:#15803d;padding:1px 7px;border-radius:4px;font-weight:700">'+escapeHtml(sourceBranch)+'</span>'
+    +'</div>'
+    +'<ul style="margin:0 0 12px;padding-left:18px;font-size:13px;color:#1e3a8a;line-height:1.9">'
+    +(L==='zh'
+      ?'<li>你的 commit 将被<b>逐一应用到</b> <code>'+escapeHtml(sourceBranch)+'</code> 的最新代码之上，保持历史线性整洁</li>'
+       +'<li>如有冲突，请在 <b>Conflicts 标签页</b> 解决，然后 git rebase --continue</li>'
+       +'<li>请确保本地改动已 <b>commit 或 stash</b></li>'
+       +'<li>⚠️ 历史会被重写 — 若已推送到远端，需要 <b>Force Push</b></li>'
+      :'<li>Your commits will be <b>replayed on top of</b> <code>'+escapeHtml(sourceBranch)+'</code> — keeps history linear and clean</li>'
+       +'<li>If conflicts arise, resolve them in the <b>Conflicts tab</b>, then <code>git rebase --continue</code></li>'
+       +'<li>Ensure all local changes are <b>committed or stashed</b> first</li>'
+       +'<li>⚠️ History is rewritten — if already pushed, you will need to <b>Force Push</b></li>')
+    +'</ul>'
+    +'</div>'
+    +'<div style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;font-size:13px;color:#92400e">'
+    +(L==='zh'
+      ?'💡 <b>Feature 分支推荐用法：</b>Rebase 让你的提交历史保持线性整洁，避免多余的 merge commit。'
+      :'💡 <b>Recommended for feature branches:</b> Rebase keeps your commit history clean and avoids extra merge commits.')
+    +'</div>'
+    +'</div>';
+
+  // ── Render modal ───────────────────────────────────────────────────
+  document.getElementById('modal-title').innerHTML='⚡🔀 '+t('merge_op_title')
+    +' &nbsp;<span style="font-size:12px;font-weight:400;color:#94a3b8">'+escapeHtml(sourceBranch)+' → '+escapeHtml(curBranch)+'</span>';
+  document.getElementById('modal-msg').innerHTML=html;
+
+  var btnsDiv=document.getElementById('modal-btns');
+  btnsDiv.innerHTML='';
+  var cancelBtn=document.createElement('button');
+  cancelBtn.className='btn btn-secondary';
+  cancelBtn.textContent='Cancel';
+  cancelBtn.onclick=closeModal;
+  btnsDiv.appendChild(cancelBtn);
+
+  var confirmBtn=document.createElement('button');
+  confirmBtn.id='merge-confirm-btn';
+  confirmBtn.className='btn btn-warning';
+  confirmBtn.textContent=L==='zh'?'立即 Merge':'Merge Now';
+  confirmBtn.onclick=function(){
+    if(_mergeCurrentMode==='rebase'){
+      closeModal();
+      _doRebase(sourceBranch,curBranch);
+    }else{
       var msg=(document.getElementById('merge-msg-input')||{value:''}).value.trim();
       if(!msg){addMsg('Merge commit message is required','error');return;}
-      addMsg('🔀 Merging '+sourceBranch+' → '+curBranch+'...','info');
-      apiPost('/api/merge',{branch:sourceBranch,message:msg},function(data){
-        var logBox='<div style="background:#0f172a;color:#e2e8f0;font-family:monospace;font-size:12px;'
-          +'line-height:1.6;padding:12px 14px;border-radius:8px;max-height:260px;overflow-y:auto;white-space:pre-wrap;margin-bottom:12px">'
-          +escapeHtml((data.log||'').trim())+'</div>';
-        if(data.ok){
-          addMsg('✅ Merged '+sourceBranch+' into '+curBranch,'success');
-          loadFiles();loadLog(1);checkConflicts();
-          showModalDouble(
-            '✅ Merge succeeded',
-            logBox+'<b>Push <code>'+escapeHtml(curBranch)+'</code> to remote now?</b>',
-            'Push Now',
-            function(){ doPush(); },
-            'Later (keep local)',
-            null,
-            'btn-success','btn-secondary'
-          );
-        }else if(data.alreadyUpToDate){
-          addMsg('ℹ️ Already up to date — no changes to merge from '+sourceBranch,'info');
-          showModal('ℹ️ Already Up To Date',
-            '<div style="padding:12px 4px;color:#1e40af;font-size:14px">'+
-            '✅ <b>'+escapeHtml(curBranch)+'</b> already contains all changes from <b>'+escapeHtml(sourceBranch)+'</b>.<br><br>'+
-            'No merge commit was created.</div>',
-            'OK', null);
-        }else if(data.hasConflict){
-          addMsg('⚠️ Merge conflicts detected in '+sourceBranch,'error');
-          checkConflicts();
-          showModal(
-            '⚠️ Merge Conflicts!',
-            logBox+'<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px;color:#b91c1c;font-weight:600">'
-            +'Conflicts detected — go to the <b>Conflicts tab</b> to resolve them before pushing.</div>',
-            'Go to Conflicts',
-            function(){ loadConflicts(); }
-          );
-        }else{
-          var errMsg = data.error || '';
-          var isOverwritten = errMsg.indexOf('overwritten by merge') >= 0 || errMsg.indexOf('would be overwritten') >= 0;
-          if (isOverwritten) {
-            addMsg('❌ ' + t('merge_blocked_title') + ': ' + errMsg.split('\n')[0], 'error');
-            var stashDesc = t('merge_blocked_desc')
-              + '<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:8px 12px;margin-top:10px;font-family:monospace;font-size:11px;color:#78350f;max-height:120px;overflow-y:auto;white-space:pre-wrap">'
-              + escapeHtml(errMsg) + '</div>';
-            document.getElementById('modal-title').innerHTML = t('merge_blocked_title');
-            document.getElementById('modal-msg').innerHTML = stashDesc;
-            var btnsDiv2 = document.getElementById('modal-btns');
-            btnsDiv2.innerHTML = '';
-            var cancelB = document.createElement('button');
-            cancelB.className = 'btn btn-secondary'; cancelB.textContent = 'Cancel'; cancelB.onclick = closeModal;
-            btnsDiv2.appendChild(cancelB);
-            var stashRetryBtn = document.createElement('button');
-            stashRetryBtn.className = 'btn btn-warning';
-            stashRetryBtn.textContent = t('stash_and_retry');
-            stashRetryBtn.onclick = function() {
-              closeModal();
-              showStashDialog(null, function() {
-                setTimeout(function() { mergeBranch(sourceBranch); }, 300);
-              });
-            };
-            btnsDiv2.appendChild(stashRetryBtn);
-            document.getElementById('modal-bg').classList.add('show');
-          } else {
-            addMsg('❌ Merge failed: ' + errMsg, 'error');
-            showModal('❌ Merge Failed', logBox, 'Close', null);
-          }
-        }
-      });
+      closeModal();
+      _doMerge(sourceBranch,curBranch,msg);
     }
-  );
+  };
+  btnsDiv.appendChild(confirmBtn);
+  document.getElementById('modal-bg').classList.add('show');
+}
+
+function switchMergeMode(mode){
+  _mergeCurrentMode=mode;
+  var mergeBtn=document.getElementById('op-btn-merge');
+  var rebaseBtn=document.getElementById('op-btn-rebase');
+  var mergeContent=document.getElementById('op-content-merge');
+  var rebaseContent=document.getElementById('op-content-rebase');
+  var confirmBtn=document.getElementById('merge-confirm-btn');
+  if(mode==='merge'){
+    mergeBtn.classList.add('active'); rebaseBtn.classList.remove('active');
+    mergeContent.style.display=''; rebaseContent.style.display='none';
+    confirmBtn.textContent=L==='zh'?'立即 Merge':'Merge Now';
+    confirmBtn.className='btn btn-warning';
+  }else{
+    rebaseBtn.classList.add('active'); mergeBtn.classList.remove('active');
+    rebaseContent.style.display=''; mergeContent.style.display='none';
+    confirmBtn.textContent=L==='zh'?'立即 Rebase':'Rebase Now';
+    confirmBtn.className='btn btn-primary';
+  }
+}
+
+function showMergeRebaseHelp(){
+  var isZh=L==='zh';
+  var body='<div class="mrh-section">'
+    +'<div class="mrh-badge merge">⚡ Merge'+(isZh?' (Squash Merge)':' — Squash Merge')+'</div>'
+    +'<p class="mrh-desc">'+(isZh
+      ?'将源分支的<b>所有 commit 合并压缩为一个新 commit</b>，追加到当前分支。<br>历史中会出现一个清晰的 "merge 节点"，方便回溯。'
+      :'<b>Combines all commits</b> from the source branch into a single new commit on your current branch.<br>Creates a clear merge boundary in history — easy to see when work was integrated.')
+    +'</p>'
+    +'<div>'
+    +'<span class="mrh-tag good">'+(isZh?'✅ 适合合并 feature → develop/main':'✅ Merging feature → develop/main')+'</span>'
+    +'<span class="mrh-tag good">'+(isZh?'✅ 历史保留清晰边界':'✅ Preserves clear history boundary')+'</span>'
+    +'<span class="mrh-tag warn">'+(isZh?'⚠️ 会产生额外 merge commit':'⚠️ Creates an extra merge commit')+'</span>'
+    +'</div>'
+    +'</div>'
+    +'<hr class="mrh-divider">'
+    +'<div class="mrh-section">'
+    +'<div class="mrh-badge rebase">🔀 Rebase</div>'
+    +'<p class="mrh-desc">'+(isZh
+      ?'将当前分支的 commit <b>逐一"搬运"到源分支的最新节点之上</b>，历史保持线性，没有多余的 merge 节点。<br>相当于"将你的工作建立在最新代码之上"。'
+      :'<b>Replays your current branch\'s commits on top</b> of the latest commit on the source branch, creating a linear history with no extra merge commits.<br>Think of it as "re-building your work on top of the latest code".')
+    +'</p>'
+    +'<div>'
+    +'<span class="mrh-tag good">'+(isZh?'✅ 历史线性整洁':'✅ Linear, clean history')+'</span>'
+    +'<span class="mrh-tag good">'+(isZh?'✅ 同步 develop 最新代码':'✅ Stay up-to-date with develop')+'</span>'
+    +'<span class="mrh-tag warn">'+(isZh?'⚠️ 改写 commit hash，需要 Force Push':'⚠️ Rewrites commits — requires Force Push')+'</span>'
+    +'</div>'
+    +'</div>'
+    +'<hr class="mrh-divider">'
+    +'<div class="mrh-rec">'
+    +(isZh
+      ?'<b>📌 推荐场景：</b><br>'
+       +'• 将 feature 分支合并进 develop / main → 用 <b>Merge</b><br>'
+       +'• 在 feature 开发中同步 develop 最新代码 → 用 <b>Rebase</b><br>'
+       +'• 多人共享分支 → 用 <b>Merge</b>（避免 force push 覆盖他人工作）'
+      :'<b>📌 Recommended usage:</b><br>'
+       +'• Integrating a feature branch into develop / main → use <b>Merge</b><br>'
+       +'• Keeping your feature branch up-to-date with develop → use <b>Rebase</b><br>'
+       +'• Shared/collaborative branch → use <b>Merge</b> (avoid force push overwriting others\' work)')
+    +'</div>';
+  showModal(t('mrh_title'),body,'OK',null);
+}
+
+function _doMerge(sourceBranch,curBranch,msg){
+  addMsg('🔀 Merging '+sourceBranch+' → '+curBranch+'...','info');
+  apiPost('/api/merge',{branch:sourceBranch,message:msg},function(data){
+    var logBox='<div style="background:#0f172a;color:#e2e8f0;font-family:monospace;font-size:12px;'
+      +'line-height:1.6;padding:12px 14px;border-radius:8px;max-height:260px;overflow-y:auto;white-space:pre-wrap;margin-bottom:12px">'
+      +escapeHtml((data.log||'').trim())+'</div>';
+    if(data.ok){
+      addMsg('✅ Merged '+sourceBranch+' into '+curBranch,'success');
+      loadFiles();loadLog(1);checkConflicts();
+      showModalDouble(
+        '✅ Merge succeeded',
+        logBox+'<b>Push <code>'+escapeHtml(curBranch)+'</code> to remote now?</b>',
+        'Push Now',
+        function(){ doPush(); },
+        'Later (keep local)',
+        null,
+        'btn-success','btn-secondary'
+      );
+    }else if(data.alreadyUpToDate){
+      addMsg('ℹ️ Already up to date — no changes to merge from '+sourceBranch,'info');
+      showModal('ℹ️ Already Up To Date',
+        '<div style="padding:12px 4px;color:#1e40af;font-size:14px">'+
+        '✅ <b>'+escapeHtml(curBranch)+'</b> already contains all changes from <b>'+escapeHtml(sourceBranch)+'</b>.<br><br>'+
+        'No merge commit was created.</div>',
+        'OK', null);
+    }else if(data.hasConflict){
+      addMsg('⚠️ Merge conflicts detected in '+sourceBranch,'error');
+      checkConflicts();
+      showModal(
+        '⚠️ Merge Conflicts!',
+        logBox+'<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px;color:#b91c1c;font-weight:600">'
+        +'Conflicts detected — go to the <b>Conflicts tab</b> to resolve them before pushing.</div>',
+        'Go to Conflicts',
+        function(){ loadConflicts(); }
+      );
+    }else{
+      var errMsg=data.error||'';
+      var isOverwritten=errMsg.indexOf('overwritten by merge')>=0||errMsg.indexOf('would be overwritten')>=0;
+      if(isOverwritten){
+        addMsg('❌ '+t('merge_blocked_title')+': '+errMsg.split('\n')[0],'error');
+        var stashDesc=t('merge_blocked_desc')
+          +'<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:8px 12px;margin-top:10px;font-family:monospace;font-size:11px;color:#78350f;max-height:120px;overflow-y:auto;white-space:pre-wrap">'
+          +escapeHtml(errMsg)+'</div>';
+        document.getElementById('modal-title').innerHTML=t('merge_blocked_title');
+        document.getElementById('modal-msg').innerHTML=stashDesc;
+        var btnsDiv2=document.getElementById('modal-btns');
+        btnsDiv2.innerHTML='';
+        var cancelB=document.createElement('button');
+        cancelB.className='btn btn-secondary';cancelB.textContent='Cancel';cancelB.onclick=closeModal;
+        btnsDiv2.appendChild(cancelB);
+        var stashRetryBtn=document.createElement('button');
+        stashRetryBtn.className='btn btn-warning';
+        stashRetryBtn.textContent=t('stash_and_retry');
+        stashRetryBtn.onclick=function(){
+          closeModal();
+          showStashDialog(null,function(){ setTimeout(function(){ mergeBranch(sourceBranch); },300); });
+        };
+        btnsDiv2.appendChild(stashRetryBtn);
+        document.getElementById('modal-bg').classList.add('show');
+      }else{
+        addMsg('❌ Merge failed: '+errMsg,'error');
+        showModal('❌ Merge Failed',logBox,'Close',null);
+      }
+    }
+  });
+}
+
+function _doRebase(sourceBranch,curBranch){
+  addMsg(t('rebase_progress')+sourceBranch+'...','info');
+  apiPost('/api/rebase',{branch:sourceBranch},function(data){
+    var logBox='<div style="background:#0f172a;color:#e2e8f0;font-family:monospace;font-size:12px;'
+      +'line-height:1.6;padding:12px 14px;border-radius:8px;max-height:260px;overflow-y:auto;white-space:pre-wrap;margin-bottom:12px">'
+      +escapeHtml((data.log||'').trim())+'</div>';
+    if(data.ok){
+      if(data.alreadyUpToDate){
+        addMsg(t('rebase_up_to_date'),'info');
+        showModal('ℹ️ '+(L==='zh'?'已是最新':'Already Up To Date'),
+          '<div style="padding:12px 4px;color:#1e40af;font-size:14px">✅ <b>'+escapeHtml(curBranch)+'</b> '
+          +(L==='zh'?'已包含 <b>'+escapeHtml(sourceBranch)+'</b> 的所有最新代码，无需 Rebase。'
+            :'is already up to date with <b>'+escapeHtml(sourceBranch)+'</b>. Nothing to rebase.')+'</div>',
+          'OK',null);
+      }else{
+        addMsg(t('rebase_ok'),'success');
+        loadFiles();loadLog(1);checkConflicts();
+        var pushDesc=tf('rebase_push_desc',L,{branch:curBranch});
+        showModalDouble(
+          t('rebase_ok_title'),
+          logBox+'<div style="background:#fff7ed;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;font-size:13px;color:#92400e;margin-bottom:8px">'
+          +(L==='zh'?'⚠️ Rebase 重写了 commit 历史，若已推送到远端需要 <b>Force Push</b>。':'⚠️ Rebase rewrites commit history. If you already pushed, you need to <b>Force Push</b>.')
+          +'</div><b>'+pushDesc+'</b>',
+          L==='zh'?'Force Push 到远端':'Force Push to Remote',
+          function(){ doPushForce(); },
+          L==='zh'?'稍后手动推送':'Later (push manually)',
+          null,
+          'btn-warning','btn-secondary'
+        );
+      }
+    }else if(data.hasConflict){
+      addMsg(t('rebase_conflict_title')+' '+sourceBranch,'error');
+      checkConflicts();
+      showModal(
+        t('rebase_conflict_title'),
+        logBox+'<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px;color:#b91c1c;font-weight:600">'
+        +(L==='zh'
+          ?'检测到冲突 — 请前往 <b>Conflicts 标签页</b> 解决冲突，然后执行 <code>git rebase --continue</code>。'
+          :'Conflicts detected — go to the <b>Conflicts tab</b> to resolve them, then run <code>git rebase --continue</code>.')
+        +'</div>',
+        L==='zh'?'去解决冲突':'Go to Conflicts',
+        function(){ loadConflicts(); }
+      );
+    }else{
+      addMsg(t('rebase_fail_title')+': '+(data.error||''),'error');
+      showModal(t('rebase_fail_title'),logBox,'Close',null);
+    }
+  });
 }
 
 // ═══════════ Compare ═══════════

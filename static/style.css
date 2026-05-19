@@ -165,7 +165,26 @@ input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:var(--
 .stash-item .name{flex:1;font-size:14px}
 .modal-bg{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);z-index:10002;align-items:center;justify-content:center}
 .modal-bg.show{display:flex}
-.modal-box{background:#fff;border-radius:16px;padding:28px 32px;max-width:560px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.2);max-height:90vh;overflow-y:auto}
+.modal-box{background:#fff;border-radius:16px;padding:28px 32px;max-width:580px;width:92%;box-shadow:0 8px 32px rgba(0,0,0,.2);max-height:90vh;overflow-y:auto}
+/* Merge / Rebase mode selector */
+.merge-mode-selector{display:flex;align-items:center;gap:8px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #e5e7eb}
+.merge-mode-tabs{display:flex;gap:4px;flex:1;background:#f3f4f6;border-radius:9px;padding:3px}
+.merge-mode-btn{flex:1;padding:6px 0;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;color:#6b7280;background:transparent;transition:all .18s;white-space:nowrap}
+.merge-mode-btn.active{background:#fff;color:#111827;box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.merge-mode-btn:hover:not(.active){color:#374151;background:rgba(255,255,255,.6)}
+.merge-help-btn{flex-shrink:0;width:24px;height:24px;border-radius:50%;border:1.5px solid #93c5fd;background:#eff6ff;color:#2563eb;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;line-height:1;padding:0}
+.merge-help-btn:hover{background:#2563eb;color:#fff;border-color:#2563eb}
+/* Help modal content */
+.mrh-section{margin-bottom:18px}
+.mrh-badge{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:700;padding:3px 10px;border-radius:6px;margin-bottom:8px}
+.mrh-badge.merge{background:#fff3ed;color:#c2410c;border:1px solid #fed7aa}
+.mrh-badge.rebase{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe}
+.mrh-desc{font-size:13px;color:#374151;line-height:1.75;margin:0 0 8px}
+.mrh-tag{display:inline-block;background:#f1f5f9;color:#475569;border-radius:4px;padding:1px 8px;font-size:12px;margin:2px 3px 2px 0}
+.mrh-tag.good{background:#f0fdf4;color:#15803d}
+.mrh-tag.warn{background:#fff7ed;color:#c2410c}
+.mrh-divider{border:none;border-top:1px solid #e5e7eb;margin:14px 0}
+.mrh-rec{background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;font-size:13px;color:#166534;line-height:1.75}
 .modal-box h2{font-size:18px;margin-bottom:16px}
 .modal-box p{color:var(--color-text-muted);font-size:14px;margin-bottom:24px;line-height:1.6}
 .modal-box .modal-btns{display:flex;gap:10px;justify-content:flex-end}

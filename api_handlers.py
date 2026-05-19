@@ -530,6 +530,24 @@ def handle_post(path, data, send_json):
             send_json({"ok": False, "log": combined, "hasConflict": has_conflict, "error": combined})
         return True
 
+    elif path == "/api/rebase":
+        source = data.get("branch", "").strip()
+        if not source:
+            send_json({"ok": False, "error": "No branch specified"}, 400)
+            return True
+        out, err, rc = _run(["git", "rebase", source])
+        combined = (out + "\n" + err).strip()
+        has_conflict = rc != 0 and ("CONFLICT" in combined or "conflict" in combined.lower())
+        already_up_to_date = rc == 0 and "is up to date" in combined
+        send_json({
+            "ok": rc == 0,
+            "log": combined,
+            "hasConflict": has_conflict,
+            "alreadyUpToDate": already_up_to_date,
+            "error": combined if rc != 0 else "",
+        })
+        return True
+
     elif path == "/api/switch-remote-ssh":
         remote_url, _, rc = _run(["git", "remote", "get-url", "origin"])
         if rc != 0:
