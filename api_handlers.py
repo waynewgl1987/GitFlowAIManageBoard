@@ -15,18 +15,20 @@ from git_ops import (
     _run, _run_push_streaming, _run_gitop_streaming,
     current_branch, display_branch, get_project_info,
     get_project_path, get_protected_config, is_branch_protected,
+    get_network_timeout, save_network_timeout,
     _ref_exists, _resolve_ref_for_compare,
     get_branches, has_uncommitted, stash_changes,
     stash_list, stash_diff, commit_diff, search_diff_code,
     stash_pop, stash_drop, file_commit_diff,
     checkout_branch, create_branch,
-    delete_branch_local, delete_branch_remote,
+    delete_branch_local, delete_branch_remote, rename_branch,
     fetch, pull_current, set_upstream, push_set_upstream,
     get_conflicts, get_conflict_detail,
     _get_merge_type, _get_merge_default_msg,
     resolve_conflict, get_file_commits,
     get_uncommitted_changes, get_commit_log,
     reset_to, revert_commit, drop_commit, squash_commits, abort_merge_or_rebase,
+    rebase_abort, rebase_skip, rebase_continue,
     worktree_list, worktree_add, worktree_remove, worktree_prune,
 )
 
@@ -69,6 +71,10 @@ def handle_get(path, params, send_json, send_stream=None):
         git_dir = _os.path.join(check_path, ".git")
         valid = _os.path.isdir(check_path) and (_os.path.isdir(git_dir) or _os.path.isfile(git_dir))
         send_json({"valid": valid, "path": check_path})
+        return True
+
+    elif path == "/api/network-timeout":
+        send_json({"network_timeout": get_network_timeout()})
         return True
 
     elif path == "/api/protected-branches":
@@ -436,6 +442,15 @@ def handle_post(path, data, send_json):
             send_json({"ok": False, "error": stderr or log, "log": log}, 400)
         return True
 
+    elif path == "/api/network-timeout":
+        seconds = data.get("network_timeout")
+        ok, result = save_network_timeout(seconds)
+        if ok:
+            send_json({"ok": True, "network_timeout": result})
+        else:
+            send_json({"ok": False, "error": result}, 400)
+        return True
+
     elif path == "/api/fetch":
         log, stderr, rc = fetch()
         if rc == 0:
@@ -478,6 +493,7 @@ def handle_post(path, data, send_json):
         username = data.get("username", "").strip()
         password = data.get("password", "").strip()
         force = bool(data.get("force", False))
+        remote_branch = data.get("remote_branch", "").strip() or None
         remote_url, _, _ = _run(["git", "remote", "get-url", "origin"])
         is_ssh = remote_url.startswith("git@") or remote_url.startswith("ssh://")
         job_id = str(uuid.uuid4())[:8]
@@ -494,7 +510,7 @@ def handle_post(path, data, send_json):
             extra_env = {"GIT_ASKPASS": tmp_file, "GIT_TERMINAL_PROMPT": "0"}
         def _job():
             try:
-                _run_push_streaming(job_id, branch, extra_env, force=force, is_ssh=is_ssh)
+                _run_push_streaming(job_id, branch, extra_env, force=force, is_ssh=is_ssh, remote_branch=remote_branch)
             finally:
                 if tmp_file:
                     try: os.unlink(tmp_file)
@@ -663,6 +679,53 @@ def handle_post(path, data, send_json):
             send_json({"ok": True, "stdout": stdout})
         else:
             send_json({"ok": False, "error": stderr or stdout}, 400)
+        return True
+
+    elif path == "/api/rename-branch":
+        old_name = data.get("old_name", "").strip()
+        new_name = data.get("new_name", "").strip()
+        if not old_name or not new_name:
+            send_json({"ok": False, "error": "Both old and new branch names are required"}, 400)
+            return True
+        if is_branch_protected(old_name):
+            send_json({"ok": False, "error": f"Cannot rename protected branch '{old_name}'"}, 403)
+            return True
+        if is_branch_protected(new_name):
+            send_json({"ok": False, "error": f"Cannot rename to protected branch name '{new_name}'"}, 403)
+            return True
+        stdout, stderr, rc = rename_branch(old_name, new_name)
+        if rc == 0:
+            send_json({"ok": True, "stdout": stdout})
+        else:
+            send_json({"ok": False, "error": stderr or stdout}, 400)
+        return True
+
+    elif path == "/api/rebase-abort":
+        stdout, stderr, rc = rebase_abort()
+        combined = (stdout + "\n" + stderr).strip()
+        if rc == 0:
+            send_json({"ok": True, "stdout": combined or "Rebase aborted"})
+        else:
+            send_json({"ok": False, "error": stderr or stdout}, 400)
+        return True
+
+    elif path == "/api/rebase-skip":
+        stdout, stderr, rc = rebase_skip()
+        combined = (stdout + "\n" + stderr).strip()
+        if rc == 0:
+            send_json({"ok": True, "stdout": combined or "Commit skipped"})
+        else:
+            send_json({"ok": False, "error": stderr or stdout}, 400)
+        return True
+
+    elif path == "/api/rebase-continue":
+        stdout, stderr, rc = rebase_continue()
+        combined = (stdout + "\n" + stderr).strip()
+        if rc == 0:
+            send_json({"ok": True, "stdout": combined or "Rebase continued"})
+        else:
+            has_conflict = "CONFLICT" in combined or "conflict" in combined.lower()
+            send_json({"ok": False, "error": stderr or stdout, "hasConflict": has_conflict}, 400)
         return True
 
     elif path == "/api/abort":

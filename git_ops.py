@@ -45,7 +45,7 @@ def _get_git_env(extra=None):
 
 
 def _load_app_config():
-    """Read config.ini next to this script. Returns (app_name, app_version, exact_set, contains_list)."""
+    """Read config.ini next to this script. Returns (app_name, app_version, exact_set, contains_list, network_timeout)."""
     cfg = configparser.ConfigParser()
     cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
     if os.path.exists(cfg_path):
@@ -56,26 +56,61 @@ def _load_app_config():
     raw_contains = cfg.get("protection", "protected_branches_contains", fallback="release")
     exact    = {b.strip() for b in raw_exact.split(",")    if b.strip()}
     contains = [b.strip().lower() for b in raw_contains.split(",") if b.strip()]
-    return name, version, exact, contains
+    try:
+        network_timeout = int(cfg.get("git", "network_timeout", fallback="120"))
+        if network_timeout < 1:
+            network_timeout = 120
+    except (ValueError, configparser.Error):
+        network_timeout = 120
+    return name, version, exact, contains, network_timeout
+
+
+def get_network_timeout():
+    """Return the configured network timeout in seconds for push/pull/fetch operations."""
+    *_, timeout = _load_app_config()
+    return timeout
+
+
+def save_network_timeout(seconds):
+    """Persist network_timeout to config.ini. Returns (ok, value_or_error)."""
+    try:
+        seconds = int(seconds)
+        if seconds < 1:
+            return False, "Timeout must be at least 1 second"
+    except (ValueError, TypeError):
+        return False, "Timeout must be a positive integer"
+
+    cfg = configparser.ConfigParser()
+    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+    if os.path.exists(cfg_path):
+        cfg.read(cfg_path, encoding="utf-8")
+    if not cfg.has_section("git"):
+        cfg.add_section("git")
+    cfg.set("git", "network_timeout", str(seconds))
+    with open(cfg_path, "w", encoding="utf-8") as f:
+        cfg.write(f)
+    return True, seconds
 
 
 def get_protected_config():
     """Return protected branch config as {"exact": [...], "contains": [...]}."""
-    _, _, exact, contains = _load_app_config()
+    _, _, exact, contains, _ = _load_app_config()
     return {"exact": sorted(exact), "contains": sorted(contains)}
 
 
 def is_branch_protected(short_name):
     """Return True if short_name matches any protection rule."""
-    _, _, exact, contains = _load_app_config()
+    _, _, exact, contains, _ = _load_app_config()
     if short_name in exact:
         return True
     low = short_name.lower()
     return any(kw in low for kw in contains)
 
 
-def _run(cmd, cwd=None, timeout=120, env=None):
+def _run(cmd, cwd=None, timeout=None, env=None):
     """Run a git command and return (stdout, stderr, returncode)."""
+    if timeout is None:
+        timeout = get_network_timeout()
     run_env = _get_git_env(env)
     try:
         r = subprocess.run(cmd, capture_output=True,
@@ -89,8 +124,11 @@ def _run(cmd, cwd=None, timeout=120, env=None):
         return "", str(e), -1
 
 
-def _run_push_streaming(job_id, branch, extra_env=None, force=False, is_ssh=False):
-    """Run git push in a background thread, streaming output lines into _PUSH_JOBS[job_id]."""
+def _run_push_streaming(job_id, branch, extra_env=None, force=False, is_ssh=False, remote_branch=None):
+    """Run git push in a background thread, streaming output lines into _PUSH_JOBS[job_id].
+    
+    remote_branch: if specified, push to origin/<remote_branch> instead of origin/<branch>.
+    """
     import time as _time
     run_env = _get_git_env(extra_env)
 
@@ -115,13 +153,19 @@ def _run_push_streaming(job_id, branch, extra_env=None, force=False, is_ssh=Fals
     if force:
         push_base.append("--force-with-lease")
 
+    # Determine the effective remote ref (local:remote mapping)
+    target_remote = remote_branch if remote_branch else branch
+    push_refspec = f"{branch}:{target_remote}" if target_remote != branch else branch
+
     try:
         url_out, _, _ = _run(["git", "remote", "get-url", "origin"])
         remote_url = url_out.strip()
     except Exception:
         remote_url = "origin"
 
-    def _try_push(cmd, timeout=120):
+    def _try_push(cmd, timeout=None):
+        if timeout is None:
+            timeout = get_network_timeout()
         _append_raw('$ ' + ' '.join(cmd))
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -164,11 +208,11 @@ def _run_push_streaming(job_id, branch, extra_env=None, force=False, is_ssh=Fals
     try:
         _append_raw('─' * 52)
         _append(f'📦 Repo  : {remote_url}')
-        _append(f'🌿 Branch: {branch}')
+        _append(f'🌿 Branch: {branch}' + (f' → origin/{target_remote}' if target_remote != branch else ''))
         _append(f'{"⚠️  Force push (--force-with-lease)" if force else "🚀 Normal push"}')
         _append_raw('─' * 52)
 
-        rc, timed_out = _try_push(push_base + ["origin", branch])
+        rc, timed_out = _try_push(push_base + ["origin", push_refspec])
 
         if rc != 0 and not timed_out:
             with _PUSH_JOBS_LOCK:
@@ -177,10 +221,10 @@ def _run_push_streaming(job_id, branch, extra_env=None, force=False, is_ssh=Fals
                 "no upstream", "has no upstream", "set-upstream", "set the upstream"])
             if no_upstream:
                 _append_raw('')
-                _append(f'ℹ️  Branch has no upstream tracking. Retrying with: git push origin HEAD:{branch}')
-                _append('   (This sets the remote branch to the same name — only affects branch "{}")'.format(branch))
+                _append(f'ℹ️  Branch has no upstream tracking. Retrying with: git push origin HEAD:{target_remote}')
+                _append('   (This sets the remote branch to the same name — only affects branch "{}")'.format(target_remote))
                 _append_raw('')
-                rc, timed_out = _try_push(push_base + ["origin", f"HEAD:{branch}"])
+                rc, timed_out = _try_push(push_base + ["origin", f"HEAD:{target_remote}"])
 
         with _PUSH_JOBS_LOCK:
             combined = '\n'.join(job['lines'])
@@ -265,11 +309,12 @@ def _run_gitop_streaming(job_id, op, mode=None):
         t2 = threading.Thread(target=rd, args=(proc.stderr,), daemon=True)
         t1.start(); t2.start()
 
+        timeout = get_network_timeout()
         try:
-            proc.wait(timeout=120)
+            proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             proc.kill()
-            _append('⏱ Operation timed out after 120s — check your network.')
+            _append(f'⏱ Operation timed out after {timeout}s — check your network.')
 
         t1.join(); t2.join()
         rc = proc.returncode
@@ -298,7 +343,7 @@ def display_branch():
 
 def get_project_info():
     """Return project display name, remote repo slug, app name and version from config."""
-    app_name, app_version, _, _ = _load_app_config()
+    app_name, app_version, _, _, _ = _load_app_config()
     dir_name = os.path.basename(os.path.abspath(PROJECT_PATH))
     remote_slug = ""
     url_out, _, rc = _run(["git", "remote", "get-url", "origin"])
@@ -569,6 +614,31 @@ def delete_branch_remote(name):
     """删除远端分支，name 应为不含 origin/ 前缀的短名"""
     short = name.replace("origin/", "", 1) if name.startswith("origin/") else name
     return _run(["git", "push", "origin", "--delete", short])
+
+
+def rename_branch(old_name, new_name):
+    """Rename a local branch using git branch -m."""
+    if not old_name or not new_name:
+        return "", "Branch name required", -1
+    if old_name == new_name:
+        return "", "New name is the same as old name", -1
+    return _run(["git", "branch", "-m", old_name, new_name])
+
+
+def rebase_abort():
+    """Abort an in-progress rebase."""
+    return _run(["git", "rebase", "--abort"])
+
+
+def rebase_skip():
+    """Skip the current conflicting commit during a rebase."""
+    return _run(["git", "rebase", "--skip"])
+
+
+def rebase_continue():
+    """Continue an in-progress rebase after conflicts are resolved."""
+    env = {"GIT_EDITOR": "true"}
+    return _run(["git", "rebase", "--continue"], env=env)
 
 
 def fetch():
