@@ -1533,7 +1533,11 @@ function _startGitopStream(op, mode, onDone){
             else addMsg('❌ '+t('fetch_fail')+errTxt,'error');
           }
           checkConflicts();
-          if(r.ok && op==='pull') loadCurrentBranch();
+          if(r.ok && op==='pull'){
+            loadCurrentBranch();
+            loadLog(1);
+            loadFiles();
+          }
           if(onDone) onDone(r.ok);
         }else{
           setTimeout(poll,500);
@@ -2037,7 +2041,10 @@ function checkoutBranch(branchName){
     .then(function(data){
       _hideSpinner();
       if(data.ok){
+        var el=document.getElementById('branch-name');
+        if(el) el.textContent=branchName;
         addMsg('✅ Switched to ' + branchName, 'success');
+        loadLog(1); loadFiles(); loadBranches(1);
         setTimeout(function(){ window.location.reload(); }, 800);
       }else{
         addMsg(t('switch_fail')+(data.error||''),'error');
@@ -2437,45 +2444,51 @@ function _rebaseAction(action){
   var endpoint='/api/rebase-'+action;
   var btnClass=action==='abort'?'btn-danger':action==='skip'?'btn-warning':'btn-success';
 
-  showModalDouble(
-    t(titleKey),
-    '<div style="font-size:13px;color:#374151;line-height:1.7">'+t(descKey)+'</div>',
-    t('rebase_confirm_btn'),
-    function(){
-      apiPost(endpoint, {}, function(data){
-        if(data.ok){
-          addMsg(t(okKey),'success');
-          loadFiles(); loadLog(1); checkConflicts(); loadCurrentBranch();
-          if(action==='continue'){
-            checkConflicts();
-          }
+  document.getElementById('modal-title').innerHTML=t(titleKey);
+  document.getElementById('modal-msg').innerHTML='<div style="font-size:13px;color:#374151;line-height:1.7">'+t(descKey)+'</div>';
+  var btnsDiv=document.getElementById('modal-btns');
+  btnsDiv.innerHTML='';
+
+  var cancelBtn=document.createElement('button');
+  cancelBtn.className='btn btn-secondary';
+  cancelBtn.textContent=isZh?'取消':'Cancel';
+  cancelBtn.onclick=closeModal;
+  btnsDiv.appendChild(cancelBtn);
+
+  var confirmBtn=document.createElement('button');
+  confirmBtn.className='btn '+btnClass;
+  confirmBtn.textContent=t('rebase_confirm_btn');
+  confirmBtn.onclick=function(){
+    closeModal();
+    apiPost(endpoint, {}, function(data){
+      if(data.ok){
+        addMsg(t(okKey),'success');
+        loadFiles(); loadLog(1); checkConflicts(); loadCurrentBranch();
+        if(action==='continue') checkConflicts();
+      }else{
+        var errMsg=t(failKey)+(data.error||'');
+        addMsg(errMsg,'error');
+        if(data.hasConflict){
+          checkConflicts();
+          showModal(
+            isZh?'⚠️ 仍有冲突':'⚠️ Conflicts Remain',
+            '<div style="font-size:13px;color:#374151">'
+            +(isZh?'Rebase 继续后仍发现冲突，请前往 <b>Conflicts 标签页</b> 继续解决。'
+                  :'Conflicts remain after continuing — go to the <b>Conflicts tab</b> to resolve them.')
+            +'</div>',
+            isZh?'去解决冲突':'Go to Conflicts',
+            function(){ loadConflicts(); }
+          );
         }else{
-          var errMsg=t(failKey)+(data.error||'');
-          addMsg(errMsg,'error');
-          if(data.hasConflict){
-            checkConflicts();
-            showModal(
-              isZh?'⚠️ 仍有冲突':'⚠️ Conflicts Remain',
-              '<div style="font-size:13px;color:#374151">'
-              +(isZh?'Rebase 继续后仍发现冲突，请前往 <b>Conflicts 标签页</b> 继续解决。'
-                    :'Conflicts remain after continuing — go to the <b>Conflicts tab</b> to resolve them.')
-              +'</div>',
-              isZh?'去解决冲突':'Go to Conflicts',
-              function(){ loadConflicts(); }
-            );
-          }else{
-            showModal(isZh?'❌ 操作失败':'❌ Action Failed',
-              '<div style="font-size:13px;color:#374151">'+escapeHtml(data.error||'Unknown error')+'</div>',
-              'Close', null);
-          }
+          showModal(isZh?'❌ 操作失败':'❌ Action Failed',
+            '<div style="font-size:13px;color:#374151">'+escapeHtml(data.error||'Unknown error')+'</div>',
+            'Close', null);
         }
-      });
-    },
-    isZh?'取消':'Cancel',
-    null,
-    btnClass,
-    'btn-secondary'
-  );
+      }
+    });
+  };
+  btnsDiv.appendChild(confirmBtn);
+  document.getElementById('modal-bg').classList.add('show');
 }
 
 // ═══════════ Compare ═══════════
