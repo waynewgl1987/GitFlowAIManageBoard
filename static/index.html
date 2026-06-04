@@ -104,6 +104,19 @@
 <div class="page" id="page-branches">
   <button class="btn btn-secondary btn-back" onclick="switchPage('main')">← <span data-i18n="back">Back</span></button>
   <h2 style="margin-bottom:16px" data-i18n="branches_title">Branches</h2>
+
+  <!-- Local / Remote tab selector -->
+  <div class="branch-tabs-wrap">
+    <div class="branch-tab-group" role="tablist">
+      <button id="btab-local" class="branch-tab-btn active" role="tab" aria-selected="true" onclick="switchBranchTab('local')">
+        🌿 Local<span class="branch-tab-count" id="btab-local-count"></span>
+      </button>
+      <button id="btab-remote" class="branch-tab-btn" role="tab" aria-selected="false" onclick="switchBranchTab('remote')">
+        ☁️ Remote<span class="branch-tab-count" id="btab-remote-count"></span>
+      </button>
+    </div>
+  </div>
+
   <div style="display:flex;gap:8px;margin-bottom:14px">
     <input type="text" id="new-branch-name" data-i18n-placeholder="new_branch_placeholder" placeholder="New branch name..." style="flex:1;padding:6px 12px;border-radius:8px;border:1px solid #d1d5db;font-size:13px;outline:none">
     <button class="btn btn-sm btn-success" onclick="createNewBranch()" data-i18n="create_branch_btn">+ Create Branch</button>

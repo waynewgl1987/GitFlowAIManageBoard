@@ -560,7 +560,7 @@ function onPerPageChange(sel, section){
   var warnId=section+'-all-warn';
   var warn=document.getElementById(warnId);
   if(warn)warn.style.display=isAll?'inline-block':'none';
-  if(section==='branches')loadBranches(1);
+  if(section==='branches')renderBranchPage(1);  // use cache; no network call needed
   else if(section==='log')loadLog(1);
   else if(section==='stash')loadStash(1);
 }
@@ -1652,6 +1652,38 @@ var _branchSortField='date';
 var _branchSortOrder='desc';
 var _allBranchesCache=null;
 var _branchSearchTimer=null;
+var _branchTab='local';
+var _branchTabInit=false;
+
+function _initBranchTab(){
+  if(_branchTabInit)return;
+  _branchTabInit=true;
+  try{var s=localStorage.getItem('git_tool_branch_tab');if(s==='remote')_branchTab='remote';}catch(e){}
+}
+
+function _updateBranchTabUI(){
+  ['local','remote'].forEach(function(t){
+    var btn=document.getElementById('btab-'+t);
+    if(!btn)return;
+    btn.className='branch-tab-btn'+(t===_branchTab?' active':'');
+    btn.setAttribute('aria-selected',t===_branchTab?'true':'false');
+  });
+}
+
+function switchBranchTab(tab){
+  _branchTab=tab;
+  try{localStorage.setItem('git_tool_branch_tab',tab);}catch(e){}
+  _updateBranchTabUI();
+  // reset search when switching tabs
+  var si=document.getElementById('branch-search');
+  if(si&&si.value){si.value='';var sc=document.getElementById('branch-search-clear');if(sc)sc.style.display='none';}
+  if(_allBranchesCache){
+    var _bpv=document.getElementById('branches-per-page').value;
+    _renderBranchesByTab(_allBranchesCache,1,_bpv===''?20:parseInt(_bpv));
+  }else{
+    loadBranches(1);
+  }
+}
 
 function toggleBranchSort(field){
   if(_branchSortField===field){
@@ -1660,13 +1692,11 @@ function toggleBranchSort(field){
     _branchSortField=field;
     _branchSortOrder='desc';
   }
-  // Re-render with current data (no network call needed)
-  var search=document.getElementById('branch-search').value.trim().toLowerCase();
-  if(search&&_allBranchesCache){
-    _renderFilteredBranches(search);
-  }else if(!search){
-    // reload to re-render with sort
-    loadBranches(document.querySelector('#branches-pagination .page-num.active')?parseInt(document.querySelector('#branches-pagination .page-num.active').textContent):1);
+  if(_allBranchesCache){
+    var _bpv=document.getElementById('branches-per-page').value;
+    _renderBranchesByTab(_allBranchesCache,1,_bpv===''?20:parseInt(_bpv));
+  }else{
+    loadBranches(1);
   }
 }
 
@@ -1695,37 +1725,68 @@ function _branchSortHeader(){
 function loadBranches(page){
   page=page||1;
   switchPage('branches');
+  _initBranchTab();
+  _updateBranchTabUI();
   document.getElementById('branches-content').innerHTML='<div class="loading-bar"><span class="spinner"></span>Loading branches...</div>';
   document.getElementById('branches-pagination').innerHTML='';
   var _bpv=document.getElementById('branches-per-page').value;var perPage=_bpv===''?20:parseInt(_bpv);
-  var url='/api/branches?page='+page+'&per_page='+perPage;
-  // Fetch protected config first so rendering always has up-to-date rules
+  // Always fetch all — enables client-side tab pagination and correct counts
   fetch(API_BASE+'/api/protected-branches').then(function(r){return r.json();}).catch(function(){return{};}).then(function(pcfg){
     if(pcfg&&pcfg.exact)    _protExact    = pcfg.exact;
     if(pcfg&&pcfg.contains) _protContains = pcfg.contains.map(function(s){return s.toLowerCase();});
-    apiGet(url,function(data){
-      _renderBranches(data,perPage);
+    apiGet('/api/branches?page=1&per_page=0',function(data){
+      _allBranchesCache=data;
+      _updateBranchTabCounts(data);
+      _renderBranchesByTab(data,page,perPage);
     });
   });
 }
 
-function _renderBranches(data,perPage){
-    var container=document.getElementById('branches-content');
-    var sortedLocal=_sortBranches(data.local||[]);
-    var sortedRemote=_sortBranches(data.remote||[]);
-    var html=_branchSortHeader();
-    html+='<div class="branch-list"><h3>Local Branches ('+data.total_local+')</h3>';
-    sortedLocal.forEach(function(b,bi){
-      var isCur=(b.name===data.current);
+// Cache-only render used by pagination buttons (no network)
+function renderBranchPage(page){
+  if(!_allBranchesCache){loadBranches(page);return;}
+  var _bpv=document.getElementById('branches-per-page').value;var perPage=_bpv===''?20:parseInt(_bpv);
+  _renderBranchesByTab(_allBranchesCache,page,perPage);
+}
+
+function _updateBranchTabCounts(data){
+  var lc=document.getElementById('btab-local-count');
+  var rc=document.getElementById('btab-remote-count');
+  if(lc) lc.textContent=data.total_local||0;
+  if(rc) rc.textContent=data.total_remote||0;
+}
+
+function _renderBranchesByTab(data,page,perPage){
+  var container=document.getElementById('branches-content');
+  var search=(document.getElementById('branch-search')||{value:''}).value.trim().toLowerCase();
+  var isLocal=_branchTab==='local';
+  var allForTab=_sortBranches(isLocal?(data.local||[]):(data.remote||[]));
+  var current=data.current||'';
+
+  // Apply search filter
+  var filtered=search?allForTab.filter(function(b){return b.name.indexOf(search)>=0;}):allForTab;
+  var total=filtered.length;
+  var totalPages=perPage>0?Math.ceil(total/perPage):1;
+  page=Math.max(1,Math.min(page,totalPages||1));
+  var pageBranches=perPage>0?filtered.slice((page-1)*perPage,page*perPage):filtered;
+
+  var html=_branchSortHeader();
+  if(!pageBranches.length){
+    html+='<div class="empty">'+(search?'No branches matching "<b>'+escapeHtml(search)+'</b>" in '+(isLocal?'local':'remote')+' branches':'No '+(isLocal?'local':'remote')+' branches found')+'</div>';
+  }else if(isLocal){
+    html+='<div class="branch-list">';
+    pageBranches.forEach(function(b,bi){
+      var isCur=(b.name===current);
       var wid='bwrap-l-'+bi;
       var cls=isCur?' branch-item current':' branch-item';
+      var nameHtml=search?_highlightBranchMatch(escapeHtml(b.name),search):escapeHtml(b.name);
+      var _shortName=b.name.replace(/^origin\//,'');
+      var _isProtected=_isBranchProtected(_shortName);
       html+='<div id="'+wid+'">';
       html+='<div class="'+cls+'">';
       html+='<button class="btn-branch-info" onclick="event.stopPropagation();showBranchNamePopover(this,\''+escapeJS(b.name)+'\')" title="Show full name">ⓘ</button>';
-      html+='<span class="name" title="'+escapeAttr(b.name)+'">'+escapeHtml(b.name)+'</span>';
+      html+='<span class="name" title="'+escapeAttr(b.name)+'">'+nameHtml+'</span>';
       html+='<span class="branch-date">'+escapeHtml(b.date||'')+'</span>';
-      var _shortName=b.name.replace(/^origin\//,'');
-      var _isProtected=_isBranchProtected(_shortName);
       if(isCur){
         html+='<div class="branch-actions"><span class="branch-current-badge">✓ Current</span></div>';
         html+='<button class="btn-branch-expand"'
@@ -1754,13 +1815,17 @@ function _renderBranches(data,perPage){
       }
       html+='</div>';
     });
-    html+='</div><div class="branch-list"><h3>Remote Branches ('+data.total_remote+')</h3>';
-    sortedRemote.forEach(function(b,bi){
+    html+='</div>';
+  }else{
+    html+='<div class="branch-list">';
+    pageBranches.forEach(function(b,bi){
       var wid='bwrap-r-'+bi;
+      var nameHtml=search?_highlightBranchMatch(escapeHtml(b.name),search):escapeHtml(b.name);
+      var _shortR=b.name.replace(/^origin\//,'');
       html+='<div id="'+wid+'">';
       html+='<div class="branch-item">';
       html+='<button class="btn-branch-info" onclick="event.stopPropagation();showBranchNamePopover(this,\''+escapeJS(b.name)+'\')" title="Show full name">ⓘ</button>';
-      html+='<span class="name" title="'+escapeAttr(b.name)+'">'+escapeHtml(b.name)+'</span>';
+      html+='<span class="name" title="'+escapeAttr(b.name)+'">'+nameHtml+'</span>';
       html+='<span class="branch-date">'+escapeHtml(b.date||'')+'</span>';
       html+='<div class="branch-actions">';
       html+='<button class="btn btn-sm btn-compare" onclick="event.stopPropagation();openCompare(\''+escapeJS(b.name)+'\',\'remote\')"><span style="line-height:1">⚖️</span><span>Compare</span></button>';
@@ -1769,7 +1834,6 @@ function _renderBranches(data,perPage){
       html+='</div>';
       html+='<button class="btn-branch-expand" onclick="event.stopPropagation();toggleBranchExpand(\''+wid+'\')" title="Expand">▶</button>';
       html+='</div>';
-      var _shortR=b.name.replace(/^origin\//,'');
       html+='<div class="branch-expand-panel" id="bpanel-r-'+bi+'">';
       if(_isBranchProtected(_shortR)){
         html+='<span style="font-size:12px;color:#f59e0b;flex:1">🔒 Protected branch — delete disabled</span>';
@@ -1781,18 +1845,21 @@ function _renderBranches(data,perPage){
       html+='</div>';
     });
     html+='</div>';
-    container.innerHTML=html;
-    var totalPages=perPage>0?Math.ceil(data.total_remote/perPage):1;
-    _pagData['branches'] = {
-      totalPages: totalPages, cur: data.page, loadFn: 'loadBranches',
-      infoHtml: '<span class="page-info">Remote: '+data.total_remote+' total</span>'
-    };
-    if (_pagExpanded['branches'] === undefined) _pagExpanded['branches'] = false;
-    var pag=document.getElementById('branches-pagination');
-    if (!pag) return;
-    if (totalPages<=1) { pag.innerHTML=''; return; }
-    pag.innerHTML = _renderSmartPaginationHTML('branches');
+  }
+
+  container.innerHTML=html;
+  var infoLabel=(isLocal?'Local':'Remote')+': '+(search?filtered.length+' match(es)':total+' total');
+  _pagData['branches']={
+    totalPages:totalPages, cur:page, loadFn:'renderBranchPage',
+    infoHtml:'<span class="page-info">'+infoLabel+'</span>'
+  };
+  if(_pagExpanded['branches']===undefined)_pagExpanded['branches']=false;
+  var pag=document.getElementById('branches-pagination');
+  if(!pag)return;
+  if(totalPages<=1){pag.innerHTML='';return;}
+  pag.innerHTML=_renderSmartPaginationHTML('branches');
 }
+
 
 function sanitizeBranchName(name){
   // Replace whitespace and git-invalid chars with underscore, per git check-ref-format rules
@@ -3108,63 +3175,40 @@ function onBranchSearchInput(){
   document.getElementById('branch-search-clear').style.display=search?'inline-block':'none';
   clearTimeout(_branchSearchTimer);
   _branchSearchTimer=setTimeout(function(){
-    if(!search.trim()){
-      _allBranchesCache=null;
-      loadBranches(1);
-      return;
-    }
+    var _bpv=document.getElementById('branches-per-page').value;
+    var perPage=_bpv===''?20:parseInt(_bpv);
     if(_allBranchesCache){
-      _renderFilteredBranches(search.trim().toLowerCase());
+      _renderBranchesByTab(_allBranchesCache,1,perPage);
     }else{
-      document.getElementById('branches-content').innerHTML='<div class="loading-bar"><span class="spinner"></span>Loading all branches...</div>';
+      document.getElementById('branches-content').innerHTML='<div class="loading-bar"><span class="spinner"></span>Searching...</div>';
       apiGet('/api/branches?page=1&per_page=0',function(data){
         _allBranchesCache=data;
-        _renderFilteredBranches(search.trim().toLowerCase());
+        _updateBranchTabCounts(data);
+        _renderBranchesByTab(data,1,perPage);
       });
     }
   },200);
 }
 
-function _renderFilteredBranches(search){
-  var data=_allBranchesCache;
-  var allBranches=[];
-  (data.local||[]).forEach(function(b){allBranches.push({name:b.name,date:b.date,ts:b.ts,type:'local'})});
-  (data.remote||[]).forEach(function(b){allBranches.push({name:b.name,date:b.date,ts:b.ts,type:'remote'})});
-  var filtered=allBranches.filter(function(b){return b.name.indexOf(search)>=0});
-  filtered=_sortBranches(filtered);
-  var container=document.getElementById('branches-content');
-  if(!filtered.length){
-    container.innerHTML='<div class="empty">No branches matching "'+escapeHtml(search)+'"</div>';
-    document.getElementById('branches-pagination').innerHTML='<span class="page-info">0 results</span>';
-    return;
-  }
-  var html=_branchSortHeader();
-  html+='<div class="branch-list"><h3>Results for "'+escapeHtml(search)+'" ('+filtered.length+')</h3>';
-  filtered.forEach(function(b){
-    var isCur=b.name===data.current;
-    var cls=isCur?' branch-item current':' branch-item';
-    html+='<div class="'+cls+'">';
-    html+='<button class="btn-branch-info" onclick="event.stopPropagation();showBranchNamePopover(this,\''+escapeJS(b.name)+'\')" title="Show full name">ⓘ</button>';
-    html+='<span style="font-size:11px;padding:1px 6px;border-radius:99px;margin-right:6px;flex-shrink:0;background:'+(b.type==='local'?'#dbeafe':'#e0f2fe')+';color:'+(b.type==='local'?'#1e40af':'#0369a1')+'">'+b.type+'</span>';
-    html+='<span class="name" title="'+escapeAttr(b.name)+'">'+_highlightBranchMatch(escapeHtml(b.name),search)+'</span>';
-    html+='<span class="branch-date">'+escapeHtml(b.date||'')+'</span>';
-    if(isCur){
-      html+='<div class="branch-actions"><span class="branch-current-badge">✓ Current</span></div>';
-      html+='<button class="btn-branch-expand" style="visibility:hidden" disabled>▶</button>';
-    }else{
-      html+='<div class="branch-actions">';
-      html+='<button class="btn btn-sm btn-compare" onclick="event.stopPropagation();openCompare(\''+escapeJS(b.name)+'\',\''+(b.type==='local'?'local':'remote')+'\')">⚖️ Compare</button>';
-      html+='<button class="btn btn-sm btn-merge" onclick="event.stopPropagation();mergeBranch(\''+escapeJS(b.name)+'\')">⚡ Merge</button>';
-      html+='<button class="btn btn-sm btn-checkout" data-branch="'+escapeAttr(b.name)+'" onclick="return branchCheckoutClick(this)">✅ Checkout</button>';
-      html+='</div>';
-      html+='<button class="btn-branch-expand" style="visibility:hidden" disabled>▶</button>';
-    }
-    html+='</div>';
-  });
-  html+='</div>';
-  container.innerHTML=html;
-  document.getElementById('branches-pagination').innerHTML='<span class="page-info">'+filtered.length+' match(es) for "'+escapeHtml(search)+'"</span>';
+function setBranchSearchTag(tag){
+  var inp=document.getElementById('branch-search');
+  inp.value=tag;
+  document.getElementById('branch-search-clear').style.display='inline-block';
+  onBranchSearchInput();
 }
+
+function clearBranchSearch(){
+  document.getElementById('branch-search').value='';
+  document.getElementById('branch-search-clear').style.display='none';
+  if(_allBranchesCache){
+    var _bpv=document.getElementById('branches-per-page').value;
+    var perPage=_bpv===''?20:parseInt(_bpv);
+    _renderBranchesByTab(_allBranchesCache,1,perPage);
+  }else{
+    loadBranches(1);
+  }
+}
+
 
 function showBranchNamePopover(btn, name) {
   var existing = document.querySelector('.branch-name-popover');
@@ -3199,21 +3243,6 @@ function _highlightBranchMatch(escaped,search){
   var idx=lower.indexOf(search);
   if(idx<0)return escaped;
   return escaped.substr(0,idx)+'<mark>'+escaped.substr(idx,search.length)+'</mark>'+escaped.substr(idx+search.length);
-}
-
-function setBranchSearchTag(tag){
-  var inp=document.getElementById('branch-search');
-  inp.value=tag;
-  document.getElementById('branch-search-clear').style.display='inline-block';
-  _allBranchesCache=null;
-  onBranchSearchInput();
-}
-
-function clearBranchSearch(){
-  document.getElementById('branch-search').value='';
-  document.getElementById('branch-search-clear').style.display='none';
-  _allBranchesCache=null;
-  loadBranches(1);
 }
 
 var _diffSearchTimer=null;
