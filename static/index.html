@@ -8,6 +8,29 @@
 <link rel="stylesheet" href="/static/ai-panel.css">
 </head>
 <body>
+
+<!-- ═══════════ Git Graph Side Panel ═══════════ -->
+<div id="graph-panel" class="graph-panel">
+  <div class="graph-panel-hdr">
+    <span class="graph-panel-title">🌳 Branch Graph</span>
+    <div style="display:flex;gap:4px">
+      <button class="graph-btn" onclick="loadGitGraph()" title="Refresh graph">↻</button>
+      <button class="graph-btn" onclick="toggleGraphPanel()" title="Close">✕</button>
+    </div>
+  </div>
+  <!-- Left-right split: legend on left, SVG on right -->
+  <div class="graph-panel-content">
+    <div class="graph-legend-col">
+      <div class="graph-legend" id="graph-legend"></div>
+    </div>
+    <div class="graph-svg-col" id="graph-svg-wrap">
+      <div style="padding:20px;font-size:12px;color:#9ca3af">Click ↻ to load</div>
+    </div>
+  </div>
+  <!-- Drag handle on right edge for resizing -->
+  <div class="graph-resize-handle" id="graph-resize-handle"></div>
+</div>
+
 <div class="container">
 
 <div class="project-banner" id="project-banner">
@@ -46,6 +69,7 @@
     <button class="btn-tab" id="tab-log" onclick="loadLog(1)" data-i18n="tab_log">Commit Log</button>
     <button class="btn-tab" id="tab-conflicts" onclick="loadConflicts()" data-i18n="tab_conflicts">Conflicts</button>
     <button class="btn-tab" id="tab-stash" onclick="loadStash()" data-i18n="tab_stash">Stash</button>
+    <button class="btn-tab" id="btn-graph-toggle" onclick="toggleGraphPanel()" data-i18n="tab_graph">Graph 🌳</button>
     <span class="top-bar-sep">|</span>
     <button class="btn-tab btn-tab--worktree" id="tab-worktree" onclick="toggleWorktreePopup()" title="Worktrees">
       <span id="worktree-btn-label">🌲 Worktrees</span>

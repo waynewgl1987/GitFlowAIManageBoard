@@ -1223,3 +1223,150 @@ def abort_merge_or_rebase():
         out, err, rc = _run(cmd)
         if rc == 0: return out, err, rc
     return "", "no ongoing merge/rebase/cherry-pick", 0
+
+
+def get_git_graph(max_commits=150):
+    """Return structured commit graph data for branch graph visualization.
+
+    The current HEAD branch always occupies lane 0 (leftmost position).
+    refs/stash commits are excluded.
+    """
+    fmt = "%H||%P||%D||%s||%an||%ad"
+
+    def _parse_raw(raw):
+        rows = []
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            p = line.split("||", 5)
+            if len(p) == 6:
+                rows.append(p)
+        return rows
+
+    # Run 1: HEAD branch first → these commits occupy lane 0
+    out1, _, _ = _run([
+        "git", "log", "--topo-order",
+        f"--pretty=format:{fmt}", "--date=short", f"-n{max_commits}", "HEAD"
+    ])
+    rows1 = _parse_raw(out1)
+
+    # Run 2: all other refs, excluding stash explicitly
+    # Use --all --exclude=refs/stash instead of --branches --remotes --tags
+    # so worktree stashes and any non-standard stash refs are all excluded
+    out2, _, _ = _run([
+        "git", "log", "--all", "--exclude=refs/stash",
+        "--topo-order", f"--pretty=format:{fmt}", "--date=short",
+        f"-n{max_commits}", "--not", "HEAD"
+    ])
+    rows2 = _parse_raw(out2)
+
+    # Combine, HEAD commits first, deduplicate
+    seen_hashes = {r[0] for r in rows1}
+    rows = rows1 + [r for r in rows2 if r[0] not in seen_hashes]
+    rows = rows[:max_commits]
+
+    if not rows:
+        return {"commits": [], "edges": [], "max_lane": 0}
+
+    commits = []
+    for h, parents_str, refs, msg, author, date in rows:
+        parents = [p.strip() for p in parents_str.split() if p.strip()]
+
+        labels = []
+        is_head = False
+        for ref in refs.split(","):
+            ref = ref.strip()
+            # Exclude stash refs and symbolic HEAD pointers (origin/HEAD etc.)
+            if not ref or ref == 'refs/stash' or ref.startswith('refs/stash@') \
+                    or ref == 'stash' or ref.startswith('stash@'):
+                continue
+            # Skip symbolic remote HEAD pointers (e.g. origin/HEAD) — not real branches
+            if ref == 'HEAD' or ref.endswith('/HEAD'):
+                if ref == 'HEAD':
+                    is_head = True
+                continue
+            if ref.startswith("HEAD -> "):
+                labels.insert(0, ref[8:])
+                is_head = True
+            elif ref.startswith("tag: "):
+                labels.append("🏷 " + ref[5:])
+            else:
+                labels.append(ref)
+
+        commits.append({
+            "hash": h, "short": h[:7],
+            "parents": parents, "labels": labels,
+            "is_head": is_head,
+            "msg": msg[:80], "author": author, "date": date,
+            "lane": 0,
+        })
+
+    if not commits:
+        return {"commits": [], "edges": [], "max_lane": 0}
+
+    # Lane assignment — topo order (newest first): reserve lanes for parents
+    lane_map = {}   # parent_hash -> reserved lane index
+    free = []
+    nxt = [0]
+
+    def alloc():
+        if free: return free.pop(0)
+        l = nxt[0]; nxt[0] += 1; return l
+
+    def release(l):
+        free.append(l); free.sort()
+
+    for c in commits:
+        h, parents = c["hash"], c["parents"]
+        my_lane = lane_map.pop(h, None)
+        if my_lane is None:
+            my_lane = alloc()
+        c["lane"] = my_lane
+
+        if parents:
+            if parents[0] not in lane_map:
+                lane_map[parents[0]] = my_lane
+            else:
+                release(my_lane)
+            for p in parents[1:]:
+                if p not in lane_map:
+                    lane_map[p] = alloc()
+        else:
+            release(my_lane)
+
+    max_lane = max((c["lane"] for c in commits), default=0)
+
+    hash_to_row = {c["hash"]: i for i, c in enumerate(commits)}
+    edges = []
+    for i, c in enumerate(commits):
+        first_parent = True
+        for ph in c["parents"]:
+            if ph in hash_to_row:
+                pi = hash_to_row[ph]
+                parent = commits[pi]
+                if first_parent and parent["lane"] != c["lane"]:
+                    c["branch_from"] = {
+                        "idx": pi,
+                        "short": parent["short"],
+                        "date": parent["date"],
+                        "labels": parent["labels"][:3],
+                        "msg": parent["msg"][:50],
+                    }
+                edges.append([i, c["lane"], pi, parent["lane"]])
+            first_parent = False
+
+    # A branch is cut exactly ONCE per lane. Keep only the OLDEST branch_from
+    # per lane (highest row index = oldest commit in topo order = true branch start).
+    # All others are topology artifacts from merged commits and lane reuse.
+    oldest_bf_row_per_lane = {}
+    for i, c in enumerate(commits):
+        if c.get("branch_from"):
+            lane = c["lane"]
+            if lane not in oldest_bf_row_per_lane or i > oldest_bf_row_per_lane[lane]:
+                oldest_bf_row_per_lane[lane] = i
+    for i, c in enumerate(commits):
+        if c.get("branch_from") and i != oldest_bf_row_per_lane.get(c["lane"]):
+            del c["branch_from"]
+
+    return {"commits": commits, "edges": edges, "max_lane": max_lane}

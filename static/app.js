@@ -291,6 +291,7 @@ var T = {
   tab_log: {en:'Commit Log', zh:'提交日志'},
   tab_conflicts: {en:'Conflicts', zh:'冲突'},
   tab_stash: {en:'Stash', zh:'暂存'},
+  tab_graph: {en:'Graph 🌳', zh:'图谱 🌳'},
   tab_worktree: {en:'Worktrees', zh:'工作树'},
   tab_fetch: {en:'Fetch', zh:'Fetch'},
   tab_fetch_title: {en:'Fetch from remote (download only)', zh:'从远端拉取最新信息（仅下载，不合并）'},
@@ -695,6 +696,9 @@ function switchPage(name) {
   var tabId='tab-'+(tabMap[name]||name);
   var activeTab=document.getElementById(tabId);
   if(activeTab)activeTab.classList.add('active');
+  var graphBtn = document.getElementById('btn-graph-toggle');
+  var graphPanel = document.getElementById('graph-panel');
+  if (graphBtn && graphPanel && graphPanel.classList.contains('open')) graphBtn.classList.add('active');
   if(name==='main')loadFiles();
   // Persist tab so refresh restores same page
   try{localStorage.setItem('git_tool_active_tab',name);}catch(e){}
@@ -4242,3 +4246,352 @@ function saveGitSettings() {
 document.getElementById('git-settings-modal').addEventListener('click', function(e) {
   if (e.target === this) closeGitSettingsModal();
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Git Branch Graph Panel
+// ═══════════════════════════════════════════════════════════════
+var _graphData = null;
+var _graphHighlightLane = null;
+
+function highlightGraphLane(lane, fromLegend) {
+  if (fromLegend && _graphHighlightLane === lane) lane = null; // toggle off
+  _graphHighlightLane = lane;
+
+  // Collect branch-from parent commit indices for the selected lane
+  var bfParentIdxs = new Set();
+  if (lane !== null && _graphData) {
+    (_graphData.commits || []).forEach(function(c) {
+      if (c.lane === lane && c.branch_from != null) {
+        bfParentIdxs.add(c.branch_from.idx);
+      }
+    });
+  }
+
+  var wrap = document.getElementById('graph-svg-wrap');
+  if (wrap) {
+    wrap.querySelectorAll('path[data-lane]').forEach(function(p) {
+      if (lane === null) {
+        p.style.opacity = '';
+        p.style.strokeWidth = '';
+      } else {
+        var l = parseInt(p.getAttribute('data-lane'));
+        var on = (l === lane);
+        p.style.opacity = on ? '0.9' : '0.08';
+        p.style.strokeWidth = on ? '2.5' : '1.5';
+      }
+    });
+    wrap.querySelectorAll('g[data-idx]').forEach(function(g) {
+      var l = parseInt(g.getAttribute('data-lane'));
+      var idx = parseInt(g.getAttribute('data-idx'));
+      if (lane === null) {
+        g.style.opacity = '';
+      } else if (l === lane) {
+        g.style.opacity = '1';
+      } else if (bfParentIdxs.has(idx)) {
+        g.style.opacity = '0.85'; // Branch-origin parent: visible, not dimmed
+      } else {
+        g.style.opacity = '0.18';
+      }
+    });
+    // Show/hide the branch-origin parent rings
+    wrap.querySelectorAll('circle.bop-ring').forEach(function(ring) {
+      var srcLane = parseInt(ring.getAttribute('data-src-lane'));
+      ring.setAttribute('opacity', (lane !== null && srcLane === lane) ? '0.9' : '0');
+    });
+  }
+
+  document.querySelectorAll('#graph-legend .graph-legend-item').forEach(function(item) {
+    var l = parseInt(item.getAttribute('data-lane'));
+    item.classList.toggle('graph-legend-active', lane !== null && l === lane);
+  });
+}
+
+
+function toggleGraphPanel() {
+  var panel = document.getElementById('graph-panel');
+  var isOpen = panel.classList.contains('open');
+  if (!isOpen) {
+    panel.classList.add('open');
+    var btn = document.getElementById('btn-graph-toggle');
+    if (btn) btn.classList.add('active');
+    if (!_graphData) loadGitGraph();
+  } else {
+    panel.classList.remove('open');
+    var btn = document.getElementById('btn-graph-toggle');
+    if (btn) btn.classList.remove('active');
+  }
+  try { localStorage.setItem('graphPanelOpen', String(!isOpen)); } catch(e) {}
+}
+
+function _initGraphPanel() {
+  // Restore saved width
+  try {
+    var savedW = parseInt(localStorage.getItem('graphPanelWidth') || '0');
+    if (savedW >= 280 && savedW <= 860) {
+      document.getElementById('graph-panel').style.width = savedW + 'px';
+    }
+  } catch(e) {}
+
+  // Restore open state
+  try {
+    if (localStorage.getItem('graphPanelOpen') === 'true') {
+      var panel = document.getElementById('graph-panel');
+      panel.classList.add('open');
+      var btn = document.getElementById('btn-graph-toggle');
+      if (btn) btn.classList.add('active');
+      loadGitGraph();
+    }
+  } catch(e) {}
+
+  // Init drag-to-resize
+  _initGraphResize();
+}
+
+function _initGraphResize() {
+  var handle = document.getElementById('graph-resize-handle');
+  var panel = document.getElementById('graph-panel');
+  if (!handle || !panel) return;
+  var dragging = false, startX = 0, startW = 0;
+  handle.addEventListener('mousedown', function(e) {
+    dragging = true;
+    startX = e.clientX;
+    startW = panel.offsetWidth;
+    handle.classList.add('dragging');
+    // Disable CSS transition during drag so width follows mouse instantly
+    panel.style.transition = 'transform .22s cubic-bezier(.4,0,.2,1)';
+    document.body.style.cursor = 'ew-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  document.addEventListener('mousemove', function(e) {
+    if (!dragging) return;
+    var newW = Math.max(280, Math.min(860, startW + (e.clientX - startX)));
+    panel.style.width = newW + 'px';
+  });
+  document.addEventListener('mouseup', function() {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    try { localStorage.setItem('graphPanelWidth', String(panel.offsetWidth)); } catch(e) {}
+  });
+}
+
+function _isStashLabel(s) {
+  return s === 'refs/stash' || s.startsWith('refs/stash@') || s === 'stash' || s.startsWith('stash@');
+}
+
+function _isNoiseLabel(s) {
+  // Filter stash refs and symbolic HEAD pointers (origin/HEAD, upstream/HEAD, etc.)
+  return _isStashLabel(s) || s === 'HEAD' || s.endsWith('/HEAD');
+}
+
+function loadGitGraph() {
+  _graphHighlightLane = null;
+  var wrap = document.getElementById('graph-svg-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="loading-bar"><span class="spinner"></span>Loading graph…</div>';
+  var legend = document.getElementById('graph-legend');
+  if (legend) { legend.style.display = 'none'; legend.innerHTML = ''; }
+
+  _showSpinner();
+  fetch(API_BASE + '/api/git-graph')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      _hideSpinner();
+      if (!data || !Array.isArray(data.commits)) {
+        wrap.innerHTML = '<div style="padding:16px;font-size:12px;color:#dc2626">Graph unavailable</div>';
+        return;
+      }
+      // Client-side noise filtering (stash + origin/HEAD symbolic pointers)
+      data.commits.forEach(function(c) {
+        c.labels = (c.labels || []).filter(function(l) { return !_isNoiseLabel(l); });
+      });
+      _graphData = data;
+      try { _renderGraphLegend(data); } catch(e) { console.error('legend err', e); }
+      try { renderGitGraph(data); } catch(e) {
+        console.error('graph render err', e);
+        wrap.innerHTML = '<div style="padding:16px;font-size:12px;color:#dc2626">Render error: ' + escapeHtml(e.message) + '</div>';
+      }
+    })
+    .catch(function(e) {
+      _hideSpinner();
+      wrap.innerHTML = '<div style="padding:16px;font-size:12px;color:#dc2626">Failed: ' + escapeHtml(e.message) + '</div>';
+    });
+}
+
+function _renderGraphLegend(data) {
+  var _C = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f97316','#a855f7','#14b8a6','#e11d48'];
+  var legend = document.getElementById('graph-legend');
+  if (!legend) return;
+  // Collect ALL unique branch labels (one entry per label, not one per lane).
+  // This ensures branches sharing a lane (e.g. master merged into develop) still appear.
+  var seenLabels = new Set();
+  var entries = []; // [{lane, label}]
+  (data.commits || []).forEach(function(c) {
+    var lbs = (c.labels || []).filter(function(l) { return !_isNoiseLabel(l); });
+    lbs.forEach(function(lb) {
+      if (!seenLabels.has(lb)) {
+        seenLabels.add(lb);
+        entries.push({lane: c.lane, label: lb});
+      }
+    });
+  });
+  if (!entries.length) return;
+  legend.style.display = 'flex';
+  legend.innerHTML = entries.slice(0, 18).map(function(e) {
+    var name = e.label; if (name.length > 24) name = name.slice(0, 22) + '…';
+    return '<div class="graph-legend-item" data-lane="' + e.lane + '" onclick="highlightGraphLane(' + e.lane + ', true)">'
+      + '<span class="graph-legend-dot" style="background:' + _C[e.lane % _C.length] + '"></span>'
+      + '<span class="graph-legend-name">' + escapeHtml(name) + '</span>'
+      + '</div>';
+  }).join('');
+}
+
+function renderGitGraph(data) {
+  var _C = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f97316','#a855f7','#14b8a6','#e11d48'];
+  var wrap = document.getElementById('graph-svg-wrap');
+  if (!wrap) return;
+  var commits = (data && data.commits) || [], edges = (data && data.edges) || [];
+  if (!commits.length) {
+    wrap.innerHTML = '<div style="padding:20px;font-size:12px;color:#9ca3af">No commits found</div>';
+    return;
+  }
+
+  var ROW_H = 24, LANE_W = 14, PAD_L = 10, PAD_T = 14, DOT_R = 4.5;
+  var maxLane = (data && data.max_lane) || 0;
+  var svgW = PAD_L * 2 + (maxLane + 1) * LANE_W;
+  var svgH = PAD_T * 2 + commits.length * ROW_H;
+
+  function cx(l) { return PAD_L + (l || 0) * LANE_W; }
+  function cy(r) { return PAD_T + r * ROW_H; }
+  function col(l) { return _C[(l || 0) % _C.length]; }
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  var parts = ['<svg xmlns="http://www.w3.org/2000/svg" width="'+svgW+'" height="'+svgH+'" style="display:block">'];
+  // Transparent background to catch clicks (clears highlight)
+  parts.push('<rect width="'+svgW+'" height="'+svgH+'" fill="transparent" onclick="highlightGraphLane(null,false)" style="cursor:default"/>');
+
+  // Draw edges first (rendered behind nodes)
+  edges.forEach(function(e) {
+    var fr=e[0],fl=e[1],tr=e[2],tl=e[3];
+    var x1=cx(fl),y1=cy(fr),x2=cx(tl),y2=cy(tr),stroke=col(fl);
+    var d;
+    if (fl===tl) {
+      d='M'+x1+','+y1+' L'+x2+','+y2;
+    } else {
+      var half=y1+ROW_H/2, step=y1+ROW_H;
+      if (tr===fr+1) {
+        d='M'+x1+','+y1+' C'+x1+','+half+' '+x2+','+half+' '+x2+','+y2;
+      } else {
+        d='M'+x1+','+y1+' C'+x1+','+half+' '+x2+','+half+' '+x2+','+step+' L'+x2+','+y2;
+      }
+    }
+    parts.push('<path data-lane="'+fl+'" d="'+d+'" fill="none" stroke="'+stroke+'" stroke-width="1.5" opacity="0.8" style="transition:opacity .15s,stroke-width .15s"/>');
+  });
+
+  // Pre-compute which commit indices are branch-from parents, and for which source lane
+  var bopMap = {}; // idx → source lane (the lane that branched FROM this commit)
+  commits.forEach(function(c) {
+    if (c.branch_from != null) bopMap[c.branch_from.idx] = c.lane;
+  });
+
+  // Draw commit nodes
+  commits.forEach(function(c,i) {
+    var x=cx(c.lane), y=cy(i), clr=col(c.lane);
+    var lbs = c.labels || [];
+    var hasLabel=lbs.length>0, r=hasLabel?5.5:DOT_R;
+    var isBranchStart = !!c.branch_from;
+
+    // SVG native tooltip (hover)
+    var tipText = (lbs.length ? lbs.join(', ')+'\n' : '') + c.short+' '+c.msg+'\n'+c.author+' · '+c.date;
+    if (isBranchStart) {
+      var bf = c.branch_from;
+      var bfName = (bf.labels && bf.labels.length) ? bf.labels[0] : bf.short;
+      tipText += '\n✂ Branched from: ' + bfName + ' (' + bf.date + ')';
+    }
+
+    parts.push('<g data-lane="'+c.lane+'" data-idx="'+i+'" onclick="showGraphNodeInfo(event,'+i+')" style="cursor:pointer;transition:opacity .15s">');
+
+    // Branch-origin-parent ring: shown when a child branch is highlighted
+    if (i in bopMap) {
+      var srcClr = col(bopMap[i]);
+      parts.push('<circle class="bop-ring" data-src-lane="'+bopMap[i]+'" cx="'+x+'" cy="'+y+'" r="'+(r+6)+'" fill="none" stroke="'+srcClr+'" stroke-width="2" stroke-dasharray="4,2" opacity="0" style="transition:opacity .15s"/>');
+    }
+    // Branch-start marker: dashed outer ring on the branch's first commit
+    if (isBranchStart) {
+      parts.push('<circle cx="'+x+'" cy="'+y+'" r="'+(r+4)+'" fill="none" stroke="'+clr+'" stroke-width="1.2" stroke-dasharray="3,2" opacity="0.7"/>');
+    }
+    // Outer ring: gold for HEAD, colored for branch tips
+    if (c.is_head) {
+      parts.push('<circle cx="'+x+'" cy="'+y+'" r="'+(r+3)+'" fill="none" stroke="#fbbf24" stroke-width="1.5" opacity="0.85"/>');
+    } else if (hasLabel) {
+      parts.push('<circle cx="'+x+'" cy="'+y+'" r="'+(r+2.5)+'" fill="none" stroke="'+clr+'" stroke-width="1.5" opacity="0.45"/>');
+    }
+    parts.push('<circle cx="'+x+'" cy="'+y+'" r="'+r+'" fill="'+clr+'" stroke="#fff" stroke-width="1.5"/>');
+    parts.push('<title>'+esc(tipText)+'</title>');
+    parts.push('</g>');
+  });
+
+  parts.push('</svg>');
+  wrap.innerHTML = parts.join('');
+}
+
+function showGraphNodeInfo(event, idx) {
+  event.stopPropagation();
+  var old = document.getElementById('_gntip'); if (old) old.remove();
+  var c = _graphData && _graphData.commits && _graphData.commits[idx];
+  if (!c) return;
+
+  highlightGraphLane(c.lane, false); // Highlight this commit's lane in legend
+
+  var bfHtml = '';
+  if (c.branch_from) {
+    var bf = c.branch_from;
+    var bfName = (bf.labels && bf.labels.length) ? bf.labels[0] : bf.short;
+    bfHtml = '<div class="gnt-branch-from">'
+      + '<span class="gnt-bf-icon">✂</span>'
+      + '<span class="gnt-bf-info">Branched from <strong>' + escapeHtml(bfName) + '</strong>'
+      + ' &nbsp;<span class="gnt-bf-hash">' + escapeHtml(bf.short) + '</span>'
+      + ' &nbsp;<span class="gnt-bf-date">' + escapeHtml(bf.date) + '</span></span>'
+      + '</div>';
+  }
+
+  var tip = document.createElement('div');
+  tip.id = '_gntip'; tip.className = 'graph-node-tip';
+  tip.innerHTML =
+    '<div class="gnt-hash">' + escapeHtml(c.short) + '</div>'
+    + '<div class="gnt-msg">' + escapeHtml(c.msg) + '</div>'
+    + '<div class="gnt-meta">' + escapeHtml(c.author) + ' · ' + escapeHtml(c.date) + '</div>'
+    + (c.labels&&c.labels.length ? '<div class="gnt-labels">'
+        + c.labels.map(function(l){return '<span class="gnt-label">'+escapeHtml(l)+'</span>';}).join('')
+        + '</div>' : '')
+    + bfHtml;
+  document.body.appendChild(tip);
+
+  // Position tooltip to the right of the clicked point, within viewport
+  var tipW=tip.offsetWidth||244, tipH=tip.offsetHeight||100;
+  var left = event.clientX + 14;
+  if (left + tipW > window.innerWidth) left = event.clientX - tipW - 14;
+  var top = event.clientY - 14;
+  if (top + tipH > window.innerHeight) top = window.innerHeight - tipH - 8;
+  tip.style.left = Math.max(4, left) + 'px';
+  tip.style.top = Math.max(4, top) + 'px';
+
+  // Close on next click anywhere (remove any previous handler first)
+  if (showGraphNodeInfo._closeHandler) {
+    document.removeEventListener('click', showGraphNodeInfo._closeHandler);
+  }
+  setTimeout(function() {
+    showGraphNodeInfo._closeHandler = function() {
+      var el = document.getElementById('_gntip'); if (el) el.remove();
+      document.removeEventListener('click', showGraphNodeInfo._closeHandler);
+      showGraphNodeInfo._closeHandler = null;
+    };
+    document.addEventListener('click', showGraphNodeInfo._closeHandler);
+  }, 0);
+}
+
+_initGraphPanel();
