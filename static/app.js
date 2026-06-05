@@ -4332,6 +4332,11 @@ function _isStashLabel(s) {
   return s === 'refs/stash' || s.startsWith('refs/stash@') || s === 'stash' || s.startsWith('stash@');
 }
 
+function _isNoiseLabel(s) {
+  // Filter stash refs and symbolic HEAD pointers (origin/HEAD, upstream/HEAD, etc.)
+  return _isStashLabel(s) || s === 'HEAD' || s.endsWith('/HEAD');
+}
+
 function loadGitGraph() {
   _graphHighlightLane = null;
   var wrap = document.getElementById('graph-svg-wrap');
@@ -4349,9 +4354,9 @@ function loadGitGraph() {
         wrap.innerHTML = '<div style="padding:16px;font-size:12px;color:#dc2626">Graph unavailable</div>';
         return;
       }
-      // Client-side stash filtering (safety net for old server code)
+      // Client-side noise filtering (stash + origin/HEAD symbolic pointers)
       data.commits.forEach(function(c) {
-        c.labels = (c.labels || []).filter(function(l) { return !_isStashLabel(l); });
+        c.labels = (c.labels || []).filter(function(l) { return !_isNoiseLabel(l); });
       });
       _graphData = data;
       try { _renderGraphLegend(data); } catch(e) { console.error('legend err', e); }
@@ -4375,7 +4380,7 @@ function _renderGraphLegend(data) {
   var seenLabels = new Set();
   var entries = []; // [{lane, label}]
   (data.commits || []).forEach(function(c) {
-    var lbs = (c.labels || []).filter(function(l) { return !_isStashLabel(l); });
+    var lbs = (c.labels || []).filter(function(l) { return !_isNoiseLabel(l); });
     lbs.forEach(function(lb) {
       if (!seenLabels.has(lb)) {
         seenLabels.add(lb);

@@ -1277,13 +1277,16 @@ def get_git_graph(max_commits=150):
         is_head = False
         for ref in refs.split(","):
             ref = ref.strip()
-            # Exclude stash refs (refs/stash, stash@{N}, refs/stash@{N})
+            # Exclude stash refs and symbolic HEAD pointers (origin/HEAD etc.)
             if not ref or ref == 'refs/stash' or ref.startswith('refs/stash@') \
                     or ref == 'stash' or ref.startswith('stash@'):
                 continue
-            if ref == "HEAD":
-                is_head = True
-            elif ref.startswith("HEAD -> "):
+            # Skip symbolic remote HEAD pointers (e.g. origin/HEAD) — not real branches
+            if ref == 'HEAD' or ref.endswith('/HEAD'):
+                if ref == 'HEAD':
+                    is_head = True
+                continue
+            if ref.startswith("HEAD -> "):
                 labels.insert(0, ref[8:])
                 is_head = True
             elif ref.startswith("tag: "):
