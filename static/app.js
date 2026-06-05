@@ -4463,13 +4463,52 @@ function _renderGraphLegend(data) {
   if (!entries.length) return;
   legend.style.display = 'flex';
   legend.innerHTML = entries.slice(0, 18).map(function(e) {
-    var name = e.label; if (name.length > 24) name = name.slice(0, 22) + '…';
-    return '<div class="graph-legend-item" data-lane="' + e.lane + '" onclick="highlightGraphLane(' + e.lane + ', true)">'
+    var fullName = e.label;
+    var isTrunc = fullName.length > 22;
+    var display = isTrunc ? fullName.slice(0, 20) + '…' : fullName;
+    return '<div class="graph-legend-item" data-lane="' + e.lane + '" data-fullname="' + escapeHtml(fullName) + '" onclick="highlightGraphLane(' + e.lane + ', true)" title="' + escapeHtml(fullName) + '">'
       + '<span class="graph-legend-dot" style="background:' + _C[e.lane % _C.length] + '"></span>'
-      + '<span class="graph-legend-name">' + escapeHtml(name) + '</span>'
+      + '<span class="graph-legend-name">' + escapeHtml(display) + '</span>'
+      + (isTrunc ? '<span class="gnp-trigger" onclick="event.stopPropagation();showGraphNamePopover(event,\'' + escapeHtml(fullName).replace(/'/g,'\\\'') + '\')" title="Show full name">…</span>' : '')
       + '</div>';
   }).join('');
 }
+
+function showGraphNamePopover(event, fullName) {
+  var pop = document.getElementById('graph-name-popover');
+  var nameEl = document.getElementById('gnp-name');
+  if (!pop || !nameEl) return;
+  nameEl.textContent = fullName;
+  pop._fullName = fullName;
+  // Position near anchor
+  var rect = event.target.getBoundingClientRect();
+  pop.style.display = 'flex';
+  var popW = pop.offsetWidth || 240;
+  var left = Math.min(rect.right + 6, window.innerWidth - popW - 8);
+  var top = rect.top - 4;
+  if (top + (pop.offsetHeight || 48) > window.innerHeight - 8) top = rect.bottom - (pop.offsetHeight || 48);
+  pop.style.left = left + 'px';
+  pop.style.top = top + 'px';
+}
+
+function graphNameCopy() {
+  var pop = document.getElementById('graph-name-popover');
+  if (!pop || !pop._fullName) return;
+  try {
+    navigator.clipboard.writeText(pop._fullName).then(function() {
+      var btn = pop.querySelector('.gnp-copy');
+      if (btn) { btn.textContent = '✓ Copied'; setTimeout(function(){ btn.textContent = '⎘ Copy'; }, 1200); }
+    });
+  } catch(e) {}
+}
+
+// Close popover on outside click
+document.addEventListener('click', function(e) {
+  var pop = document.getElementById('graph-name-popover');
+  if (pop && pop.style.display !== 'none' && !pop.contains(e.target) && !e.target.classList.contains('gnp-trigger')) {
+    pop.style.display = 'none';
+  }
+});
 
 function renderGitGraph(data) {
   var _C = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f97316','#a855f7','#14b8a6','#e11d48'];
