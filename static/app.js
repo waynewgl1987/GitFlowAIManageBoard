@@ -4357,9 +4357,12 @@ function _initGraphResize() {
     startX = e.clientX;
     startW = panel.offsetWidth;
     handle.classList.add('dragging');
+    // Disable CSS transition during drag so width follows mouse instantly
+    panel.style.transition = 'transform .22s cubic-bezier(.4,0,.2,1)';
     document.body.style.cursor = 'ew-resize';
     document.body.style.userSelect = 'none';
     e.preventDefault();
+    e.stopPropagation();
   });
   document.addEventListener('mousemove', function(e) {
     if (!dragging) return;

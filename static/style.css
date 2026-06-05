@@ -530,21 +530,26 @@ mark{background:#fef3c7;border-radius:2px;padding:0 1px}
   padding: 2px 0;
 }
 
-/* Resize drag handle */
+/* Resize drag handle — sits on the inner right edge of the panel */
 .graph-resize-handle {
   position: absolute;
   top: 0;
-  right: -4px;
-  width: 8px;
+  right: 0;
+  width: 6px;
   height: 100%;
   cursor: ew-resize;
-  z-index: 10;
-  border-radius: 4px;
+  z-index: 20;
+  border-radius: 0 4px 4px 0;
   transition: background .15s;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px, transparent 3px,
+    rgba(0,0,0,.08) 3px, rgba(0,0,0,.08) 4px
+  );
 }
 .graph-resize-handle:hover,
 .graph-resize-handle.dragging {
-  background: rgba(59,130,246,.25);
+  background: rgba(59,130,246,.30);
 }
 
 /* Graph node tooltip */
