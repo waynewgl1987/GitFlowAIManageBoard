@@ -291,6 +291,7 @@ var T = {
   tab_log: {en:'Commit Log', zh:'提交日志'},
   tab_conflicts: {en:'Conflicts', zh:'冲突'},
   tab_stash: {en:'Stash', zh:'暂存'},
+  tab_graph: {en:'Graph 🌳', zh:'图谱 🌳'},
   tab_worktree: {en:'Worktrees', zh:'工作树'},
   tab_fetch: {en:'Fetch', zh:'Fetch'},
   tab_fetch_title: {en:'Fetch from remote (download only)', zh:'从远端拉取最新信息（仅下载，不合并）'},
@@ -695,6 +696,9 @@ function switchPage(name) {
   var tabId='tab-'+(tabMap[name]||name);
   var activeTab=document.getElementById(tabId);
   if(activeTab)activeTab.classList.add('active');
+  var graphBtn = document.getElementById('btn-graph-toggle');
+  var graphPanel = document.getElementById('graph-panel');
+  if (graphBtn && graphPanel && graphPanel.classList.contains('open')) graphBtn.classList.add('active');
   if(name==='main')loadFiles();
   // Persist tab so refresh restores same page
   try{localStorage.setItem('git_tool_active_tab',name);}catch(e){}
@@ -4308,24 +4312,68 @@ function toggleGraphPanel() {
   var isOpen = panel.classList.contains('open');
   if (!isOpen) {
     panel.classList.add('open');
-    document.getElementById('btn-graph-toggle').classList.add('active');
+    var btn = document.getElementById('btn-graph-toggle');
+    if (btn) btn.classList.add('active');
     if (!_graphData) loadGitGraph();
   } else {
     panel.classList.remove('open');
-    document.getElementById('btn-graph-toggle').classList.remove('active');
+    var btn = document.getElementById('btn-graph-toggle');
+    if (btn) btn.classList.remove('active');
   }
-  try { localStorage.setItem('graphPanelOpen', String(!isOpen)); } catch(e){}
+  try { localStorage.setItem('graphPanelOpen', String(!isOpen)); } catch(e) {}
 }
 
 function _initGraphPanel() {
+  // Restore saved width
+  try {
+    var savedW = parseInt(localStorage.getItem('graphPanelWidth') || '0');
+    if (savedW >= 280 && savedW <= 860) {
+      document.getElementById('graph-panel').style.width = savedW + 'px';
+    }
+  } catch(e) {}
+
+  // Restore open state
   try {
     if (localStorage.getItem('graphPanelOpen') === 'true') {
       var panel = document.getElementById('graph-panel');
       panel.classList.add('open');
-      document.getElementById('btn-graph-toggle').classList.add('active');
+      var btn = document.getElementById('btn-graph-toggle');
+      if (btn) btn.classList.add('active');
       loadGitGraph();
     }
-  } catch(e){}
+  } catch(e) {}
+
+  // Init drag-to-resize
+  _initGraphResize();
+}
+
+function _initGraphResize() {
+  var handle = document.getElementById('graph-resize-handle');
+  var panel = document.getElementById('graph-panel');
+  if (!handle || !panel) return;
+  var dragging = false, startX = 0, startW = 0;
+  handle.addEventListener('mousedown', function(e) {
+    dragging = true;
+    startX = e.clientX;
+    startW = panel.offsetWidth;
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'ew-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', function(e) {
+    if (!dragging) return;
+    var newW = Math.max(280, Math.min(860, startW + (e.clientX - startX)));
+    panel.style.width = newW + 'px';
+  });
+  document.addEventListener('mouseup', function() {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    try { localStorage.setItem('graphPanelWidth', String(panel.offsetWidth)); } catch(e) {}
+  });
 }
 
 function _isStashLabel(s) {

@@ -18,10 +18,17 @@
       <button class="graph-btn" onclick="toggleGraphPanel()" title="Close">✕</button>
     </div>
   </div>
-  <div class="graph-legend" id="graph-legend"></div>
-  <div class="graph-panel-body" id="graph-svg-wrap">
-    <div style="padding:20px;font-size:12px;color:#9ca3af">Click ↻ to load</div>
+  <!-- Left-right split: legend on left, SVG on right -->
+  <div class="graph-panel-content">
+    <div class="graph-legend-col">
+      <div class="graph-legend" id="graph-legend"></div>
+    </div>
+    <div class="graph-svg-col" id="graph-svg-wrap">
+      <div style="padding:20px;font-size:12px;color:#9ca3af">Click ↻ to load</div>
+    </div>
   </div>
+  <!-- Drag handle on right edge for resizing -->
+  <div class="graph-resize-handle" id="graph-resize-handle"></div>
 </div>
 
 <div class="container">
@@ -62,6 +69,7 @@
     <button class="btn-tab" id="tab-log" onclick="loadLog(1)" data-i18n="tab_log">Commit Log</button>
     <button class="btn-tab" id="tab-conflicts" onclick="loadConflicts()" data-i18n="tab_conflicts">Conflicts</button>
     <button class="btn-tab" id="tab-stash" onclick="loadStash()" data-i18n="tab_stash">Stash</button>
+    <button class="btn-tab" id="btn-graph-toggle" onclick="toggleGraphPanel()" data-i18n="tab_graph">Graph 🌳</button>
     <span class="top-bar-sep">|</span>
     <button class="btn-tab btn-tab--worktree" id="tab-worktree" onclick="toggleWorktreePopup()" title="Worktrees">
       <span id="worktree-btn-label">🌲 Worktrees</span>
@@ -121,7 +129,7 @@
   <button class="btn btn-secondary btn-back" onclick="switchPage('main')">← <span data-i18n="back">Back</span></button>
   <h2 style="margin-bottom:16px" data-i18n="branches_title">Branches</h2>
 
-  <!-- Local / Remote tab selector + Branch Graph entry -->
+  <!-- Local / Remote tab selector -->
   <div class="branch-tabs-wrap">
     <div class="branch-tab-group" role="tablist">
       <button id="btab-local" class="branch-tab-btn active" role="tab" aria-selected="true" onclick="switchBranchTab('local')">
@@ -130,9 +138,6 @@
       <button id="btab-remote" class="branch-tab-btn" role="tab" aria-selected="false" onclick="switchBranchTab('remote')">
         ☁️ Remote<span class="branch-tab-count" id="btab-remote-count"></span>
       </button>
-    </div>
-    <div class="branch-graph-row">
-      <button id="btn-graph-toggle" class="branch-graph-btn" onclick="toggleGraphPanel()" title="Open Branch Graph">🌳 Graph</button>
     </div>
   </div>
 
