@@ -337,6 +337,54 @@ var T = {
   // Pagination
   pag_expand: {en:'… +{n} more', zh:'… +{n} 页'},
   pag_collapse: {en:'Collapse', zh:'收起'},
+
+  // Git Settings
+  git_settings_title: {en:'⚙️ Git Network Settings', zh:'⚙️ Git 网络设置'},
+  git_settings_tooltip: {en:'Git Network Settings', zh:'Git 网络设置'},
+  git_timeout_label: {en:'Network Timeout (seconds)', zh:'网络超时时间（秒）'},
+  git_timeout_unit: {en:'sec', zh:'秒'},
+  git_timeout_hint: {en:'Applies to push, pull, and fetch operations. Default: 120 seconds.', zh:'适用于 push、pull、fetch 操作。默认值：120 秒。'},
+  git_timeout_saved: {en:'✅ Timeout saved: {n}s', zh:'✅ 超时时间已保存：{n} 秒'},
+  git_timeout_save_fail: {en:'❌ Save failed: ', zh:'❌ 保存失败：'},
+
+  // Branch rename
+  rename_branch_btn: {en:'✏️ Rename', zh:'✏️ 重命名'},
+  rename_branch_title: {en:'✏️ Rename Branch', zh:'✏️ 重命名分支'},
+  rename_branch_label: {en:'New branch name:', zh:'新分支名：'},
+  rename_branch_placeholder: {en:'Enter new branch name…', zh:'输入新分支名…'},
+  rename_branch_confirm: {en:'Rename', zh:'确认重命名'},
+  rename_branch_ok: {en:'Branch renamed: ', zh:'分支已重命名: '},
+  rename_branch_fail: {en:'Rename failed: ', zh:'重命名失败: '},
+  rename_remote_title: {en:'🎉 Branch Renamed!', zh:'🎉 分支已重命名！'},
+  rename_remote_desc: {en:'Branch renamed from <b>{old}</b> to <b>{new}</b>.<br><br>Update the remote branch too? The old remote branch will be deleted and the new name pushed.', zh:'分支已从 <b>{old}</b> 重命名为 <b>{new}</b>。<br><br>是否同步更新远端分支？旧的远端分支将被删除，新名称将被推送。'},
+  rename_push_btn: {en:'Push & Update Remote', zh:'推送并更新远端'},
+  rename_later_btn: {en:'Keep Local Only', zh:'仅本地重命名'},
+
+  // Push to selectable remote branch
+  push_remote_branch_label: {en:'Push to remote branch:', zh:'推送到远端分支：'},
+  push_remote_branch_placeholder: {en:'Remote branch name…', zh:'远端分支名…'},
+  push_remote_branch_default: {en:'(same as local)', zh:'（与本地同名）'},
+  push_remote_select_title: {en:'🚀 Push to Remote', zh:'🚀 推送到远端'},
+
+  // Rebase quick actions
+  rebase_actions_title: {en:'⚡ Rebase Quick Actions', zh:'⚡ Rebase 快速操作'},
+  rebase_actions_hint: {en:'Choose an action to handle this rebase state:', zh:'选择一个操作来处理当前 Rebase 状态：'},
+  rebase_abort_btn: {en:'🛑 Abort Rebase', zh:'🛑 中止 Rebase'},
+  rebase_abort_confirm_title: {en:'🛑 Abort Rebase?', zh:'🛑 确认中止 Rebase？'},
+  rebase_abort_confirm_desc: {en:'This will <b>undo all rebase progress</b> and restore your branch exactly to its state before the rebase started.<br><br>✅ Your working tree changes are preserved.<br>⚠️ Any commits applied during this rebase will be lost.', zh:'这将<b>撤销所有 Rebase 进度</b>，将分支恢复到 Rebase 开始前的状态。<br><br>✅ 工作区的改动会被保留。<br>⚠️ Rebase 过程中已应用的提交将丢失。'},
+  rebase_abort_ok: {en:'✅ Rebase aborted — branch restored to pre-rebase state', zh:'✅ Rebase 已中止 — 分支已恢复到 Rebase 前的状态'},
+  rebase_abort_fail: {en:'Abort failed: ', zh:'中止失败: '},
+  rebase_skip_btn: {en:'⏭️ Skip Commit', zh:'⏭️ 跳过当前提交'},
+  rebase_skip_confirm_title: {en:'⏭️ Skip Current Commit?', zh:'⏭️ 跳过当前提交？'},
+  rebase_skip_confirm_desc: {en:'This will <b>skip the current conflicting commit</b> and continue rebasing with the next commit.<br><br>⚠️ <b>Warning:</b> The changes from the skipped commit will be <b>permanently lost</b>. Use this only if you intentionally want to discard this commit.', zh:'这将<b>跳过当前冲突的提交</b>，继续处理下一个提交。<br><br>⚠️ <b>警告：</b>被跳过的提交中的改动将<b>永久丢失</b>。仅在你确定不需要该提交时使用此操作。'},
+  rebase_skip_ok: {en:'✅ Commit skipped — rebase continuing with next commit', zh:'✅ 提交已跳过 — Rebase 继续处理下一个提交'},
+  rebase_skip_fail: {en:'Skip failed: ', zh:'跳过失败: '},
+  rebase_continue_btn: {en:'▶️ Continue Rebase', zh:'▶️ 继续 Rebase'},
+  rebase_continue_confirm_title: {en:'▶️ Continue Rebase?', zh:'▶️ 继续 Rebase？'},
+  rebase_continue_confirm_desc: {en:'This will <b>continue the rebase</b> applying the next commit.<br><br>⚠️ <b>Make sure all conflicts are resolved first!</b><br>Go to the <b>Conflicts tab</b>, resolve each file, and use <code>git add</code> to stage them — then click Continue.', zh:'这将<b>继续 Rebase</b>，应用下一个提交。<br><br>⚠️ <b>请先确保所有冲突都已解决！</b><br>前往 <b>Conflicts 标签页</b>，解决每个文件的冲突，并通过 <code>git add</code> 暂存它们 — 然后再点击继续。'},
+  rebase_continue_ok: {en:'✅ Rebase continuing — check Conflicts tab if new conflicts appear', zh:'✅ Rebase 继续中 — 如有新冲突请检查 Conflicts 标签页'},
+  rebase_continue_fail: {en:'Continue failed: ', zh:'继续失败: '},
+  rebase_confirm_btn: {en:'Confirm', zh:'确认'},
 };
 
 function t(key, lang) {
@@ -512,7 +560,7 @@ function onPerPageChange(sel, section){
   var warnId=section+'-all-warn';
   var warn=document.getElementById(warnId);
   if(warn)warn.style.display=isAll?'inline-block':'none';
-  if(section==='branches')loadBranches(1);
+  if(section==='branches')renderBranchPage(1);  // use cache; no network call needed
   else if(section==='log')loadLog(1);
   else if(section==='stash')loadStash(1);
 }
@@ -1157,11 +1205,13 @@ function checkConflicts(){
 }
 
 // ═══════════ Pull + Fetch ═══════════
-function doPush(credentials, force){
+function doPush(credentials, force, remoteBranch){
   var branchEl=document.getElementById('branch-name');
   var branch=(branchEl&&branchEl.textContent)||'?';
   var body=credentials||{};
   if(force) body.force=true;
+  if(remoteBranch && remoteBranch !== branch) body.remote_branch=remoteBranch;
+  var effectiveRemote=remoteBranch||branch;
   var logDivId='push-log-live';
   var pushLabel=force?'🚀 Force Pushing':'🚀 Pushing';
   var pushDesc=force?'force push (--force-with-lease) to':'push to';
@@ -1171,8 +1221,8 @@ function doPush(credentials, force){
     +'background:#0f172a;color:#d1fae5;font-family:monospace;font-size:12px;line-height:1.5;'
     +'padding:12px 14px;border-radius:8px;min-height:140px;max-height:340px;'
     +'overflow-y:auto;white-space:pre-wrap;word-break:break-all;border:1px solid #1e293b">'
-    +'<span style="color:#94a3b8">⏳ Starting '+pushDesc+' origin/'+escapeHtml(branch)+'...\n</span></div>';
-  showModal(pushLabel+' — <span style="font-size:12px;font-weight:400;color:#94a3b8">origin/'+escapeHtml(branch)+'</span>',
+    +'<span style="color:#94a3b8">⏳ Starting '+pushDesc+' origin/'+escapeHtml(effectiveRemote)+'...\n</span></div>';
+  showModal(pushLabel+' — <span style="font-size:12px;font-weight:400;color:#94a3b8">origin/'+escapeHtml(effectiveRemote)+'</span>',
     logBox, 'Please wait…', null);
   // Disable close until done
   var closeBtn=document.querySelector('#modal-btns .btn-warning');
@@ -1352,16 +1402,45 @@ function _showPushAuthModal(branch){
 
 function doManualPush(){
   var branch=(document.getElementById('branch-name').textContent||'').trim();
-  showModalDouble(
-    '🚀 Push to remote?',
-    'Push local commits on <b>'+escapeHtml(branch)+'</b> to <b>origin/'+escapeHtml(branch)+'</b>?<br><br><span style="font-size:12px;color:#6b7280">Only commits that are not yet on remote will be pushed.</span>',
-    'Push Now',
-    function(){ doPush(); },
-    'Cancel',
-    null,
-    'btn-success',
-    'btn-secondary'
-  );
+  var isZh=L==='zh';
+  // Fetch remote branches for the selector
+  apiGet('/api/branches?page=1&per_page=0', function(bData){
+    var remoteList=(bData&&bData.remote||[]).map(function(b){
+      return b.name.replace(/^origin\//,'');
+    });
+    // Deduplicate and sort, current branch first
+    var seen={};
+    var opts=[branch];
+    seen[branch]=true;
+    remoteList.forEach(function(n){ if(n&&!seen[n]){seen[n]=true;opts.push(n);} });
+
+    var selHtml='<select id="push-remote-branch-sel" style="width:100%;padding:7px 10px;border:1.5px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:8px">';
+    opts.forEach(function(n){
+      selHtml+='<option value="'+escapeAttr(n)+'"'+(n===branch?' selected':'')+'>'+escapeHtml(n)+(n===branch?' '+t('push_remote_branch_default'):'')+' </option>';
+    });
+    selHtml+='</select>';
+    selHtml+='<div style="margin-bottom:6px;font-size:12px;color:#6b7280">'
+      +(isZh?'或输入自定义远端分支名：':'Or type a custom remote branch name:')+'</div>';
+    selHtml+='<input id="push-remote-branch-custom" type="text" placeholder="'+escapeAttr(t('push_remote_branch_placeholder'))+'" '
+      +'style="width:100%;padding:7px 10px;border:1.5px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box">';
+
+    var bodyHtml=
+      '<div style="margin-bottom:10px;font-size:13px;color:#374151">'
+      +(isZh?'本地分支 <b>':'Push local branch <b>')+escapeHtml(branch)+(isZh?'</b> 将推送到远端分支：':'</b> to remote branch:')+'</div>'
+      +'<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">'+t('push_remote_branch_label')+'</label>'
+      +selHtml
+      +'<div style="margin-top:10px;font-size:11px;color:#6b7280">'
+      +(isZh?'💡 若自定义名称不为空，优先使用自定义名称。':'💡 If a custom name is entered, it takes priority over the dropdown.')+'</div>';
+
+    showModal(t('push_remote_select_title'), bodyHtml, isZh?'推送':'Push Now', function(){
+      var customEl=document.getElementById('push-remote-branch-custom');
+      var selEl=document.getElementById('push-remote-branch-sel');
+      var customVal=(customEl&&customEl.value||'').trim();
+      var selVal=(selEl&&selEl.value||'').trim();
+      var remote=sanitizeBranchName(customVal||selVal||branch)||branch;
+      doPush({}, false, remote!==branch?remote:undefined);
+    });
+  });
 }
 
 function doForcePush(){
@@ -1454,7 +1533,11 @@ function _startGitopStream(op, mode, onDone){
             else addMsg('❌ '+t('fetch_fail')+errTxt,'error');
           }
           checkConflicts();
-          if(r.ok && op==='pull') loadCurrentBranch();
+          if(r.ok && op==='pull'){
+            loadCurrentBranch();
+            loadLog(1);
+            loadFiles();
+          }
           if(onDone) onDone(r.ok);
         }else{
           setTimeout(poll,500);
@@ -1569,6 +1652,38 @@ var _branchSortField='date';
 var _branchSortOrder='desc';
 var _allBranchesCache=null;
 var _branchSearchTimer=null;
+var _branchTab='local';
+var _branchTabInit=false;
+
+function _initBranchTab(){
+  if(_branchTabInit)return;
+  _branchTabInit=true;
+  try{var s=localStorage.getItem('git_tool_branch_tab');if(s==='remote')_branchTab='remote';}catch(e){}
+}
+
+function _updateBranchTabUI(){
+  ['local','remote'].forEach(function(t){
+    var btn=document.getElementById('btab-'+t);
+    if(!btn)return;
+    btn.className='branch-tab-btn'+(t===_branchTab?' active':'');
+    btn.setAttribute('aria-selected',t===_branchTab?'true':'false');
+  });
+}
+
+function switchBranchTab(tab){
+  _branchTab=tab;
+  try{localStorage.setItem('git_tool_branch_tab',tab);}catch(e){}
+  _updateBranchTabUI();
+  // reset search when switching tabs
+  var si=document.getElementById('branch-search');
+  if(si&&si.value){si.value='';var sc=document.getElementById('branch-search-clear');if(sc)sc.style.display='none';}
+  if(_allBranchesCache){
+    var _bpv=document.getElementById('branches-per-page').value;
+    _renderBranchesByTab(_allBranchesCache,1,_bpv===''?20:parseInt(_bpv));
+  }else{
+    loadBranches(1);
+  }
+}
 
 function toggleBranchSort(field){
   if(_branchSortField===field){
@@ -1577,13 +1692,11 @@ function toggleBranchSort(field){
     _branchSortField=field;
     _branchSortOrder='desc';
   }
-  // Re-render with current data (no network call needed)
-  var search=document.getElementById('branch-search').value.trim().toLowerCase();
-  if(search&&_allBranchesCache){
-    _renderFilteredBranches(search);
-  }else if(!search){
-    // reload to re-render with sort
-    loadBranches(document.querySelector('#branches-pagination .page-num.active')?parseInt(document.querySelector('#branches-pagination .page-num.active').textContent):1);
+  if(_allBranchesCache){
+    var _bpv=document.getElementById('branches-per-page').value;
+    _renderBranchesByTab(_allBranchesCache,1,_bpv===''?20:parseInt(_bpv));
+  }else{
+    loadBranches(1);
   }
 }
 
@@ -1612,38 +1725,73 @@ function _branchSortHeader(){
 function loadBranches(page){
   page=page||1;
   switchPage('branches');
+  _initBranchTab();
+  _updateBranchTabUI();
   document.getElementById('branches-content').innerHTML='<div class="loading-bar"><span class="spinner"></span>Loading branches...</div>';
   document.getElementById('branches-pagination').innerHTML='';
   var _bpv=document.getElementById('branches-per-page').value;var perPage=_bpv===''?20:parseInt(_bpv);
-  var url='/api/branches?page='+page+'&per_page='+perPage;
-  // Fetch protected config first so rendering always has up-to-date rules
+  // Always fetch all — enables client-side tab pagination and correct counts
   fetch(API_BASE+'/api/protected-branches').then(function(r){return r.json();}).catch(function(){return{};}).then(function(pcfg){
     if(pcfg&&pcfg.exact)    _protExact    = pcfg.exact;
     if(pcfg&&pcfg.contains) _protContains = pcfg.contains.map(function(s){return s.toLowerCase();});
-    apiGet(url,function(data){
-      _renderBranches(data,perPage);
+    apiGet('/api/branches?page=1&per_page=0',function(data){
+      _allBranchesCache=data;
+      _updateBranchTabCounts(data);
+      _renderBranchesByTab(data,page,perPage);
     });
   });
 }
 
-function _renderBranches(data,perPage){
-    var container=document.getElementById('branches-content');
-    var sortedLocal=_sortBranches(data.local||[]);
-    var sortedRemote=_sortBranches(data.remote||[]);
-    var html=_branchSortHeader();
-    html+='<div class="branch-list"><h3>Local Branches ('+data.total_local+')</h3>';
-    sortedLocal.forEach(function(b,bi){
-      var isCur=(b.name===data.current);
+// Cache-only render used by pagination buttons (no network)
+function renderBranchPage(page){
+  if(!_allBranchesCache){loadBranches(page);return;}
+  var _bpv=document.getElementById('branches-per-page').value;var perPage=_bpv===''?20:parseInt(_bpv);
+  _renderBranchesByTab(_allBranchesCache,page,perPage);
+}
+
+function _updateBranchTabCounts(data){
+  var lc=document.getElementById('btab-local-count');
+  var rc=document.getElementById('btab-remote-count');
+  if(lc) lc.textContent=data.total_local||0;
+  if(rc) rc.textContent=data.total_remote||0;
+}
+
+function _renderBranchesByTab(data,page,perPage){
+  var container=document.getElementById('branches-content');
+  var search=(document.getElementById('branch-search')||{value:''}).value.trim().toLowerCase();
+  var isLocal=_branchTab==='local';
+  var allForTab=_sortBranches(isLocal?(data.local||[]):(data.remote||[]));
+  var current=data.current||'';
+
+  // Apply search filter (case-insensitive substring match across all branches in tab)
+  var filtered=search?allForTab.filter(function(b){return b.name.toLowerCase().indexOf(search)>=0;}):allForTab;
+  var total=filtered.length;
+  var totalPages=perPage>0?Math.ceil(total/perPage):1;
+  page=Math.max(1,Math.min(page,totalPages||1));
+  var pageBranches=perPage>0?filtered.slice((page-1)*perPage,page*perPage):filtered;
+
+  var html=_branchSortHeader();
+  if(!pageBranches.length){
+    html+='<div class="empty">'+(search?'No branches matching "<b>'+escapeHtml(search)+'</b>" in '+(isLocal?'local':'remote')+' branches':'No '+(isLocal?'local':'remote')+' branches found')+'</div>';
+  }else if(isLocal){
+    html+='<div class="branch-list">';
+    pageBranches.forEach(function(b,bi){
+      var isCur=(b.name===current);
       var wid='bwrap-l-'+bi;
       var cls=isCur?' branch-item current':' branch-item';
+      var nameHtml=search?_highlightBranchMatch(escapeHtml(b.name),search):escapeHtml(b.name);
+      var _shortName=b.name.replace(/^origin\//,'');
+      var _isProtected=_isBranchProtected(_shortName);
       html+='<div id="'+wid+'">';
       html+='<div class="'+cls+'">';
       html+='<button class="btn-branch-info" onclick="event.stopPropagation();showBranchNamePopover(this,\''+escapeJS(b.name)+'\')" title="Show full name">ⓘ</button>';
-      html+='<span class="name" title="'+escapeAttr(b.name)+'">'+escapeHtml(b.name)+'</span>';
+      html+='<span class="name" title="'+escapeAttr(b.name)+'">'+nameHtml+'</span>';
       html+='<span class="branch-date">'+escapeHtml(b.date||'')+'</span>';
       if(isCur){
         html+='<div class="branch-actions"><span class="branch-current-badge">✓ Current</span></div>';
-        html+='<button class="btn-branch-expand" style="visibility:hidden" disabled>▶</button>';
+        html+='<button class="btn-branch-expand"'
+          +(_isProtected?' style="visibility:hidden" disabled':' onclick="event.stopPropagation();toggleBranchExpand(\''+wid+'\')" title="Expand"')
+          +'>▶</button>';
       }else{
         html+='<div class="branch-actions">';
         html+='<button class="btn btn-sm btn-compare" onclick="event.stopPropagation();openCompare(\''+escapeJS(b.name)+'\',\'local\')"><span style="line-height:1">⚖️</span><span>Compare</span></button>';
@@ -1653,26 +1801,31 @@ function _renderBranches(data,perPage){
         html+='<button class="btn-branch-expand" onclick="event.stopPropagation();toggleBranchExpand(\''+wid+'\')" title="Expand">▶</button>';
       }
       html+='</div>';
-      if(!isCur){
-        var _shortL=b.name.replace(/^origin\//,'');
+      if(!_isProtected){
         html+='<div class="branch-expand-panel" id="bpanel-l-'+bi+'">';
-        if(_isBranchProtected(_shortL)){
-          html+='<span style="font-size:12px;color:#f59e0b;flex:1">🔒 Protected branch — delete disabled</span>';
+        if(isCur){
+          html+='<span style="font-size:12px;color:#9ca3af;flex:1">Options</span>';
+          html+='<button class="btn-rename-branch" onclick="renameBranch(\''+escapeJS(b.name)+'\')">'+t('rename_branch_btn')+'</button>';
         }else{
           html+='<span style="font-size:12px;color:#9ca3af;flex:1">Danger zone</span>';
+          html+='<button class="btn-rename-branch" onclick="renameBranch(\''+escapeJS(b.name)+'\')">'+t('rename_branch_btn')+'</button>';
           html+='<button class="btn-del-branch" onclick="promptDeleteBranch(\''+escapeJS(b.name)+'\',\'local\')">🗑 Delete Branch</button>';
         }
         html+='</div>';
       }
       html+='</div>';
     });
-    html+='</div><div class="branch-list"><h3>Remote Branches ('+data.total_remote+')</h3>';
-    sortedRemote.forEach(function(b,bi){
+    html+='</div>';
+  }else{
+    html+='<div class="branch-list">';
+    pageBranches.forEach(function(b,bi){
       var wid='bwrap-r-'+bi;
+      var nameHtml=search?_highlightBranchMatch(escapeHtml(b.name),search):escapeHtml(b.name);
+      var _shortR=b.name.replace(/^origin\//,'');
       html+='<div id="'+wid+'">';
       html+='<div class="branch-item">';
       html+='<button class="btn-branch-info" onclick="event.stopPropagation();showBranchNamePopover(this,\''+escapeJS(b.name)+'\')" title="Show full name">ⓘ</button>';
-      html+='<span class="name" title="'+escapeAttr(b.name)+'">'+escapeHtml(b.name)+'</span>';
+      html+='<span class="name" title="'+escapeAttr(b.name)+'">'+nameHtml+'</span>';
       html+='<span class="branch-date">'+escapeHtml(b.date||'')+'</span>';
       html+='<div class="branch-actions">';
       html+='<button class="btn btn-sm btn-compare" onclick="event.stopPropagation();openCompare(\''+escapeJS(b.name)+'\',\'remote\')"><span style="line-height:1">⚖️</span><span>Compare</span></button>';
@@ -1681,7 +1834,6 @@ function _renderBranches(data,perPage){
       html+='</div>';
       html+='<button class="btn-branch-expand" onclick="event.stopPropagation();toggleBranchExpand(\''+wid+'\')" title="Expand">▶</button>';
       html+='</div>';
-      var _shortR=b.name.replace(/^origin\//,'');
       html+='<div class="branch-expand-panel" id="bpanel-r-'+bi+'">';
       if(_isBranchProtected(_shortR)){
         html+='<span style="font-size:12px;color:#f59e0b;flex:1">🔒 Protected branch — delete disabled</span>';
@@ -1693,18 +1845,21 @@ function _renderBranches(data,perPage){
       html+='</div>';
     });
     html+='</div>';
-    container.innerHTML=html;
-    var totalPages=perPage>0?Math.ceil(data.total_remote/perPage):1;
-    _pagData['branches'] = {
-      totalPages: totalPages, cur: data.page, loadFn: 'loadBranches',
-      infoHtml: '<span class="page-info">Remote: '+data.total_remote+' total</span>'
-    };
-    if (_pagExpanded['branches'] === undefined) _pagExpanded['branches'] = false;
-    var pag=document.getElementById('branches-pagination');
-    if (!pag) return;
-    if (totalPages<=1) { pag.innerHTML=''; return; }
-    pag.innerHTML = _renderSmartPaginationHTML('branches');
+  }
+
+  container.innerHTML=html;
+  var infoLabel=(isLocal?'Local':'Remote')+': '+(search?filtered.length+' match(es)':total+' total');
+  _pagData['branches']={
+    totalPages:totalPages, cur:page, loadFn:'renderBranchPage',
+    infoHtml:'<span class="page-info">'+infoLabel+'</span>'
+  };
+  if(_pagExpanded['branches']===undefined)_pagExpanded['branches']=false;
+  var pag=document.getElementById('branches-pagination');
+  if(!pag)return;
+  if(totalPages<=1){pag.innerHTML='';return;}
+  pag.innerHTML=_renderSmartPaginationHTML('branches');
 }
+
 
 function sanitizeBranchName(name){
   // Replace whitespace and git-invalid chars with underscore, per git check-ref-format rules
@@ -1763,6 +1918,56 @@ function toggleBranchExpand(wrapId){
     panel.classList.add('open');
     if(arrow) arrow.textContent='▼';
   }
+}
+
+function renameBranch(branchName){
+  var shortName=branchName.replace(/^origin\//,'');
+  var isZh=L==='zh';
+  var bodyHtml=
+    '<p style="margin:0 0 12px;font-size:13px;color:#374151">'
+    +(isZh?'当前分支名: ':'Current name: ')
+    +'<code style="background:#f3f4f6;padding:2px 8px;border-radius:4px;font-weight:700">'+escapeHtml(shortName)+'</code></p>'
+    +'<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">'+t('rename_branch_label')+'</label>'
+    +'<input id="rename-branch-input" type="text" placeholder="'+escapeAttr(t('rename_branch_placeholder'))+'" '
+    +'style="width:100%;padding:8px 10px;border:1.5px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box" '
+    +'value="'+escapeAttr(shortName)+'">'
+    +'<p style="margin:8px 0 0;font-size:11px;color:#6b7280">'
+    +(isZh?'⚠️ 重命名仅影响本地分支。你可在下一步选择是否同步更新远端。':'⚠️ Rename affects only the local branch. You can optionally sync the remote in the next step.')
+    +'</p>';
+  showModal(t('rename_branch_title'), bodyHtml, t('rename_branch_confirm'), function(){
+    var inputEl=document.getElementById('rename-branch-input');
+    var raw=(inputEl&&inputEl.value||'').trim();
+    var newName=sanitizeBranchName(raw);
+    if(!newName){addMsg(t('enter_branch_name'),'error');return;}
+    if(newName===shortName){addMsg(isZh?'新名称与旧名称相同':'New name is the same as the old name','error');return;}
+    apiPost('/api/rename-branch',{old_name:shortName,new_name:newName},function(data){
+      if(data.ok){
+        addMsg(t('rename_branch_ok')+shortName+' → '+newName,'success');
+        loadBranches(1);loadCurrentBranch();
+        // Offer to update remote
+        var desc=tf('rename_remote_desc',L,{old:shortName,new:newName});
+        showModalDouble(
+          t('rename_remote_title'),
+          desc,
+          t('rename_push_btn'),
+          function(){
+            // Delete old remote branch, push new name
+            addMsg(isZh?'正在更新远端分支...':'Updating remote branch...','info');
+            apiPost('/api/delete-branch',{name:shortName,scope:'remote'},function(delData){
+              // Delete may fail if remote didn't exist — that's OK, still push new
+              doPush({}, false, newName);
+            });
+          },
+          t('rename_later_btn'),
+          null,
+          'btn-success',
+          'btn-secondary'
+        );
+      }else{
+        addMsg(t('rename_branch_fail')+(data.error||''),'error');
+      }
+    });
+  });
 }
 
 function promptDeleteBranch(branchName, defaultScope){
@@ -1903,7 +2108,10 @@ function checkoutBranch(branchName){
     .then(function(data){
       _hideSpinner();
       if(data.ok){
+        var el=document.getElementById('branch-name');
+        if(el) el.textContent=branchName;
         addMsg('✅ Switched to ' + branchName, 'success');
+        loadLog(1); loadFiles(); loadBranches(1);
         setTimeout(function(){ window.location.reload(); }, 800);
       }else{
         addMsg(t('switch_fail')+(data.error||''),'error');
@@ -2219,21 +2427,135 @@ function _doRebase(sourceBranch,curBranch){
     }else if(data.hasConflict){
       addMsg(t('rebase_conflict_title')+' '+sourceBranch,'error');
       checkConflicts();
-      showModal(
-        t('rebase_conflict_title'),
-        logBox+'<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px;color:#b91c1c;font-weight:600">'
-        +(L==='zh'
-          ?'检测到冲突 — 请前往 <b>Conflicts 标签页</b> 解决冲突，然后执行 <code>git rebase --continue</code>。'
-          :'Conflicts detected — go to the <b>Conflicts tab</b> to resolve them, then run <code>git rebase --continue</code>.')
-        +'</div>',
-        L==='zh'?'去解决冲突':'Go to Conflicts',
-        function(){ loadConflicts(); }
-      );
+      _showRebaseFailureModal(t('rebase_conflict_title'), logBox, true);
     }else{
       addMsg(t('rebase_fail_title')+': '+(data.error||''),'error');
-      showModal(t('rebase_fail_title'),logBox,'Close',null);
+      _showRebaseFailureModal(t('rebase_fail_title'), logBox, false);
     }
   });
+}
+
+// ═══════════ Rebase failure quick actions ═══════════
+function _showRebaseFailureModal(title, logBox, hasConflict){
+  var isZh=L==='zh';
+
+  var conflictBar=hasConflict
+    ?'<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px;color:#b91c1c;font-weight:600;margin-bottom:12px">'
+      +(isZh
+        ?'检测到冲突 — 请前往 <b>Conflicts 标签页</b> 解决冲突，然后使用下方快速操作继续。'
+        :'Conflicts detected — go to the <b>Conflicts tab</b> to resolve them, then use the quick actions below.')
+      +'</div>'
+    :'';
+
+  var actionsHtml=
+    '<div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px 16px">'
+    +'<div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:6px">'+t('rebase_actions_title')+'</div>'
+    +'<div style="font-size:12px;color:#64748b;margin-bottom:12px">'+t('rebase_actions_hint')+'</div>'
+    +'<div style="display:flex;flex-direction:column;gap:8px">'
+
+    // Abort button
+    +'<button onclick="_rebaseAction(\'abort\')" style="padding:10px 14px;border-radius:8px;border:1.5px solid #ef4444;background:#fff5f5;cursor:pointer;text-align:left;font-size:13px;display:flex;align-items:flex-start;gap:10px">'
+    +'<span style="font-size:18px;flex-shrink:0">🛑</span>'
+    +'<div><div style="font-weight:700;color:#dc2626">'+t('rebase_abort_btn')+'</div>'
+    +'<div style="font-size:11px;color:#6b7280;margin-top:3px;line-height:1.5">'
+    +(isZh?'撤销所有 Rebase 进度，恢复到 Rebase 前的状态。':'Undo all rebase progress and restore your branch to its pre-rebase state.')
+    +'</div></div></button>'
+
+    // Skip button
+    +'<button onclick="_rebaseAction(\'skip\')" style="padding:10px 14px;border-radius:8px;border:1.5px solid #f59e0b;background:#fffbeb;cursor:pointer;text-align:left;font-size:13px;display:flex;align-items:flex-start;gap:10px">'
+    +'<span style="font-size:18px;flex-shrink:0">⏭️</span>'
+    +'<div><div style="font-weight:700;color:#b45309">'+t('rebase_skip_btn')+'</div>'
+    +'<div style="font-size:11px;color:#6b7280;margin-top:3px;line-height:1.5">'
+    +(isZh?'跳过当前冲突提交并继续（被跳过的提交改动将永久丢失）。':'Skip the current conflicting commit and continue (skipped changes are permanently lost).')
+    +'</div></div></button>'
+
+    // Continue button (always shown — user may have resolved conflicts externally)
+    +'<button onclick="_rebaseAction(\'continue\')" style="padding:10px 14px;border-radius:8px;border:1.5px solid #10b981;background:#f0fdf4;cursor:pointer;text-align:left;font-size:13px;display:flex;align-items:flex-start;gap:10px">'
+    +'<span style="font-size:18px;flex-shrink:0">▶️</span>'
+    +'<div><div style="font-weight:700;color:#059669">'+t('rebase_continue_btn')+'</div>'
+    +'<div style="font-size:11px;color:#6b7280;margin-top:3px;line-height:1.5">'
+    +(isZh?'解决所有冲突并 git add 后继续 Rebase。':'After resolving all conflicts and git add, continue the rebase.')
+    +'</div></div></button>'
+
+    +'</div></div>';
+
+  // Build modal with custom buttons
+  document.getElementById('modal-title').innerHTML=title;
+  document.getElementById('modal-msg').innerHTML=logBox+conflictBar+actionsHtml;
+  var btnsDiv=document.getElementById('modal-btns');
+  btnsDiv.innerHTML='';
+
+  if(hasConflict){
+    var goConflictsBtn=document.createElement('button');
+    goConflictsBtn.className='btn btn-primary';
+    goConflictsBtn.textContent=isZh?'去解决冲突':'Go to Conflicts';
+    goConflictsBtn.onclick=function(){ closeModal(); loadConflicts(); };
+    btnsDiv.appendChild(goConflictsBtn);
+  }
+
+  var closeBtn=document.createElement('button');
+  closeBtn.className='btn btn-secondary';
+  closeBtn.textContent=isZh?'关闭':'Close';
+  closeBtn.onclick=closeModal;
+  btnsDiv.appendChild(closeBtn);
+
+  document.getElementById('modal-bg').classList.add('show');
+}
+
+function _rebaseAction(action){
+  var isZh=L==='zh';
+  var titleKey='rebase_'+action+'_confirm_title';
+  var descKey='rebase_'+action+'_confirm_desc';
+  var okKey='rebase_'+action+'_ok';
+  var failKey='rebase_'+action+'_fail';
+  var endpoint='/api/rebase-'+action;
+  var btnClass=action==='abort'?'btn-danger':action==='skip'?'btn-warning':'btn-success';
+
+  document.getElementById('modal-title').innerHTML=t(titleKey);
+  document.getElementById('modal-msg').innerHTML='<div style="font-size:13px;color:#374151;line-height:1.7">'+t(descKey)+'</div>';
+  var btnsDiv=document.getElementById('modal-btns');
+  btnsDiv.innerHTML='';
+
+  var cancelBtn=document.createElement('button');
+  cancelBtn.className='btn btn-secondary';
+  cancelBtn.textContent=isZh?'取消':'Cancel';
+  cancelBtn.onclick=closeModal;
+  btnsDiv.appendChild(cancelBtn);
+
+  var confirmBtn=document.createElement('button');
+  confirmBtn.className='btn '+btnClass;
+  confirmBtn.textContent=t('rebase_confirm_btn');
+  confirmBtn.onclick=function(){
+    closeModal();
+    apiPost(endpoint, {}, function(data){
+      if(data.ok){
+        addMsg(t(okKey),'success');
+        loadFiles(); loadLog(1); checkConflicts(); loadCurrentBranch();
+        if(action==='continue') checkConflicts();
+      }else{
+        var errMsg=t(failKey)+(data.error||'');
+        addMsg(errMsg,'error');
+        if(data.hasConflict){
+          checkConflicts();
+          showModal(
+            isZh?'⚠️ 仍有冲突':'⚠️ Conflicts Remain',
+            '<div style="font-size:13px;color:#374151">'
+            +(isZh?'Rebase 继续后仍发现冲突，请前往 <b>Conflicts 标签页</b> 继续解决。'
+                  :'Conflicts remain after continuing — go to the <b>Conflicts tab</b> to resolve them.')
+            +'</div>',
+            isZh?'去解决冲突':'Go to Conflicts',
+            function(){ loadConflicts(); }
+          );
+        }else{
+          showModal(isZh?'❌ 操作失败':'❌ Action Failed',
+            '<div style="font-size:13px;color:#374151">'+escapeHtml(data.error||'Unknown error')+'</div>',
+            'Close', null);
+        }
+      }
+    });
+  };
+  btnsDiv.appendChild(confirmBtn);
+  document.getElementById('modal-bg').classList.add('show');
 }
 
 // ═══════════ Compare ═══════════
@@ -2853,63 +3175,40 @@ function onBranchSearchInput(){
   document.getElementById('branch-search-clear').style.display=search?'inline-block':'none';
   clearTimeout(_branchSearchTimer);
   _branchSearchTimer=setTimeout(function(){
-    if(!search.trim()){
-      _allBranchesCache=null;
-      loadBranches(1);
-      return;
-    }
+    var _bpv=document.getElementById('branches-per-page').value;
+    var perPage=_bpv===''?20:parseInt(_bpv);
     if(_allBranchesCache){
-      _renderFilteredBranches(search.trim().toLowerCase());
+      _renderBranchesByTab(_allBranchesCache,1,perPage);
     }else{
-      document.getElementById('branches-content').innerHTML='<div class="loading-bar"><span class="spinner"></span>Loading all branches...</div>';
+      document.getElementById('branches-content').innerHTML='<div class="loading-bar"><span class="spinner"></span>Searching...</div>';
       apiGet('/api/branches?page=1&per_page=0',function(data){
         _allBranchesCache=data;
-        _renderFilteredBranches(search.trim().toLowerCase());
+        _updateBranchTabCounts(data);
+        _renderBranchesByTab(data,1,perPage);
       });
     }
   },200);
 }
 
-function _renderFilteredBranches(search){
-  var data=_allBranchesCache;
-  var allBranches=[];
-  (data.local||[]).forEach(function(b){allBranches.push({name:b.name,date:b.date,ts:b.ts,type:'local'})});
-  (data.remote||[]).forEach(function(b){allBranches.push({name:b.name,date:b.date,ts:b.ts,type:'remote'})});
-  var filtered=allBranches.filter(function(b){return b.name.indexOf(search)>=0});
-  filtered=_sortBranches(filtered);
-  var container=document.getElementById('branches-content');
-  if(!filtered.length){
-    container.innerHTML='<div class="empty">No branches matching "'+escapeHtml(search)+'"</div>';
-    document.getElementById('branches-pagination').innerHTML='<span class="page-info">0 results</span>';
-    return;
-  }
-  var html=_branchSortHeader();
-  html+='<div class="branch-list"><h3>Results for "'+escapeHtml(search)+'" ('+filtered.length+')</h3>';
-  filtered.forEach(function(b){
-    var isCur=b.name===data.current;
-    var cls=isCur?' branch-item current':' branch-item';
-    html+='<div class="'+cls+'">';
-    html+='<button class="btn-branch-info" onclick="event.stopPropagation();showBranchNamePopover(this,\''+escapeJS(b.name)+'\')" title="Show full name">ⓘ</button>';
-    html+='<span style="font-size:11px;padding:1px 6px;border-radius:99px;margin-right:6px;flex-shrink:0;background:'+(b.type==='local'?'#dbeafe':'#e0f2fe')+';color:'+(b.type==='local'?'#1e40af':'#0369a1')+'">'+b.type+'</span>';
-    html+='<span class="name" title="'+escapeAttr(b.name)+'">'+_highlightBranchMatch(escapeHtml(b.name),search)+'</span>';
-    html+='<span class="branch-date">'+escapeHtml(b.date||'')+'</span>';
-    if(isCur){
-      html+='<div class="branch-actions"><span class="branch-current-badge">✓ Current</span></div>';
-      html+='<button class="btn-branch-expand" style="visibility:hidden" disabled>▶</button>';
-    }else{
-      html+='<div class="branch-actions">';
-      html+='<button class="btn btn-sm btn-compare" onclick="event.stopPropagation();openCompare(\''+escapeJS(b.name)+'\',\''+(b.type==='local'?'local':'remote')+'\')">⚖️ Compare</button>';
-      html+='<button class="btn btn-sm btn-merge" onclick="event.stopPropagation();mergeBranch(\''+escapeJS(b.name)+'\')">⚡ Merge</button>';
-      html+='<button class="btn btn-sm btn-checkout" data-branch="'+escapeAttr(b.name)+'" onclick="return branchCheckoutClick(this)">✅ Checkout</button>';
-      html+='</div>';
-      html+='<button class="btn-branch-expand" style="visibility:hidden" disabled>▶</button>';
-    }
-    html+='</div>';
-  });
-  html+='</div>';
-  container.innerHTML=html;
-  document.getElementById('branches-pagination').innerHTML='<span class="page-info">'+filtered.length+' match(es) for "'+escapeHtml(search)+'"</span>';
+function setBranchSearchTag(tag){
+  var inp=document.getElementById('branch-search');
+  inp.value=tag;
+  document.getElementById('branch-search-clear').style.display='inline-block';
+  onBranchSearchInput();
 }
+
+function clearBranchSearch(){
+  document.getElementById('branch-search').value='';
+  document.getElementById('branch-search-clear').style.display='none';
+  if(_allBranchesCache){
+    var _bpv=document.getElementById('branches-per-page').value;
+    var perPage=_bpv===''?20:parseInt(_bpv);
+    _renderBranchesByTab(_allBranchesCache,1,perPage);
+  }else{
+    loadBranches(1);
+  }
+}
+
 
 function showBranchNamePopover(btn, name) {
   var existing = document.querySelector('.branch-name-popover');
@@ -2944,21 +3243,6 @@ function _highlightBranchMatch(escaped,search){
   var idx=lower.indexOf(search);
   if(idx<0)return escaped;
   return escaped.substr(0,idx)+'<mark>'+escaped.substr(idx,search.length)+'</mark>'+escaped.substr(idx+search.length);
-}
-
-function setBranchSearchTag(tag){
-  var inp=document.getElementById('branch-search');
-  inp.value=tag;
-  document.getElementById('branch-search-clear').style.display='inline-block';
-  _allBranchesCache=null;
-  onBranchSearchInput();
-}
-
-function clearBranchSearch(){
-  document.getElementById('branch-search').value='';
-  document.getElementById('branch-search-clear').style.display='none';
-  _allBranchesCache=null;
-  loadBranches(1);
 }
 
 var _diffSearchTimer=null;
@@ -3918,4 +4202,43 @@ document.querySelectorAll('.git-action-btn').forEach(function(btn){
     tip.style.top=(r.bottom+6)+'px';
     tip.style.transform='translateX(-50%)';
   });
+});
+
+// ═══════════ Git Settings Modal ═══════════
+function openGitSettingsModal() {
+  var modal = document.getElementById('git-settings-modal');
+  var status = document.getElementById('git-settings-status');
+  status.textContent = '';
+  modal.style.display = 'flex';
+  apiGet('/api/network-timeout', function(d) {
+    document.getElementById('git-timeout-input').value = d.network_timeout || 120;
+  });
+}
+
+function closeGitSettingsModal() {
+  document.getElementById('git-settings-modal').style.display = 'none';
+}
+
+function saveGitSettings() {
+  var val = parseInt(document.getElementById('git-timeout-input').value, 10);
+  var status = document.getElementById('git-settings-status');
+  if (!val || val < 10) {
+    status.style.color = '#dc2626';
+    status.textContent = t('git_timeout_save_fail') + 'Minimum 10 seconds';
+    return;
+  }
+  apiPost('/api/network-timeout', {network_timeout: val}, function(d) {
+    if (d.ok) {
+      status.style.color = '#16a34a';
+      status.textContent = tf('git_timeout_saved', L, {n: d.network_timeout});
+      setTimeout(closeGitSettingsModal, 1200);
+    } else {
+      status.style.color = '#dc2626';
+      status.textContent = t('git_timeout_save_fail') + (d.error || '');
+    }
+  });
+}
+
+document.getElementById('git-settings-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeGitSettingsModal();
 });
