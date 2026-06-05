@@ -4309,16 +4309,22 @@ function highlightGraphLane(lane, fromLegend) {
 
 function toggleGraphPanel() {
   var panel = document.getElementById('graph-panel');
+  var handle = document.getElementById('graph-resize-handle');
   var isOpen = panel.classList.contains('open');
   if (!isOpen) {
     panel.classList.add('open');
     var btn = document.getElementById('btn-graph-toggle');
     if (btn) btn.classList.add('active');
+    if (handle) {
+      if (window._graphResizePlaceHandle) window._graphResizePlaceHandle();
+      handle.style.display = 'block';
+    }
     if (!_graphData) loadGitGraph();
   } else {
     panel.classList.remove('open');
     var btn = document.getElementById('btn-graph-toggle');
     if (btn) btn.classList.remove('active');
+    if (handle) handle.style.display = 'none';
   }
   try { localStorage.setItem('graphPanelOpen', String(!isOpen)); } catch(e) {}
 }
@@ -4332,6 +4338,9 @@ function _initGraphPanel() {
     }
   } catch(e) {}
 
+  // Init drag-to-resize (must run before open restore so _placeHandle exists)
+  _initGraphResize();
+
   // Restore open state
   try {
     if (localStorage.getItem('graphPanelOpen') === 'true') {
@@ -4339,36 +4348,45 @@ function _initGraphPanel() {
       panel.classList.add('open');
       var btn = document.getElementById('btn-graph-toggle');
       if (btn) btn.classList.add('active');
+      var handle = document.getElementById('graph-resize-handle');
+      if (handle) {
+        if (window._graphResizePlaceHandle) window._graphResizePlaceHandle();
+        handle.style.display = 'block';
+      }
       loadGitGraph();
     }
   } catch(e) {}
-
-  // Init drag-to-resize
-  _initGraphResize();
 }
 
 function _initGraphResize() {
   var handle = document.getElementById('graph-resize-handle');
   var panel = document.getElementById('graph-panel');
   if (!handle || !panel) return;
+
+  function _placeHandle() {
+    // Position handle flush against the panel's right edge
+    handle.style.left = (panel.offsetWidth - 4) + 'px';
+  }
+
   var dragging = false, startX = 0, startW = 0;
+
   handle.addEventListener('mousedown', function(e) {
     dragging = true;
     startX = e.clientX;
     startW = panel.offsetWidth;
     handle.classList.add('dragging');
-    // Disable CSS transition during drag so width follows mouse instantly
-    panel.style.transition = 'transform .22s cubic-bezier(.4,0,.2,1)';
     document.body.style.cursor = 'ew-resize';
     document.body.style.userSelect = 'none';
     e.preventDefault();
-    e.stopPropagation();
   });
+
   document.addEventListener('mousemove', function(e) {
     if (!dragging) return;
     var newW = Math.max(280, Math.min(860, startW + (e.clientX - startX)));
     panel.style.width = newW + 'px';
+    handle.style.left = (newW - 4) + 'px';
   });
+
   document.addEventListener('mouseup', function() {
     if (!dragging) return;
     dragging = false;
@@ -4377,6 +4395,9 @@ function _initGraphResize() {
     document.body.style.userSelect = '';
     try { localStorage.setItem('graphPanelWidth', String(panel.offsetWidth)); } catch(e) {}
   });
+
+  // Keep handle visible/hidden with panel; reposition on toggle
+  window._graphResizePlaceHandle = _placeHandle;
 }
 
 function _isStashLabel(s) {
