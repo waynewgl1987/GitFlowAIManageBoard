@@ -8,6 +8,22 @@
 <link rel="stylesheet" href="/static/ai-panel.css">
 </head>
 <body>
+
+<!-- ═══════════ Git Graph Side Panel ═══════════ -->
+<div id="graph-panel" class="graph-panel">
+  <div class="graph-panel-hdr">
+    <span class="graph-panel-title">🌳 Branch Graph</span>
+    <div style="display:flex;gap:4px">
+      <button class="graph-btn" onclick="loadGitGraph()" title="Refresh graph">↻</button>
+      <button class="graph-btn" onclick="toggleGraphPanel()" title="Close">✕</button>
+    </div>
+  </div>
+  <div class="graph-legend" id="graph-legend"></div>
+  <div class="graph-panel-body" id="graph-svg-wrap">
+    <div style="padding:20px;font-size:12px;color:#9ca3af">Click ↻ to load</div>
+  </div>
+</div>
+
 <div class="container">
 
 <div class="project-banner" id="project-banner">
@@ -105,7 +121,7 @@
   <button class="btn btn-secondary btn-back" onclick="switchPage('main')">← <span data-i18n="back">Back</span></button>
   <h2 style="margin-bottom:16px" data-i18n="branches_title">Branches</h2>
 
-  <!-- Local / Remote tab selector -->
+  <!-- Local / Remote tab selector + Branch Graph entry -->
   <div class="branch-tabs-wrap">
     <div class="branch-tab-group" role="tablist">
       <button id="btab-local" class="branch-tab-btn active" role="tab" aria-selected="true" onclick="switchBranchTab('local')">
@@ -114,6 +130,9 @@
       <button id="btab-remote" class="branch-tab-btn" role="tab" aria-selected="false" onclick="switchBranchTab('remote')">
         ☁️ Remote<span class="branch-tab-count" id="btab-remote-count"></span>
       </button>
+    </div>
+    <div class="branch-graph-row">
+      <button id="btn-graph-toggle" class="branch-graph-btn" onclick="toggleGraphPanel()" title="Open Branch Graph">🌳 Graph</button>
     </div>
   </div>
 

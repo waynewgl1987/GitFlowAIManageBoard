@@ -30,6 +30,7 @@ from git_ops import (
     reset_to, revert_commit, drop_commit, squash_commits, abort_merge_or_rebase,
     rebase_abort, rebase_skip, rebase_continue,
     worktree_list, worktree_add, worktree_remove, worktree_prune,
+    get_git_graph,
 )
 
 
@@ -79,6 +80,11 @@ def handle_get(path, params, send_json, send_stream=None):
 
     elif path == "/api/protected-branches":
         send_json(get_protected_config())
+        return True
+
+    elif path == "/api/git-graph":
+        max_n = int(params.get("max", ["150"])[0])
+        send_json(get_git_graph(max_n))
         return True
 
     elif path == "/api/branches":
