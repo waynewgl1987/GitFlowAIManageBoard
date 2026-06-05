@@ -4478,15 +4478,21 @@ function showGraphNamePopover(event, fullName) {
   var pop = document.getElementById('graph-name-popover');
   var nameEl = document.getElementById('gnp-name');
   if (!pop || !nameEl) return;
+  // Toggle off if already showing the same entry
+  if (pop.style.display !== 'none' && pop._fullName === fullName) {
+    pop.style.display = 'none';
+    return;
+  }
   nameEl.textContent = fullName;
   pop._fullName = fullName;
-  // Position near anchor
-  var rect = event.target.getBoundingClientRect();
+  // Position near anchor — show first to measure size
   pop.style.display = 'flex';
+  var rect = event.target.getBoundingClientRect();
   var popW = pop.offsetWidth || 240;
+  var popH = pop.offsetHeight || 48;
   var left = Math.min(rect.right + 6, window.innerWidth - popW - 8);
   var top = rect.top - 4;
-  if (top + (pop.offsetHeight || 48) > window.innerHeight - 8) top = rect.bottom - (pop.offsetHeight || 48);
+  if (top + popH > window.innerHeight - 8) top = rect.bottom - popH;
   pop.style.left = left + 'px';
   pop.style.top = top + 'px';
 }
@@ -4502,10 +4508,10 @@ function graphNameCopy() {
   } catch(e) {}
 }
 
-// Close popover on outside click
+// Close popover on any outside click (trigger uses stopPropagation so no double-fire)
 document.addEventListener('click', function(e) {
   var pop = document.getElementById('graph-name-popover');
-  if (pop && pop.style.display !== 'none' && !pop.contains(e.target) && !e.target.classList.contains('gnp-trigger')) {
+  if (pop && pop.style.display !== 'none' && !pop.contains(e.target)) {
     pop.style.display = 'none';
   }
 });
