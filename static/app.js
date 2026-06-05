@@ -4242,3 +4242,191 @@ function saveGitSettings() {
 document.getElementById('git-settings-modal').addEventListener('click', function(e) {
   if (e.target === this) closeGitSettingsModal();
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Git Branch Graph Panel
+// ═══════════════════════════════════════════════════════════════
+var _graphData = null;
+
+
+function toggleGraphPanel() {
+  var panel = document.getElementById('graph-panel');
+  var isOpen = panel.classList.contains('open');
+  if (!isOpen) {
+    panel.classList.add('open');
+    document.getElementById('btn-graph-toggle').classList.add('active');
+    if (!_graphData) loadGitGraph();
+  } else {
+    panel.classList.remove('open');
+    document.getElementById('btn-graph-toggle').classList.remove('active');
+  }
+  try { localStorage.setItem('graphPanelOpen', String(!isOpen)); } catch(e){}
+}
+
+function _initGraphPanel() {
+  try {
+    if (localStorage.getItem('graphPanelOpen') === 'true') {
+      var panel = document.getElementById('graph-panel');
+      panel.classList.add('open');
+      document.getElementById('btn-graph-toggle').classList.add('active');
+      loadGitGraph();
+    }
+  } catch(e){}
+}
+
+function loadGitGraph() {
+  var wrap = document.getElementById('graph-svg-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="loading-bar"><span class="spinner"></span>Loading graph…</div>';
+  var legend = document.getElementById('graph-legend');
+  if (legend) { legend.style.display = 'none'; legend.innerHTML = ''; }
+
+  _showSpinner();
+  fetch(API_BASE + '/api/git-graph')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      _hideSpinner();
+      if (!data || !Array.isArray(data.commits)) {
+        wrap.innerHTML = '<div style="padding:16px;font-size:12px;color:#dc2626">Graph unavailable</div>';
+        return;
+      }
+      _graphData = data;
+      try { _renderGraphLegend(data); } catch(e) { console.error('legend err', e); }
+      try { renderGitGraph(data); } catch(e) {
+        console.error('graph render err', e);
+        wrap.innerHTML = '<div style="padding:16px;font-size:12px;color:#dc2626">Render error: ' + escapeHtml(e.message) + '</div>';
+      }
+    })
+    .catch(function(e) {
+      _hideSpinner();
+      wrap.innerHTML = '<div style="padding:16px;font-size:12px;color:#dc2626">Failed: ' + escapeHtml(e.message) + '</div>';
+    });
+}
+
+function _renderGraphLegend(data) {
+  var _C = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f97316','#a855f7','#14b8a6','#e11d48'];
+  var legend = document.getElementById('graph-legend');
+  if (!legend) return;
+  var seen = {};
+  (data.commits || []).forEach(function(c) {
+    var lbs = c.labels || [];
+    if (lbs.length && !(c.lane in seen)) seen[c.lane] = lbs[0];
+  });
+  var lanes = Object.keys(seen).map(Number).sort(function(a,b){return a-b;});
+  if (!lanes.length) return;
+  legend.style.display = 'flex';
+  legend.innerHTML = lanes.slice(0, 10).map(function(l) {
+    var name = seen[l] || ''; if (name.length > 24) name = name.slice(0, 22) + '…';
+    return '<div class="graph-legend-item">'
+      + '<span class="graph-legend-dot" style="background:' + _C[l % _C.length] + '"></span>'
+      + '<span class="graph-legend-name">' + escapeHtml(name) + '</span>'
+      + '</div>';
+  }).join('');
+}
+
+function renderGitGraph(data) {
+  var _C = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f97316','#a855f7','#14b8a6','#e11d48'];
+  var wrap = document.getElementById('graph-svg-wrap');
+  if (!wrap) return;
+  var commits = (data && data.commits) || [], edges = (data && data.edges) || [];
+  if (!commits.length) {
+    wrap.innerHTML = '<div style="padding:20px;font-size:12px;color:#9ca3af">No commits found</div>';
+    return;
+  }
+
+  var ROW_H = 24, LANE_W = 14, PAD_L = 10, PAD_T = 14, DOT_R = 4.5;
+  var maxLane = (data && data.max_lane) || 0;
+  var svgW = PAD_L * 2 + (maxLane + 1) * LANE_W;
+  var svgH = PAD_T * 2 + commits.length * ROW_H;
+
+  function cx(l) { return PAD_L + (l || 0) * LANE_W; }
+  function cy(r) { return PAD_T + r * ROW_H; }
+  function col(l) { return _C[(l || 0) % _C.length]; }
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  var parts = ['<svg xmlns="http://www.w3.org/2000/svg" width="'+svgW+'" height="'+svgH+'" style="display:block">'];
+
+  // Draw edges first (rendered behind nodes)
+  edges.forEach(function(e) {
+    var fr=e[0],fl=e[1],tr=e[2],tl=e[3];
+    var x1=cx(fl),y1=cy(fr),x2=cx(tl),y2=cy(tr),stroke=col(fl);
+    var d;
+    if (fl===tl) {
+      d='M'+x1+','+y1+' L'+x2+','+y2;
+    } else {
+      var half=y1+ROW_H/2, step=y1+ROW_H;
+      if (tr===fr+1) {
+        d='M'+x1+','+y1+' C'+x1+','+half+' '+x2+','+half+' '+x2+','+y2;
+      } else {
+        d='M'+x1+','+y1+' C'+x1+','+half+' '+x2+','+half+' '+x2+','+step+' L'+x2+','+y2;
+      }
+    }
+    parts.push('<path d="'+d+'" fill="none" stroke="'+stroke+'" stroke-width="1.5" opacity="0.8"/>');
+  });
+
+  // Draw commit nodes
+  commits.forEach(function(c,i) {
+    var x=cx(c.lane), y=cy(i), clr=col(c.lane);
+    var lbs = c.labels || [];
+    var hasLabel=lbs.length>0, r=hasLabel?5.5:DOT_R;
+
+    // SVG native tooltip (hover)
+    var tipText = (lbs.length ? lbs.join(', ')+'\n' : '') + c.short+' '+c.msg+'\n'+c.author+' · '+c.date;
+
+    parts.push('<g onclick="showGraphNodeInfo(event,'+i+')" style="cursor:pointer">');
+    // Outer ring: gold for HEAD, colored for branch tips
+    if (c.is_head) {
+      parts.push('<circle cx="'+x+'" cy="'+y+'" r="'+(r+3)+'" fill="none" stroke="#fbbf24" stroke-width="1.5" opacity="0.85"/>');
+    } else if (hasLabel) {
+      parts.push('<circle cx="'+x+'" cy="'+y+'" r="'+(r+2.5)+'" fill="none" stroke="'+clr+'" stroke-width="1.5" opacity="0.45"/>');
+    }
+    parts.push('<circle cx="'+x+'" cy="'+y+'" r="'+r+'" fill="'+clr+'" stroke="#fff" stroke-width="1.5"/>');
+    parts.push('<title>'+esc(tipText)+'</title>');
+    parts.push('</g>');
+  });
+
+  parts.push('</svg>');
+  wrap.innerHTML = parts.join('');
+}
+
+function showGraphNodeInfo(event, idx) {
+  event.stopPropagation();
+  var old = document.getElementById('_gntip'); if (old) old.remove();
+  var c = _graphData && _graphData.commits && _graphData.commits[idx];
+  if (!c) return;
+
+  var tip = document.createElement('div');
+  tip.id = '_gntip'; tip.className = 'graph-node-tip';
+  tip.innerHTML =
+    '<div class="gnt-hash">' + escapeHtml(c.short) + '</div>'
+    + '<div class="gnt-msg">' + escapeHtml(c.msg) + '</div>'
+    + '<div class="gnt-meta">' + escapeHtml(c.author) + ' · ' + escapeHtml(c.date) + '</div>'
+    + (c.labels&&c.labels.length ? '<div class="gnt-labels">'
+        + c.labels.map(function(l){return '<span class="gnt-label">'+escapeHtml(l)+'</span>';}).join('')
+        + '</div>' : '');
+  document.body.appendChild(tip);
+
+  // Position tooltip to the right of the clicked point, within viewport
+  var tipW=tip.offsetWidth||244, tipH=tip.offsetHeight||100;
+  var left = event.clientX + 14;
+  if (left + tipW > window.innerWidth) left = event.clientX - tipW - 14;
+  var top = event.clientY - 14;
+  if (top + tipH > window.innerHeight) top = window.innerHeight - tipH - 8;
+  tip.style.left = Math.max(4, left) + 'px';
+  tip.style.top = Math.max(4, top) + 'px';
+
+  // Close on next click anywhere (remove any previous handler first)
+  if (showGraphNodeInfo._closeHandler) {
+    document.removeEventListener('click', showGraphNodeInfo._closeHandler);
+  }
+  setTimeout(function() {
+    showGraphNodeInfo._closeHandler = function() {
+      var el = document.getElementById('_gntip'); if (el) el.remove();
+      document.removeEventListener('click', showGraphNodeInfo._closeHandler);
+      showGraphNodeInfo._closeHandler = null;
+    };
+    document.addEventListener('click', showGraphNodeInfo._closeHandler);
+  }, 0);
+}
+
+_initGraphPanel();
