@@ -483,10 +483,10 @@ mark{background:#fef3c7;border-radius:2px;padding:0 1px}
   min-height: 0;
 }
 
-/* Left column: branch legend */
+/* Left column: branch legend — wider so names fit */
 .graph-legend-col {
-  width: 145px;
-  min-width: 90px;
+  width: 175px;
+  min-width: 110px;
   flex-shrink: 0;
   border-right: 1px solid #e5e7eb;
   overflow-y: auto;
@@ -530,22 +530,21 @@ mark{background:#fef3c7;border-radius:2px;padding:0 1px}
   padding: 2px 0;
 }
 
-/* Resize drag handle — sits on the inner right edge of the panel */
+/* Resize drag handle — fixed sibling outside panel, positioned by JS */
 .graph-resize-handle {
-  position: absolute;
+  display: none;
+  position: fixed;
   top: 0;
-  right: 0;
-  width: 6px;
-  height: 100%;
+  width: 8px;
+  height: 100vh;
   cursor: ew-resize;
-  z-index: 20;
-  border-radius: 0 4px 4px 0;
-  transition: background .15s;
+  z-index: 1001;
   background: repeating-linear-gradient(
     to bottom,
     transparent 0px, transparent 3px,
-    rgba(0,0,0,.08) 3px, rgba(0,0,0,.08) 4px
+    rgba(0,0,0,.1) 3px, rgba(0,0,0,.1) 4px
   );
+  transition: background .15s;
 }
 .graph-resize-handle:hover,
 .graph-resize-handle.dragging {
