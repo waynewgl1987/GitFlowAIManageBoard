@@ -1763,8 +1763,8 @@ function _renderBranchesByTab(data,page,perPage){
   var allForTab=_sortBranches(isLocal?(data.local||[]):(data.remote||[]));
   var current=data.current||'';
 
-  // Apply search filter
-  var filtered=search?allForTab.filter(function(b){return b.name.indexOf(search)>=0;}):allForTab;
+  // Apply search filter (case-insensitive substring match across all branches in tab)
+  var filtered=search?allForTab.filter(function(b){return b.name.toLowerCase().indexOf(search)>=0;}):allForTab;
   var total=filtered.length;
   var totalPages=perPage>0?Math.ceil(total/perPage):1;
   page=Math.max(1,Math.min(page,totalPages||1));
