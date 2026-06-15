@@ -9,6 +9,17 @@
 </head>
 <body>
 
+<!-- Fixed notification bar — stays visible regardless of scroll position -->
+<div id="fixed-notif-bar" class="fixed-notif-bar" style="display:none">
+  <div class="fnb-icon" id="fnb-icon">⚠️</div>
+  <div class="fnb-body">
+    <div class="fnb-summary" id="fnb-summary"></div>
+    <div class="fnb-detail" id="fnb-detail" style="display:none"></div>
+  </div>
+  <button class="fnb-expand" id="fnb-expand" onclick="toggleFixedNotifDetail()" title="Show/hide details">▼</button>
+  <button class="fnb-close" onclick="dismissFixedNotif()" title="Dismiss">✕</button>
+</div>
+
 <!-- ═══════════ Git Graph Side Panel ═══════════ -->
 <div id="graph-panel" class="graph-panel">
   <div class="graph-panel-hdr">
