@@ -2183,9 +2183,8 @@ function _showForceCheckoutModal(branchName, errMsg) {
         addMsg('❌ Force checkout failed: ' + (e.message || ''), 'error');
       });
     },
-    'Cancel',
-    null,
-    'btn-danger', 'btn-secondary'
+    null, null,
+    'btn-danger'
   );
 }
 
@@ -3477,8 +3476,12 @@ function showModalDouble(title,msg,btn1Label,btn1Cb,btn2Label,btn2Cb,btn1Class,b
   btnsDiv.innerHTML='';
   var cancel=document.createElement('button');cancel.className='btn btn-secondary';cancel.textContent='Cancel';cancel.onclick=closeModal;
   var b1=document.createElement('button');b1.className='btn '+(btn1Class||'btn-warning');b1.textContent=btn1Label;b1.onclick=function(){var c=btn1Cb;closeModal();if(c)c()};
-  var b2=document.createElement('button');b2.className='btn '+(btn2Class||'btn-secondary');b2.textContent=btn2Label;b2.onclick=function(){var c=btn2Cb;closeModal();if(c)c()};
-  btnsDiv.appendChild(cancel);btnsDiv.appendChild(b2);btnsDiv.appendChild(b1);
+  btnsDiv.appendChild(cancel);
+  if(btn2Label){
+    var b2=document.createElement('button');b2.className='btn '+(btn2Class||'btn-secondary');b2.textContent=btn2Label;b2.onclick=function(){var c=btn2Cb;closeModal();if(c)c()};
+    btnsDiv.appendChild(b2);
+  }
+  btnsDiv.appendChild(b1);
   document.getElementById('modal-bg').classList.add('show');
 }
 
