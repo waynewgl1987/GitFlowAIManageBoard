@@ -768,6 +768,7 @@ function renderFiles(files) {
     var toggleCls=expanded?' file-toggle open':' file-toggle';
     var bodyCls=expanded?' file-body expanded':' file-body';
     var lineCount=f.diff?f.diff.split('\n').length:0;
+    var isLargeDiff = lineCount > 80;
     html+='<div class="file-card" data-index="'+idx+'"><div class="file-header">';
     html+='<span class="cb-wrap"><input type="checkbox" data-path="'+attrPath+'" class="file-cb"'+checked+'></span>';
     html+='<span class="'+toggleCls+'">▶</span>';
@@ -775,13 +776,30 @@ function renderFiles(files) {
     html+='<span style="color:#9ca3af;font-size:12px">('+lineCount+' '+t('lines')+')</span>';
     html+='<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();ignoreFile(\''+attrPath+'\')" title="Discard changes for this file">Ignore</button>';
     html+='</div>';
-    if(diffHtml){html+='<div class="'+bodyCls+'"><div class="diff-block">'+diffHtml+'</div></div>'}
+    if(diffHtml){
+      var blockId='diff-block-'+idx;
+      html+='<div class="'+bodyCls+'">';
+      html+='<div class="diff-block" id="'+blockId+'">'+diffHtml+'</div>';
+      if(isLargeDiff){
+        html+='<div style="text-align:center;padding:4px 0 8px">'
+          +'<button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="toggleDiffExpand(\''+blockId+'\',this)">⇕ Show full diff ('+lineCount+' lines)</button>'
+          +'</div>';
+      }
+      html+='</div>';
+    }
     html+='</div>';
   });
   list.innerHTML=html;
 }
 
 function loadFiles(){apiGet('/api/files',function(data){renderFiles(data.files)})}
+
+function toggleDiffExpand(blockId, btn) {
+  var block = document.getElementById(blockId);
+  if (!block) return;
+  var expanded = block.classList.toggle('expanded-full');
+  btn.textContent = expanded ? '⇕ Collapse diff' : '⇕ Show full diff';
+}
 
 function ignoreFile(filePath){
   showModal(

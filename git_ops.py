@@ -925,8 +925,9 @@ def get_file_commits(file_path, page=1, per_page=20):
 def get_uncommitted_changes():
     """Return list of uncommitted files with their diffs.
 
-    For staged-only files (e.g. after merge conflict resolution), falls back
-    to ``git diff --cached`` so the diff panel is never empty.
+    Uses `git diff HEAD` so that BOTH staged and unstaged changes are shown
+    together — prevents the bug where a file modified twice (first change staged,
+    second change unstaged) only shows the second (unstaged) change.
     """
     unstaged = set()
     out, _, _ = _run(["git", "diff", "--name-only"])
@@ -949,9 +950,17 @@ def get_uncommitted_changes():
     all_changed = unstaged | staged | untracked
     files = []
     for p in sorted(all_changed):
-        diff, _, _ = _run(["git", "diff", "--", p])
-        if not diff.strip() and p in staged:
-            # Staged-only (e.g. resolved merge conflict already git-add'd)
+        if p in untracked:
+            # New file not yet added — no diff available from git
+            files.append({"path": p, "diff": ""})
+            continue
+
+        # `git diff HEAD` shows ALL changes (staged + unstaged) compared to
+        # the last commit, so a file edited twice with a git-add in between
+        # will show the complete combined diff.
+        diff, _, _ = _run(["git", "diff", "HEAD", "--", p])
+        if not diff.strip():
+            # No HEAD yet (fresh repo) or edge case — fall back to cached
             diff, _, _ = _run(["git", "diff", "--cached", "--", p])
         files.append({"path": p, "diff": diff})
     return files
