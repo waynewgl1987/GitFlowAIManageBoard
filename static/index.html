@@ -9,17 +9,6 @@
 </head>
 <body>
 
-<!-- Fixed notification bar — stays visible regardless of scroll position -->
-<div id="fixed-notif-bar" class="fixed-notif-bar" style="display:none">
-  <div class="fnb-icon" id="fnb-icon">⚠️</div>
-  <div class="fnb-body">
-    <div class="fnb-summary" id="fnb-summary"></div>
-    <div class="fnb-detail" id="fnb-detail" style="display:none"></div>
-  </div>
-  <button class="fnb-expand" id="fnb-expand" onclick="toggleFixedNotifDetail()" title="Show/hide details">▼</button>
-  <button class="fnb-close" onclick="dismissFixedNotif()" title="Dismiss">✕</button>
-</div>
-
 <!-- ═══════════ Git Graph Side Panel ═══════════ -->
 <div id="graph-panel" class="graph-panel">
   <div class="graph-panel-hdr">
@@ -109,12 +98,13 @@
   </div>
 </div>
 
-<div class="msg-log-bar" style="margin-bottom:4px;">
-  <span style="font-size:12px;color:#6b7280;" data-i18n="msg_count">Messages: 0</span>
-  <a onclick="switchPage('msglog');loadMsgLog(1)" data-i18n="view_log">View Log</a>
+<div class="msg-sticky-wrap">
+  <div class="msg-log-bar" style="margin-bottom:4px;">
+    <span style="font-size:12px;color:#6b7280;" data-i18n="msg_count">Messages: 0</span>
+    <a onclick="switchPage('msglog');loadMsgLog(1)" data-i18n="view_log">View Log</a>
+  </div>
+  <div id="msg-area"></div>
 </div>
-
-<div id="msg-area"></div>
 
 <!-- ═══════════ Main Page ═══════════ -->
 <div class="page active" id="page-main">
