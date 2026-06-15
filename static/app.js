@@ -582,12 +582,6 @@ function addMsg(msg, cls) {
   div.id=id;
   div.innerHTML='<span class="msg-text">'+escapeHtml(msg)+'</span><span class="msg-close" onclick="dismissMsg(\''+id+'\')">✕</span>';
   area.appendChild(div);
-  // Show fixed notification bar for errors and warnings
-  if (cls === 'error' || cls === 'warning') {
-    _showFixedNotif(msg, cls);
-  } else {
-    dismissFixedNotif();
-  }
 }
 
 function addMsgWithAction(msg, cls, actions) {
@@ -614,54 +608,18 @@ function updateMsgCount(){
 }
 function dismissMsg(id){var el=document.getElementById(id);if(el)el.remove()}
 
-function _showFixedNotif(msg, cls) {
-  var bar = document.getElementById('fixed-notif-bar');
-  var icon = document.getElementById('fnb-icon');
-  var summary = document.getElementById('fnb-summary');
-  var detail = document.getElementById('fnb-detail');
-  var expand = document.getElementById('fnb-expand');
-  if (!bar) return;
-
-  // Extract concise summary from potentially long git log messages
-  var lines = msg.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
-  var keyLine = lines[0];
-  // Look for fatal/error lines which are more informative
-  for (var i = 0; i < lines.length; i++) {
-    if (lines[i].indexOf('fatal:') !== -1 || lines[i].indexOf('error:') !== -1) {
-      keyLine = lines[i]; break;
-    }
-  }
-  // If first line is just "Pull failed:" or "Push failed:", append the key line
-  var firstLine = lines[0] || '';
-  if (/^(Pull|Push|Fetch|Checkout|Merge|Rebase)\s+(failed|error)/i.test(firstLine) && keyLine !== firstLine) {
-    keyLine = firstLine + ' — ' + keyLine.replace(/^(fatal:|error:)\s*/i, '');
-  }
-
-  var isLong = lines.length > 2 || msg.length > 120;
-  icon.textContent = cls === 'error' ? '❌' : '⚠️';
-  summary.textContent = keyLine.length > 160 ? keyLine.slice(0, 157) + '…' : keyLine;
-  detail.textContent = msg;
-  detail.style.display = 'none';
-  expand.style.display = isLong ? 'flex' : 'none';
-  expand.textContent = '▼';
-
-  bar.className = 'fixed-notif-bar fnb-' + cls;
-  bar.style.display = 'flex';
-}
-
-function dismissFixedNotif() {
-  var bar = document.getElementById('fixed-notif-bar');
-  if (bar) bar.style.display = 'none';
-}
-
-function toggleFixedNotifDetail() {
-  var detail = document.getElementById('fnb-detail');
-  var expand = document.getElementById('fnb-expand');
-  if (!detail) return;
-  var showing = detail.style.display !== 'none';
-  detail.style.display = showing ? 'none' : 'block';
-  if (expand) expand.textContent = showing ? '▼' : '▲';
-}
+// Detect when msg-sticky-wrap is stuck to top, add shadow
+(function(){
+  var wrap = document.querySelector('.msg-sticky-wrap');
+  if (!wrap || !window.IntersectionObserver) return;
+  // Sentinel: a 1px element just above the wrap
+  var sentinel = document.createElement('div');
+  sentinel.style.cssText = 'position:absolute;top:0;left:0;height:1px;width:1px;pointer-events:none';
+  wrap.parentNode.insertBefore(sentinel, wrap);
+  new IntersectionObserver(function(entries){
+    wrap.classList.toggle('is-stuck', !entries[0].isIntersecting);
+  }, {threshold: 1}).observe(sentinel);
+})();
 
 function safeApiGet(path,cb){
   fetch(API_BASE+path).then(function(r){return r.json()}).then(cb).catch(function(e){console.error(e);if(typeof addMsg==='function')addMsg(t('network_err')+e.message,'error')});
