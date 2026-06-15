@@ -369,7 +369,8 @@ def handle_post(path, data, send_json):
 
     elif path == "/api/checkout":
         branch = data.get("branch", "")
-        stdout, stderr, rc = checkout_branch(branch)
+        force  = bool(data.get("force", False))
+        stdout, stderr, rc = checkout_branch(branch, force=force)
         if rc == 0:
             send_json({"ok": True, "stdout": stdout})
         else:
