@@ -2117,14 +2117,76 @@ function checkoutBranch(branchName){
         addMsg('✅ Switched to ' + branchName, 'success');
         loadLog(1); loadFiles(); loadBranches(1);
         setTimeout(function(){ window.location.reload(); }, 800);
-      }else{
-        addMsg(t('switch_fail')+(data.error||''),'error');
+      } else {
+        var err = data.error || '';
+        if (err.indexOf('would be overwritten by checkout') !== -1) {
+          _showForceCheckoutModal(branchName, err);
+        } else {
+          addMsg(t('switch_fail') + err, 'error');
+        }
       }
     })
     .catch(function(e){
       _hideSpinner();
       addMsg(t('switch_fail')+(e.message||'network error'),'error');
     });
+}
+
+function _showForceCheckoutModal(branchName, errMsg) {
+  // Parse affected files from the git error message
+  var files = [];
+  var lines = errMsg.split('\n');
+  var inList = false;
+  lines.forEach(function(line) {
+    line = line.trim();
+    if (line.indexOf('would be overwritten') !== -1) { inList = true; return; }
+    if (inList && line && line.indexOf('Please commit') === -1 && line !== 'Aborting') {
+      files.push(line);
+    }
+    if (line.indexOf('Please commit') !== -1) inList = false;
+  });
+
+  var fileListHtml = files.length
+    ? '<ul style="margin:8px 0 0;padding-left:18px;font-size:11px;font-family:monospace;color:#dc2626;max-height:120px;overflow-y:auto">'
+      + files.map(function(f){ return '<li>' + escapeHtml(f) + '</li>'; }).join('')
+      + '</ul>'
+    : '';
+
+  showModalDouble(
+    '⚠️ Checkout Blocked — Local Changes',
+    '<p style="margin:0 0 8px;font-size:13px;color:#374151">'
+    + 'Git refused to switch to <code style="background:#f3f4f6;padding:1px 5px;border-radius:3px">' + escapeHtml(branchName) + '</code> because these local file changes would be overwritten:</p>'
+    + fileListHtml
+    + '<div style="margin-top:12px;padding:10px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:12px;color:#991b1b">'
+    + '⚠️ <strong>Force Checkout will DISCARD these local changes permanently.</strong><br>'
+    + 'They are NOT stashed — this cannot be undone. Only proceed if you are sure you do not need these changes.'
+    + '</div>',
+    '🗑 Force Checkout (discard changes)',
+    function() {
+      _showSpinner();
+      fetch(API_BASE+'/api/checkout', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({branch: branchName, force: true})
+      }).then(function(r){ return r.json(); }).then(function(data) {
+        _hideSpinner();
+        if (data.ok) {
+          var el = document.getElementById('branch-name');
+          if (el) el.textContent = branchName;
+          addMsg('✅ Force switched to ' + branchName + ' (local changes discarded)', 'success');
+          setTimeout(function(){ window.location.reload(); }, 800);
+        } else {
+          addMsg('❌ Force checkout failed: ' + (data.error || ''), 'error');
+        }
+      }).catch(function(e) {
+        _hideSpinner();
+        addMsg('❌ Force checkout failed: ' + (e.message || ''), 'error');
+      });
+    },
+    'Cancel',
+    null,
+    'btn-danger', 'btn-secondary'
+  );
 }
 
 function doCheckout(branchName, hadStash){
@@ -2165,7 +2227,14 @@ function doCheckout(branchName, hadStash){
           setTimeout(function(){ window.location.reload(); }, 1500);
         }
       });
-    }else addMsg(t('switch_fail')+(data.error||data.stderr||''),'error');
+    }else{
+      var err = data.error || data.stderr || '';
+      if (err.indexOf('would be overwritten by checkout') !== -1) {
+        _showForceCheckoutModal(branchName, err);
+      } else {
+        addMsg(t('switch_fail') + err, 'error');
+      }
+    }
   });
 }
 

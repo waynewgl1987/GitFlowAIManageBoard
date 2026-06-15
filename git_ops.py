@@ -515,17 +515,18 @@ def file_commit_diff(commit_hash, file_path):
     return out
 
 
-def checkout_branch(name):
+def checkout_branch(name, force=False):
     """Checkout a branch, handling remote tracking branches."""
     branch = (name or "").strip()
     if not branch:
         return "", "No branch specified", -1
+    flag = ["-f"] if force else []
     if branch.startswith("origin/"):
         local_branch = _strip_origin_prefix(branch)
         if _ref_exists(local_branch):
-            return _run(["git", "checkout", local_branch])
+            return _run(["git", "checkout"] + flag + [local_branch])
         return _run(["git", "checkout", "-b", local_branch, "--track", branch])
-    return _run(["git", "checkout", branch])
+    return _run(["git", "checkout"] + flag + [branch])
 
 
 def create_branch(name, base=None):
