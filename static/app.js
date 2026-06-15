@@ -712,7 +712,7 @@ function switchPage(name) {
   var graphBtn = document.getElementById('btn-graph-toggle');
   var graphPanel = document.getElementById('graph-panel');
   if (graphBtn && graphPanel && graphPanel.classList.contains('open')) graphBtn.classList.add('active');
-  if(name==='main')loadFiles();
+  if(name==='main'){ loadFiles(); _startFilesPoller(); } else { _stopFilesPoller(); }
   // Persist tab so refresh restores same page
   try{localStorage.setItem('git_tool_active_tab',name);}catch(e){}
 }
@@ -768,6 +768,7 @@ function renderFiles(files) {
     var toggleCls=expanded?' file-toggle open':' file-toggle';
     var bodyCls=expanded?' file-body expanded':' file-body';
     var lineCount=f.diff?f.diff.split('\n').length:0;
+    var isLargeDiff = lineCount > 80;
     html+='<div class="file-card" data-index="'+idx+'"><div class="file-header">';
     html+='<span class="cb-wrap"><input type="checkbox" data-path="'+attrPath+'" class="file-cb"'+checked+'></span>';
     html+='<span class="'+toggleCls+'">▶</span>';
@@ -775,13 +776,69 @@ function renderFiles(files) {
     html+='<span style="color:#9ca3af;font-size:12px">('+lineCount+' '+t('lines')+')</span>';
     html+='<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();ignoreFile(\''+attrPath+'\')" title="Discard changes for this file">Ignore</button>';
     html+='</div>';
-    if(diffHtml){html+='<div class="'+bodyCls+'"><div class="diff-block">'+diffHtml+'</div></div>'}
+    if(diffHtml){
+      var blockId='diff-block-'+idx;
+      html+='<div class="'+bodyCls+'">';
+      html+='<div class="diff-block" id="'+blockId+'">'+diffHtml+'</div>';
+      if(isLargeDiff){
+        html+='<div style="text-align:center;padding:4px 0 8px">'
+          +'<button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="toggleDiffExpand(\''+blockId+'\',this)">⇕ Show full diff ('+lineCount+' lines)</button>'
+          +'</div>';
+      }
+      html+='</div>';
+    }
     html+='</div>';
   });
   list.innerHTML=html;
 }
 
-function loadFiles(){apiGet('/api/files',function(data){renderFiles(data.files)})}
+var _filesPollInterval = (function() {
+  try { var v = parseFloat(localStorage.getItem('git_poll_interval')); if (v >= 0) return v * 1000; } catch(e) {}
+  return 2500; // default 2.5s
+})();
+
+var _filesPollTimer = null;
+var _filesLastJson = '';
+
+function loadFiles(){
+  apiGet('/api/files', function(data) {
+    var json = JSON.stringify(data.files);
+    if (json !== _filesLastJson) {
+      _filesLastJson = json;
+      renderFiles(data.files);
+    }
+  });
+}
+
+function _startFilesPoller() {
+  _stopFilesPoller();
+  if (_filesPollInterval <= 0) return; // disabled
+  _filesPollTimer = setInterval(function() {
+    var page = document.getElementById('page-main');
+    if (page && page.classList.contains('active') && !document.hidden) {
+      loadFiles();
+    }
+  }, _filesPollInterval);
+}
+
+function _stopFilesPoller() {
+  if (_filesPollTimer) { clearInterval(_filesPollTimer); _filesPollTimer = null; }
+}
+
+// Start polling when page is visible, pause when hidden (saves requests)
+document.addEventListener('visibilitychange', function() {
+  var page = document.getElementById('page-main');
+  if (page && page.classList.contains('active')) {
+    document.hidden ? _stopFilesPoller() : _startFilesPoller();
+  }
+});
+
+function toggleDiffExpand(blockId, btn) {
+  var block = document.getElementById(blockId);
+  if (!block) return;
+  var expanded = block.classList.toggle('expanded-full');
+  btn.textContent = expanded ? '⇕ Collapse diff' : '⇕ Show full diff';
+}
 
 function ignoreFile(filePath){
   showModal(
@@ -4173,7 +4230,12 @@ document.getElementById('select-all-cb').addEventListener('change',function(){
   var allCbs=document.querySelectorAll('.file-cb');
   var done=0,total=allCbs.length,failed=false;
   if(!total)return;
-  function finalize(){if(!failed)addMsg(selectAll?t('all_selected'):t('all_deselected'),'success');else addMsg(t('partial_fail'),'error');loadFiles()}
+  function finalize(){
+    if(!failed)addMsg(selectAll?t('all_selected'):t('all_deselected'),'success');
+    else addMsg(t('partial_fail'),'error');
+    _filesLastJson=''; // force re-render so individual checkboxes reflect new state
+    loadFiles();
+  }
   for(var i=0;i<allCbs.length;i++){
     (function(cb,path){
       var action=selectAll?'add':'reset';
@@ -4275,9 +4337,12 @@ loadWorktreeLabel();
     else if(saved==='stash')loadStash();
     else if(saved==='conflicts'){loadFiles();checkConflicts();}
     else{loadFiles();checkConflicts();}
+    // Start poller if restoring to commit tab
+    if(!saved || saved==='main') _startFilesPoller();
   }else{
     loadFiles();
     checkConflicts();
+    _startFilesPoller();
   }
 })();
 
@@ -4302,6 +4367,8 @@ function openGitSettingsModal() {
   apiGet('/api/network-timeout', function(d) {
     document.getElementById('git-timeout-input').value = d.network_timeout || 120;
   });
+  // Populate poll interval (convert ms → seconds for display)
+  document.getElementById('git-poll-input').value = _filesPollInterval > 0 ? (_filesPollInterval / 1000) : 0;
 }
 
 function closeGitSettingsModal() {
@@ -4310,17 +4377,31 @@ function closeGitSettingsModal() {
 
 function saveGitSettings() {
   var val = parseInt(document.getElementById('git-timeout-input').value, 10);
+  var pollSec = parseFloat(document.getElementById('git-poll-input').value);
   var status = document.getElementById('git-settings-status');
   if (!val || val < 10) {
     status.style.color = '#dc2626';
     status.textContent = t('git_timeout_save_fail') + 'Minimum 10 seconds';
     return;
   }
+  if (isNaN(pollSec) || pollSec < 0) {
+    status.style.color = '#dc2626';
+    status.textContent = 'Auto-refresh interval must be ≥ 0 (0 = disabled)';
+    return;
+  }
+  // Save poll interval to localStorage and apply immediately
+  try { localStorage.setItem('git_poll_interval', String(pollSec)); } catch(e) {}
+  _filesPollInterval = pollSec * 1000;
+  // Restart poller with new interval if on commit tab
+  var page = document.getElementById('page-main');
+  if (page && page.classList.contains('active')) { _stopFilesPoller(); _startFilesPoller(); }
+
   apiPost('/api/network-timeout', {network_timeout: val}, function(d) {
     if (d.ok) {
       status.style.color = '#16a34a';
-      status.textContent = tf('git_timeout_saved', L, {n: d.network_timeout});
-      setTimeout(closeGitSettingsModal, 1200);
+      var pollMsg = pollSec > 0 ? (' · Auto-refresh: ' + pollSec + 's') : ' · Auto-refresh: off';
+      status.textContent = tf('git_timeout_saved', L, {n: d.network_timeout}) + pollMsg;
+      setTimeout(closeGitSettingsModal, 1400);
     } else {
       status.style.color = '#dc2626';
       status.textContent = t('git_timeout_save_fail') + (d.error || '');

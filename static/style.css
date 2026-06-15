@@ -106,7 +106,8 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",sans-s
 .cb-wrap{display:flex;align-items:center;gap:8px}
 input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:var(--color-primary);flex-shrink:0}
 .cb-wrap input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:var(--color-primary)}
-.diff-block{background:#f8fafc;border-radius:8px;padding:12px 16px;font-family:"SFMono-Regular","Cascadia Code","Consolas","Menlo",monospace;font-size:13px;line-height:1.7;white-space:pre-wrap;word-break:break-all;max-height:420px;overflow-y:auto;border:1px solid var(--color-border)}
+.diff-block{background:#f8fafc;border-radius:8px;padding:12px 16px;font-family:"SFMono-Regular","Cascadia Code","Consolas","Menlo",monospace;font-size:13px;line-height:1.7;white-space:pre-wrap;word-break:break-all;max-height:600px;overflow-y:auto;border:1px solid var(--color-border)}
+.diff-block.expanded-full{max-height:none;overflow-y:visible}
 .diff-table{width:100%;border-collapse:collapse}
 .diff-table tr{border-bottom:1px solid #f0f0f0}
 .diff-prefix{color:#9ca3af;min-width:20px;text-align:right;padding-right:8px;user-select:none;vertical-align:top}
