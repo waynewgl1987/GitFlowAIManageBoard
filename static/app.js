@@ -717,9 +717,9 @@ function switchPage(name) {
   try{localStorage.setItem('git_tool_active_tab',name);}catch(e){}
 }
 
-function apiGet(path,cb){
-  _showSpinner();
-  fetch(API_BASE+path).then(function(r){return r.json()}).then(function(d){_hideSpinner();cb(d)}).catch(function(e){_hideSpinner();addMsg(t('network_err')+e.message,'error')})
+function apiGet(path,cb,opts){
+  if(!opts||!opts.silent)_showSpinner();
+  fetch(API_BASE+path).then(function(r){return r.json()}).then(function(d){if(!opts||!opts.silent)_hideSpinner();cb(d)}).catch(function(e){if(!opts||!opts.silent)_hideSpinner();addMsg(t('network_err')+e.message,'error')})
 }
 function apiPost(path,body,cb){
   _showSpinner();
@@ -800,14 +800,14 @@ var _filesPollInterval = (function() {
 var _filesPollTimer = null;
 var _filesLastJson = '';
 
-function loadFiles(){
+function loadFiles(silent){
   apiGet('/api/files', function(data) {
     var json = JSON.stringify(data.files);
     if (json !== _filesLastJson) {
       _filesLastJson = json;
       renderFiles(data.files);
     }
-  });
+  }, silent ? {silent:true} : null);
 }
 
 function _startFilesPoller() {
@@ -816,7 +816,7 @@ function _startFilesPoller() {
   _filesPollTimer = setInterval(function() {
     var page = document.getElementById('page-main');
     if (page && page.classList.contains('active') && !document.hidden) {
-      loadFiles();
+      loadFiles(true); // silent: no spinner on auto-refresh
     }
   }, _filesPollInterval);
 }
