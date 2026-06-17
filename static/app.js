@@ -712,14 +712,14 @@ function switchPage(name) {
   var graphBtn = document.getElementById('btn-graph-toggle');
   var graphPanel = document.getElementById('graph-panel');
   if (graphBtn && graphPanel && graphPanel.classList.contains('open')) graphBtn.classList.add('active');
-  if(name==='main')loadFiles();
+  if(name==='main'){ loadFiles(); _startFilesPoller(); } else { _stopFilesPoller(); }
   // Persist tab so refresh restores same page
   try{localStorage.setItem('git_tool_active_tab',name);}catch(e){}
 }
 
-function apiGet(path,cb){
-  _showSpinner();
-  fetch(API_BASE+path).then(function(r){return r.json()}).then(function(d){_hideSpinner();cb(d)}).catch(function(e){_hideSpinner();addMsg(t('network_err')+e.message,'error')})
+function apiGet(path,cb,opts){
+  if(!opts||!opts.silent)_showSpinner();
+  fetch(API_BASE+path).then(function(r){return r.json()}).then(function(d){if(!opts||!opts.silent)_hideSpinner();cb(d)}).catch(function(e){if(!opts||!opts.silent)_hideSpinner();addMsg(t('network_err')+e.message,'error')})
 }
 function apiPost(path,body,cb){
   _showSpinner();
@@ -792,7 +792,46 @@ function renderFiles(files) {
   list.innerHTML=html;
 }
 
-function loadFiles(){apiGet('/api/files',function(data){renderFiles(data.files)})}
+var _filesPollInterval = (function() {
+  try { var v = parseFloat(localStorage.getItem('git_poll_interval')); if (v >= 0) return v * 1000; } catch(e) {}
+  return 2500; // default 2.5s
+})();
+
+var _filesPollTimer = null;
+var _filesLastJson = '';
+
+function loadFiles(silent){
+  apiGet('/api/files', function(data) {
+    var json = JSON.stringify(data.files);
+    if (json !== _filesLastJson) {
+      _filesLastJson = json;
+      renderFiles(data.files);
+    }
+  }, silent ? {silent:true} : null);
+}
+
+function _startFilesPoller() {
+  _stopFilesPoller();
+  if (_filesPollInterval <= 0) return; // disabled
+  _filesPollTimer = setInterval(function() {
+    var page = document.getElementById('page-main');
+    if (page && page.classList.contains('active') && !document.hidden) {
+      loadFiles(true); // silent: no spinner on auto-refresh
+    }
+  }, _filesPollInterval);
+}
+
+function _stopFilesPoller() {
+  if (_filesPollTimer) { clearInterval(_filesPollTimer); _filesPollTimer = null; }
+}
+
+// Start polling when page is visible, pause when hidden (saves requests)
+document.addEventListener('visibilitychange', function() {
+  var page = document.getElementById('page-main');
+  if (page && page.classList.contains('active')) {
+    document.hidden ? _stopFilesPoller() : _startFilesPoller();
+  }
+});
 
 function toggleDiffExpand(blockId, btn) {
   var block = document.getElementById(blockId);
@@ -1824,9 +1863,7 @@ function _renderBranchesByTab(data,page,perPage){
       html+='<span class="branch-date">'+escapeHtml(b.date||'')+'</span>';
       if(isCur){
         html+='<div class="branch-actions"><span class="branch-current-badge">✓ Current</span></div>';
-        html+='<button class="btn-branch-expand"'
-          +(_isProtected?' style="visibility:hidden" disabled':' onclick="event.stopPropagation();toggleBranchExpand(\''+wid+'\')" title="Expand"')
-          +'>▶</button>';
+        html+='<button class="btn-branch-expand" onclick="event.stopPropagation();toggleBranchExpand(\''+wid+'\')" title="Expand">▶</button>';
       }else{
         html+='<div class="branch-actions">';
         html+='<button class="btn btn-sm btn-compare" onclick="event.stopPropagation();openCompare(\''+escapeJS(b.name)+'\',\'local\')"><span style="line-height:1">⚖️</span><span>Compare</span></button>';
@@ -1836,18 +1873,18 @@ function _renderBranchesByTab(data,page,perPage){
         html+='<button class="btn-branch-expand" onclick="event.stopPropagation();toggleBranchExpand(\''+wid+'\')" title="Expand">▶</button>';
       }
       html+='</div>';
-      if(!_isProtected){
-        html+='<div class="branch-expand-panel" id="bpanel-l-'+bi+'">';
-        if(isCur){
-          html+='<span style="font-size:12px;color:#9ca3af;flex:1">Options</span>';
-          html+='<button class="btn-rename-branch" onclick="renameBranch(\''+escapeJS(b.name)+'\')">'+t('rename_branch_btn')+'</button>';
-        }else{
-          html+='<span style="font-size:12px;color:#9ca3af;flex:1">Danger zone</span>';
-          html+='<button class="btn-rename-branch" onclick="renameBranch(\''+escapeJS(b.name)+'\')">'+t('rename_branch_btn')+'</button>';
-          html+='<button class="btn-del-branch" onclick="promptDeleteBranch(\''+escapeJS(b.name)+'\',\'local\')">🗑 Delete Branch</button>';
-        }
-        html+='</div>';
+      html+='<div class="branch-expand-panel" id="bpanel-l-'+bi+'">';
+      if(_isProtected){
+        html+='<span style="font-size:12px;color:#f59e0b;flex:1">🔒 Protected branch — rename &amp; delete disabled</span>';
+      }else if(isCur){
+        html+='<span style="font-size:12px;color:#9ca3af;flex:1">Options</span>';
+        html+='<button class="btn-rename-branch" onclick="renameBranch(\''+escapeJS(b.name)+'\')">'+t('rename_branch_btn')+'</button>';
+      }else{
+        html+='<span style="font-size:12px;color:#9ca3af;flex:1">Danger zone</span>';
+        html+='<button class="btn-rename-branch" onclick="renameBranch(\''+escapeJS(b.name)+'\')">'+t('rename_branch_btn')+'</button>';
+        html+='<button class="btn-del-branch" onclick="promptDeleteBranch(\''+escapeJS(b.name)+'\',\'local\')">🗑 Delete Branch</button>';
       }
+      html+='</div>';
       html+='</div>';
     });
     html+='</div>';
@@ -4191,7 +4228,12 @@ document.getElementById('select-all-cb').addEventListener('change',function(){
   var allCbs=document.querySelectorAll('.file-cb');
   var done=0,total=allCbs.length,failed=false;
   if(!total)return;
-  function finalize(){if(!failed)addMsg(selectAll?t('all_selected'):t('all_deselected'),'success');else addMsg(t('partial_fail'),'error');loadFiles()}
+  function finalize(){
+    if(!failed)addMsg(selectAll?t('all_selected'):t('all_deselected'),'success');
+    else addMsg(t('partial_fail'),'error');
+    _filesLastJson=''; // force re-render so individual checkboxes reflect new state
+    loadFiles();
+  }
   for(var i=0;i<allCbs.length;i++){
     (function(cb,path){
       var action=selectAll?'add':'reset';
@@ -4293,9 +4335,12 @@ loadWorktreeLabel();
     else if(saved==='stash')loadStash();
     else if(saved==='conflicts'){loadFiles();checkConflicts();}
     else{loadFiles();checkConflicts();}
+    // Start poller if restoring to commit tab
+    if(!saved || saved==='main') _startFilesPoller();
   }else{
     loadFiles();
     checkConflicts();
+    _startFilesPoller();
   }
 })();
 
@@ -4320,6 +4365,8 @@ function openGitSettingsModal() {
   apiGet('/api/network-timeout', function(d) {
     document.getElementById('git-timeout-input').value = d.network_timeout || 120;
   });
+  // Populate poll interval (convert ms → seconds for display)
+  document.getElementById('git-poll-input').value = _filesPollInterval > 0 ? (_filesPollInterval / 1000) : 0;
 }
 
 function closeGitSettingsModal() {
@@ -4328,17 +4375,31 @@ function closeGitSettingsModal() {
 
 function saveGitSettings() {
   var val = parseInt(document.getElementById('git-timeout-input').value, 10);
+  var pollSec = parseFloat(document.getElementById('git-poll-input').value);
   var status = document.getElementById('git-settings-status');
   if (!val || val < 10) {
     status.style.color = '#dc2626';
     status.textContent = t('git_timeout_save_fail') + 'Minimum 10 seconds';
     return;
   }
+  if (isNaN(pollSec) || pollSec < 0) {
+    status.style.color = '#dc2626';
+    status.textContent = 'Auto-refresh interval must be ≥ 0 (0 = disabled)';
+    return;
+  }
+  // Save poll interval to localStorage and apply immediately
+  try { localStorage.setItem('git_poll_interval', String(pollSec)); } catch(e) {}
+  _filesPollInterval = pollSec * 1000;
+  // Restart poller with new interval if on commit tab
+  var page = document.getElementById('page-main');
+  if (page && page.classList.contains('active')) { _stopFilesPoller(); _startFilesPoller(); }
+
   apiPost('/api/network-timeout', {network_timeout: val}, function(d) {
     if (d.ok) {
       status.style.color = '#16a34a';
-      status.textContent = tf('git_timeout_saved', L, {n: d.network_timeout});
-      setTimeout(closeGitSettingsModal, 1200);
+      var pollMsg = pollSec > 0 ? (' · Auto-refresh: ' + pollSec + 's') : ' · Auto-refresh: off';
+      status.textContent = tf('git_timeout_saved', L, {n: d.network_timeout}) + pollMsg;
+      setTimeout(closeGitSettingsModal, 1400);
     } else {
       status.style.color = '#dc2626';
       status.textContent = t('git_timeout_save_fail') + (d.error || '');
