@@ -1863,9 +1863,7 @@ function _renderBranchesByTab(data,page,perPage){
       html+='<span class="branch-date">'+escapeHtml(b.date||'')+'</span>';
       if(isCur){
         html+='<div class="branch-actions"><span class="branch-current-badge">✓ Current</span></div>';
-        html+='<button class="btn-branch-expand"'
-          +(_isProtected?' style="visibility:hidden" disabled':' onclick="event.stopPropagation();toggleBranchExpand(\''+wid+'\')" title="Expand"')
-          +'>▶</button>';
+        html+='<button class="btn-branch-expand" onclick="event.stopPropagation();toggleBranchExpand(\''+wid+'\')" title="Expand">▶</button>';
       }else{
         html+='<div class="branch-actions">';
         html+='<button class="btn btn-sm btn-compare" onclick="event.stopPropagation();openCompare(\''+escapeJS(b.name)+'\',\'local\')"><span style="line-height:1">⚖️</span><span>Compare</span></button>';
@@ -1875,18 +1873,18 @@ function _renderBranchesByTab(data,page,perPage){
         html+='<button class="btn-branch-expand" onclick="event.stopPropagation();toggleBranchExpand(\''+wid+'\')" title="Expand">▶</button>';
       }
       html+='</div>';
-      if(!_isProtected){
-        html+='<div class="branch-expand-panel" id="bpanel-l-'+bi+'">';
-        if(isCur){
-          html+='<span style="font-size:12px;color:#9ca3af;flex:1">Options</span>';
-          html+='<button class="btn-rename-branch" onclick="renameBranch(\''+escapeJS(b.name)+'\')">'+t('rename_branch_btn')+'</button>';
-        }else{
-          html+='<span style="font-size:12px;color:#9ca3af;flex:1">Danger zone</span>';
-          html+='<button class="btn-rename-branch" onclick="renameBranch(\''+escapeJS(b.name)+'\')">'+t('rename_branch_btn')+'</button>';
-          html+='<button class="btn-del-branch" onclick="promptDeleteBranch(\''+escapeJS(b.name)+'\',\'local\')">🗑 Delete Branch</button>';
-        }
-        html+='</div>';
+      html+='<div class="branch-expand-panel" id="bpanel-l-'+bi+'">';
+      if(_isProtected){
+        html+='<span style="font-size:12px;color:#f59e0b;flex:1">🔒 Protected branch — rename &amp; delete disabled</span>';
+      }else if(isCur){
+        html+='<span style="font-size:12px;color:#9ca3af;flex:1">Options</span>';
+        html+='<button class="btn-rename-branch" onclick="renameBranch(\''+escapeJS(b.name)+'\')">'+t('rename_branch_btn')+'</button>';
+      }else{
+        html+='<span style="font-size:12px;color:#9ca3af;flex:1">Danger zone</span>';
+        html+='<button class="btn-rename-branch" onclick="renameBranch(\''+escapeJS(b.name)+'\')">'+t('rename_branch_btn')+'</button>';
+        html+='<button class="btn-del-branch" onclick="promptDeleteBranch(\''+escapeJS(b.name)+'\',\'local\')">🗑 Delete Branch</button>';
       }
+      html+='</div>';
       html+='</div>';
     });
     html+='</div>';
