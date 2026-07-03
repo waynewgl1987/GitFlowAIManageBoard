@@ -138,7 +138,12 @@ def handle_get(path, params, send_json, send_stream=None):
 
     elif path == "/api/conflicts":
         cf = get_conflicts()
-        send_json({"files": cf, "count": len(cf)})
+        send_json({
+            "files": cf,
+            "count": len(cf),
+            "branch": current_branch(),
+            "merge_type": _get_merge_type(),
+        })
         return True
 
     elif path == "/api/commits":
@@ -648,9 +653,18 @@ def handle_post(path, data, send_json):
             send_json({"ok": False, "error": "no resolution"}, 400)
             return True
         if rc == 0:
-            resp = {"ok": True, "all_resolved": all_resolved}
+            remaining = get_conflicts()
+            merge_type = _get_merge_type()
+            resp = {
+                "ok": True,
+                "all_resolved": all_resolved,
+                "resolved_file": fp,
+                "remaining_files": remaining,
+                "remaining_count": len(remaining),
+                "branch": current_branch(),
+                "merge_type": merge_type,
+            }
             if all_resolved:
-                resp["merge_type"] = _get_merge_type()
                 resp["default_msg"] = _get_merge_default_msg()
             send_json(resp)
         else:

@@ -3612,6 +3612,12 @@ function loadConflicts(){
     _updateConflictTabBadge(data.count||0);
     if(data.count===0){document.getElementById('conflicts-content').innerHTML='<div class="empty">🎉 '+t('no_conflict')+'</div>';return}
     var html='';
+    var mergeTypeLabel=(data.merge_type||'merge').replace('-', ' ');
+    html+='<div style="margin-bottom:12px;padding:12px 14px;background:#fff7ed;border:1px solid #fdba74;border-radius:10px">'
+      +'<div style="font-weight:700;color:#9a3412;margin-bottom:6px">⚠️ '+data.count+' conflict file'+(data.count===1?'':'s')+' still need action</div>'
+      +'<div style="font-size:13px;color:#7c2d12;line-height:1.6">Current step: <b>'+escapeHtml(mergeTypeLabel)+'</b> on <b>'+escapeHtml(data.branch||'?')+'</b> is paused. '
+      +'Resolve each file below. After the last conflict is cleared, the tool will prompt you to continue/commit automatically.</div>'
+      +'</div>';
     // AI quick-resolve bar at the top
     html+='<div class="ai-analyze-bar">';
     html+='<button class="ai-conflict-btn" onclick="aiQuickAction(\'analyze-conflicts\')">🤖 AI Analyze All Conflicts</button>';
@@ -4120,8 +4126,7 @@ function resolveAllBlocks(filePath, fileIdx){
       if(data.all_resolved){
         setTimeout(function(){showMergeCommitDialog(data.default_msg||'');},500);
       } else {
-        // This file is resolved but other conflict files remain — tell the user
-        addMsg('✅ File resolved. Resolve remaining conflict files to commit.','success');
+        _showRemainingConflictGuidance(data,filePath);
       }
     }
     else addMsg(t('op_failed_err')+(data.error||''),'error');
@@ -4195,7 +4200,21 @@ function jumpToConflict(filePath, fileIdx, dir){
 }
 
 function showEditConflict(idx){document.getElementById('conflict-edit-'+idx) && (document.getElementById('conflict-edit-'+idx).style.display='block')}
-function resolveConflict(filePath,resolution,idx){apiPost('/api/resolve-conflict',{path:filePath,resolution:resolution},function(data){if(data.ok){resolvedConflicts[filePath]=true;addMsg(t('conflict_resolved')+resolution,'success');loadConflicts();checkConflicts();loadFiles();if(data.all_resolved){setTimeout(function(){showMergeCommitDialog(data.default_msg||'');},500);}}else addMsg(t('op_failed_err')+(data.error||''),'error')})}
+function _showRemainingConflictGuidance(data, filePath){
+  var files=(data.remaining_files||[]).slice(0,3).map(escapeHtml);
+  var more=(data.remaining_count||0)-files.length;
+  var mergeType=(data.merge_type||'merge').replace('-', ' ');
+  var extra=files.length?('<br>Remaining: <b>'+files.join('</b>, <b>')+'</b>'+(more>0?' and '+more+' more':'')+'.'):'';
+  addMsg('✅ Resolved '+filePath+'. '+(data.remaining_count||0)+' conflict file'+((data.remaining_count||0)===1?'':'s')+' still remain in '+(data.branch||'this branch')+'.','success');
+  showModal(
+    '⚠️ '+(data.remaining_count||0)+' conflict file'+((data.remaining_count||0)===1?'':'s')+' remaining',
+    'The current <b>'+escapeHtml(mergeType)+'</b> is still paused on <b>'+escapeHtml(data.branch||'?')+'</b>.'+extra
+      +'<br><br><b>Next step</b>: resolve the remaining file(s) in the Conflicts tab below. '
+      +'When the last one is resolved, the tool will offer the continue/commit action automatically.',
+    'Got it'
+  );
+}
+function resolveConflict(filePath,resolution,idx){apiPost('/api/resolve-conflict',{path:filePath,resolution:resolution},function(data){if(data.ok){resolvedConflicts[filePath]=true;addMsg(t('conflict_resolved')+resolution,'success');loadConflicts();checkConflicts();loadFiles();if(data.all_resolved){setTimeout(function(){showMergeCommitDialog(data.default_msg||'');},500);}else{_showRemainingConflictGuidance(data,filePath);}}else addMsg(t('op_failed_err')+(data.error||''),'error')})}
 
 /**
  * Resolve a binary file conflict by choosing ours or theirs.
@@ -4212,7 +4231,9 @@ function resolveBinary(filePath, fileIdx, side){
       var det=document.getElementById('conflict-detail-'+fileIdx);
       if(det) renderConflictDetail(filePath, fileIdx, _conflictData[filePath]||{is_binary:true});
       checkConflicts(); loadFiles();
+      loadConflicts();
       if(data.all_resolved){ setTimeout(function(){ showMergeCommitDialog(data.default_msg||''); },500); }
+      else{ _showRemainingConflictGuidance(data,filePath); }
     } else {
       addMsg('❌ Failed to resolve binary conflict: '+(data.error||''),'error');
     }
@@ -4226,7 +4247,7 @@ function resolveConflictCustom(filePath,fileIdx){
     if(data.ok){
       resolvedConflicts[filePath]=true;addMsg(t('conflict_resolved_ok'),'success');loadConflicts();checkConflicts();loadFiles();
       if(data.all_resolved){setTimeout(function(){showMergeCommitDialog(data.default_msg||'');},500);}
-      else addMsg('✅ File resolved. Resolve remaining conflict files to commit.','success');
+      else _showRemainingConflictGuidance(data,filePath);
     }
     else addMsg(t('op_failed_err')+(data.error||''),'error');
   });
