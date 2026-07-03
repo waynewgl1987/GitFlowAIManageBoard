@@ -16,6 +16,7 @@ from git_ops import (
     current_branch, display_branch, get_project_info,
     get_project_path, get_protected_config, is_branch_protected,
     get_network_timeout, save_network_timeout,
+    get_gpg_sign, save_gpg_sign,
     _ref_exists, _resolve_ref_for_compare,
     get_branches, has_uncommitted, stash_changes,
     stash_list, stash_diff, commit_diff, search_diff_code,
@@ -76,6 +77,10 @@ def handle_get(path, params, send_json, send_stream=None):
 
     elif path == "/api/network-timeout":
         send_json({"network_timeout": get_network_timeout()})
+        return True
+
+    elif path == "/api/gpg-sign":
+        send_json({"gpg_sign": get_gpg_sign()})
         return True
 
     elif path == "/api/protected-branches":
@@ -360,7 +365,11 @@ def handle_post(path, data, send_json):
         if diff_rc == 0:
             send_json({"ok": False, "error": "Nothing to commit — selected files have no staged changes."}, 400)
             return True
-        stdout, stderr, rc = _run(["git", "commit", "-m", msg])
+        cmd = ["git", "commit"]
+        if get_gpg_sign():
+            cmd.append("-S")
+        cmd.extend(["-m", msg])
+        stdout, stderr, rc = _run(cmd)
         if rc == 0:
             send_json({"ok": True, "stdout": stdout})
         else:
@@ -454,6 +463,15 @@ def handle_post(path, data, send_json):
         ok, result = save_network_timeout(seconds)
         if ok:
             send_json({"ok": True, "network_timeout": result})
+        else:
+            send_json({"ok": False, "error": result}, 400)
+        return True
+
+    elif path == "/api/gpg-sign":
+        enabled = data.get("gpg_sign", False)
+        ok, result = save_gpg_sign(enabled)
+        if ok:
+            send_json({"ok": True, "gpg_sign": result})
         else:
             send_json({"ok": False, "error": result}, 400)
         return True
@@ -628,21 +646,22 @@ def handle_post(path, data, send_json):
         msg = data.get("message", "")
         cwd = get_project_path()
         env = {"GIT_EDITOR": "true"}
+        gpg_flag = ["-S"] if get_gpg_sign() else []
         if os.path.exists(os.path.join(cwd, ".git", "CHERRY_PICK_HEAD")):
-            stdout, stderr, rc = _run(["git", "cherry-pick", "--continue"], env=env)
+            stdout, stderr, rc = _run(["git", "cherry-pick", "--continue"] + gpg_flag, env=env)
         elif os.path.exists(os.path.join(cwd, ".git", "rebase-merge")) or \
              os.path.exists(os.path.join(cwd, ".git", "rebase-apply")):
-            stdout, stderr, rc = _run(["git", "rebase", "--continue"], env=env)
+            stdout, stderr, rc = _run(["git", "rebase", "--continue"] + gpg_flag, env=env)
         elif os.path.exists(os.path.join(cwd, ".git", "MERGE_HEAD")):
             if msg:
-                stdout, stderr, rc = _run(["git", "commit", "-m", msg])
+                stdout, stderr, rc = _run(["git", "commit"] + gpg_flag + ["-m", msg])
             else:
-                stdout, stderr, rc = _run(["git", "commit", "--no-edit"], env=env)
+                stdout, stderr, rc = _run(["git", "commit", "--no-edit"] + gpg_flag, env=env)
         else:
             if not msg:
                 send_json({"ok": False, "error": "Commit message required"}, 400)
                 return True
-            stdout, stderr, rc = _run(["git", "commit", "-m", msg])
+            stdout, stderr, rc = _run(["git", "commit"] + gpg_flag + ["-m", msg])
         if rc == 0:
             send_json({"ok": True, "stdout": stdout})
         else:

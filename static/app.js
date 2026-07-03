@@ -4319,10 +4319,28 @@ document.getElementById('reset-btn').addEventListener('click',function(){
   }
 });
 
+// ═══════════ GPG Sign Toggle ═══════════
+function toggleGpgSign(enabled) {
+  apiPost('/api/gpg-sign', {gpg_sign: enabled}, function(d) {
+    if (d.ok) {
+      addMsg(enabled ? '🔏 GPG signing enabled' : '🔓 GPG signing disabled', 'success');
+    } else {
+      addMsg('❌ Failed to toggle GPG sign: ' + (d.error || ''), 'error');
+      document.getElementById('gpg-sign-toggle').checked = !enabled;
+    }
+  });
+}
+function loadGpgSign() {
+  apiGet('/api/gpg-sign', function(d) {
+    document.getElementById('gpg-sign-toggle').checked = !!d.gpg_sign;
+  });
+}
+
 // ═══════════ Init ═══════════
 loadCurrentBranch();
 loadProjectName();
 loadWorktreeLabel();
+loadGpgSign();
 // Restore last active tab
 (function(){
   var saved=null;

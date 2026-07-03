@@ -92,6 +92,30 @@ def save_network_timeout(seconds):
     return True, seconds
 
 
+def get_gpg_sign():
+    """Return whether GPG signing is enabled for commits."""
+    cfg = configparser.ConfigParser()
+    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+    if os.path.exists(cfg_path):
+        cfg.read(cfg_path, encoding="utf-8")
+    return cfg.getboolean("git", "gpg_sign", fallback=False)
+
+
+def save_gpg_sign(enabled):
+    """Persist gpg_sign setting to config.ini. Returns (ok, value_or_error)."""
+    enabled = bool(enabled)
+    cfg = configparser.ConfigParser()
+    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+    if os.path.exists(cfg_path):
+        cfg.read(cfg_path, encoding="utf-8")
+    if not cfg.has_section("git"):
+        cfg.add_section("git")
+    cfg.set("git", "gpg_sign", str(enabled).lower())
+    with open(cfg_path, "w", encoding="utf-8") as f:
+        cfg.write(f)
+    return True, enabled
+
+
 def get_protected_config():
     """Return protected branch config as {"exact": [...], "contains": [...]}."""
     _, _, exact, contains, _ = _load_app_config()
