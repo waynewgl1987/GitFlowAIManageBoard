@@ -8,10 +8,30 @@ All git operations, state globals, and streaming helpers live here.
 import os, json, subprocess, socket, configparser, threading
 
 PORT    = 8989
+PROJECT_PATH = os.getcwd()  # current git project directory
 _MSGLOG = []          # in-memory operation log
 _PUSH_JOBS = {}       # {job_id: {lines:[], done:bool, ok:bool, error:str, authRequired:bool}}
 _PUSH_JOBS_LOCK = threading.Lock()
 _MSGLOG_LOCK    = threading.Lock()
+
+
+def set_project_path(path):
+    """Switch to a new git project directory. Returns (ok, message)."""
+    global PROJECT_PATH
+    path = os.path.abspath(os.path.expanduser(path))
+    if not os.path.isdir(path):
+        return False, f"Directory not found: {path}"
+    git_dir = os.path.join(path, ".git")
+    if not os.path.isdir(git_dir) and not os.path.isfile(git_dir):
+        return False, f"Not a git repository (no .git): {path}"
+    PROJECT_PATH = path
+    os.chdir(path)
+    return True, path
+
+
+def get_project_path():
+    """Return the current project path (always up-to-date)."""
+    return PROJECT_PATH
 
 
 def _get_git_env(extra=None):
@@ -25,7 +45,7 @@ def _get_git_env(extra=None):
 
 
 def _load_app_config():
-    """Read config.ini next to this script. Returns (app_name, app_version, exact_set, contains_list)."""
+    """Read config.ini next to this script. Returns (app_name, app_version, exact_set, contains_list, network_timeout)."""
     cfg = configparser.ConfigParser()
     cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
     if os.path.exists(cfg_path):
@@ -36,30 +56,130 @@ def _load_app_config():
     raw_contains = cfg.get("protection", "protected_branches_contains", fallback="release")
     exact    = {b.strip() for b in raw_exact.split(",")    if b.strip()}
     contains = [b.strip().lower() for b in raw_contains.split(",") if b.strip()]
-    return name, version, exact, contains
+    try:
+        network_timeout = int(cfg.get("git", "network_timeout", fallback="120"))
+        if network_timeout < 1:
+            network_timeout = 120
+    except (ValueError, configparser.Error):
+        network_timeout = 120
+    return name, version, exact, contains, network_timeout
+
+
+def get_network_timeout():
+    """Return the configured network timeout in seconds for push/pull/fetch operations."""
+    *_, timeout = _load_app_config()
+    return timeout
+
+
+def save_network_timeout(seconds):
+    """Persist network_timeout to config.ini. Returns (ok, value_or_error)."""
+    try:
+        seconds = int(seconds)
+        if seconds < 1:
+            return False, "Timeout must be at least 1 second"
+    except (ValueError, TypeError):
+        return False, "Timeout must be a positive integer"
+
+    cfg = configparser.ConfigParser()
+    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+    if os.path.exists(cfg_path):
+        cfg.read(cfg_path, encoding="utf-8")
+    if not cfg.has_section("git"):
+        cfg.add_section("git")
+    cfg.set("git", "network_timeout", str(seconds))
+    with open(cfg_path, "w", encoding="utf-8") as f:
+        cfg.write(f)
+    return True, seconds
+
+
+def get_gpg_sign():
+    """Return whether GPG signing is enabled for commits."""
+    cfg = configparser.ConfigParser()
+    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+    if os.path.exists(cfg_path):
+        cfg.read(cfg_path, encoding="utf-8")
+    return cfg.getboolean("git", "gpg_sign", fallback=False)
+
+
+def save_gpg_sign(enabled):
+    """Persist gpg_sign setting to config.ini. Returns (ok, value_or_error)."""
+    enabled = bool(enabled)
+    cfg = configparser.ConfigParser()
+    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+    if os.path.exists(cfg_path):
+        cfg.read(cfg_path, encoding="utf-8")
+    if not cfg.has_section("git"):
+        cfg.add_section("git")
+    cfg.set("git", "gpg_sign", str(enabled).lower())
+    with open(cfg_path, "w", encoding="utf-8") as f:
+        cfg.write(f)
+    return True, enabled
+
+
+def check_unsigned_commits(base="develop"):
+    """Check if current branch has unsigned commits relative to base.
+    Returns {"has_unsigned": bool, "unsigned_count": int, "total_count": int}."""
+    branch = current_branch()
+    if not branch or branch == base:
+        return {"has_unsigned": False, "unsigned_count": 0, "total_count": 0}
+    # List commits on this branch not in base, with signature status
+    out, _, rc = _run(["git", "log", "--format=%H %G?", f"{base}..HEAD"])
+    if rc != 0 or not out.strip():
+        return {"has_unsigned": False, "unsigned_count": 0, "total_count": 0}
+    lines = [l.strip() for l in out.strip().splitlines() if l.strip()]
+    total = len(lines)
+    # G=good, U=good untrusted, B=bad, X=expired, Y=expired key, R=revoked, E=error, N=none
+    unsigned = [l for l in lines if l.split()[-1] in ("N", "B", "E")]
+    return {"has_unsigned": len(unsigned) > 0, "unsigned_count": len(unsigned), "total_count": total}
+
+
+def resign_branch_commits(base="develop"):
+    """Re-sign all commits on current branch relative to base using GPG.
+    Returns (ok, message)."""
+    branch = current_branch()
+    if not branch:
+        return False, "Not on any branch"
+    if branch == base:
+        return False, f"Cannot re-sign: currently on base branch '{base}'"
+    # Check if there are commits to re-sign
+    info = check_unsigned_commits(base)
+    if not info["has_unsigned"]:
+        return True, "All commits are already signed"
+    # Do the rebase with GPG signing
+    stdout, stderr, rc = _run(
+        ["git", "rebase", "--exec", "git commit --amend --no-edit -S", base],
+        timeout=120
+    )
+    if rc != 0:
+        # Try to abort failed rebase
+        _run(["git", "rebase", "--abort"])
+        return False, stderr or stdout or "Rebase failed"
+    return True, f"Successfully re-signed {info['unsigned_count']} commit(s)"
 
 
 def get_protected_config():
     """Return protected branch config as {"exact": [...], "contains": [...]}."""
-    _, _, exact, contains = _load_app_config()
+    _, _, exact, contains, _ = _load_app_config()
     return {"exact": sorted(exact), "contains": sorted(contains)}
 
 
 def is_branch_protected(short_name):
     """Return True if short_name matches any protection rule."""
-    _, _, exact, contains = _load_app_config()
+    _, _, exact, contains, _ = _load_app_config()
     if short_name in exact:
         return True
     low = short_name.lower()
     return any(kw in low for kw in contains)
 
 
-def _run(cmd, cwd=None, timeout=120, env=None):
+def _run(cmd, cwd=None, timeout=None, env=None):
     """Run a git command and return (stdout, stderr, returncode)."""
+    if timeout is None:
+        timeout = get_network_timeout()
     run_env = _get_git_env(env)
     try:
         r = subprocess.run(cmd, capture_output=True,
-                           cwd=cwd or os.getcwd(), timeout=timeout, env=run_env)
+                           cwd=cwd or PROJECT_PATH, timeout=timeout, env=run_env)
         stdout = r.stdout.decode("utf-8", errors="replace").strip()
         stderr = r.stderr.decode("utf-8", errors="replace").strip()
         return stdout, stderr, r.returncode
@@ -69,8 +189,11 @@ def _run(cmd, cwd=None, timeout=120, env=None):
         return "", str(e), -1
 
 
-def _run_push_streaming(job_id, branch, extra_env=None, force=False, is_ssh=False):
-    """Run git push in a background thread, streaming output lines into _PUSH_JOBS[job_id]."""
+def _run_push_streaming(job_id, branch, extra_env=None, force=False, is_ssh=False, remote_branch=None):
+    """Run git push in a background thread, streaming output lines into _PUSH_JOBS[job_id].
+    
+    remote_branch: if specified, push to origin/<remote_branch> instead of origin/<branch>.
+    """
     import time as _time
     run_env = _get_git_env(extra_env)
 
@@ -95,17 +218,23 @@ def _run_push_streaming(job_id, branch, extra_env=None, force=False, is_ssh=Fals
     if force:
         push_base.append("--force-with-lease")
 
+    # Determine the effective remote ref (local:remote mapping)
+    target_remote = remote_branch if remote_branch else branch
+    push_refspec = f"{branch}:{target_remote}" if target_remote != branch else branch
+
     try:
         url_out, _, _ = _run(["git", "remote", "get-url", "origin"])
         remote_url = url_out.strip()
     except Exception:
         remote_url = "origin"
 
-    def _try_push(cmd, timeout=120):
+    def _try_push(cmd, timeout=None):
+        if timeout is None:
+            timeout = get_network_timeout()
         _append_raw('$ ' + ' '.join(cmd))
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               text=True, cwd=os.getcwd(), env=run_env)
+                               text=True, cwd=PROJECT_PATH, env=run_env)
         except Exception as e:
             _append('ERROR: ' + str(e))
             return -1, False
@@ -144,11 +273,11 @@ def _run_push_streaming(job_id, branch, extra_env=None, force=False, is_ssh=Fals
     try:
         _append_raw('─' * 52)
         _append(f'📦 Repo  : {remote_url}')
-        _append(f'🌿 Branch: {branch}')
+        _append(f'🌿 Branch: {branch}' + (f' → origin/{target_remote}' if target_remote != branch else ''))
         _append(f'{"⚠️  Force push (--force-with-lease)" if force else "🚀 Normal push"}')
         _append_raw('─' * 52)
 
-        rc, timed_out = _try_push(push_base + ["origin", branch])
+        rc, timed_out = _try_push(push_base + ["origin", push_refspec])
 
         if rc != 0 and not timed_out:
             with _PUSH_JOBS_LOCK:
@@ -157,10 +286,10 @@ def _run_push_streaming(job_id, branch, extra_env=None, force=False, is_ssh=Fals
                 "no upstream", "has no upstream", "set-upstream", "set the upstream"])
             if no_upstream:
                 _append_raw('')
-                _append(f'ℹ️  Branch has no upstream tracking. Retrying with: git push origin HEAD:{branch}')
-                _append('   (This sets the remote branch to the same name — only affects branch "{}")'.format(branch))
+                _append(f'ℹ️  Branch has no upstream tracking. Retrying with: git push origin HEAD:{target_remote}')
+                _append('   (This sets the remote branch to the same name — only affects branch "{}")'.format(target_remote))
                 _append_raw('')
-                rc, timed_out = _try_push(push_base + ["origin", f"HEAD:{branch}"])
+                rc, timed_out = _try_push(push_base + ["origin", f"HEAD:{target_remote}"])
 
         with _PUSH_JOBS_LOCK:
             combined = '\n'.join(job['lines'])
@@ -230,7 +359,7 @@ def _run_gitop_streaming(job_id, op, mode=None):
 
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               text=True, cwd=os.getcwd(), env=run_env)
+                               text=True, cwd=PROJECT_PATH, env=run_env)
         except Exception as e:
             _append(f'ERROR: {e}')
             with _PUSH_JOBS_LOCK:
@@ -245,11 +374,12 @@ def _run_gitop_streaming(job_id, op, mode=None):
         t2 = threading.Thread(target=rd, args=(proc.stderr,), daemon=True)
         t1.start(); t2.start()
 
+        timeout = get_network_timeout()
         try:
-            proc.wait(timeout=120)
+            proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             proc.kill()
-            _append('⏱ Operation timed out after 120s — check your network.')
+            _append(f'⏱ Operation timed out after {timeout}s — check your network.')
 
         t1.join(); t2.join()
         rc = proc.returncode
@@ -278,8 +408,8 @@ def display_branch():
 
 def get_project_info():
     """Return project display name, remote repo slug, app name and version from config."""
-    app_name, app_version, _, _ = _load_app_config()
-    dir_name = os.path.basename(os.path.abspath(os.getcwd()))
+    app_name, app_version, _, _, _ = _load_app_config()
+    dir_name = os.path.basename(os.path.abspath(PROJECT_PATH))
     remote_slug = ""
     url_out, _, rc = _run(["git", "remote", "get-url", "origin"])
     if rc == 0 and url_out.strip():
@@ -379,9 +509,14 @@ def has_uncommitted():
     return bool(out.strip())
 
 
-def stash_changes():
-    """Run git stash."""
-    return _run(["git", "stash"])
+def stash_changes(msg=None, paths=None):
+    """Run git stash, optionally with a message and/or specific file paths."""
+    cmd = ["git", "stash", "push"]
+    if msg and msg.strip():
+        cmd += ["-m", msg.strip()]
+    if paths:
+        cmd += ["--"] + list(paths)
+    return _run(cmd)
 
 
 def stash_list(page=1, per_page=10):
@@ -445,17 +580,18 @@ def file_commit_diff(commit_hash, file_path):
     return out
 
 
-def checkout_branch(name):
+def checkout_branch(name, force=False):
     """Checkout a branch, handling remote tracking branches."""
     branch = (name or "").strip()
     if not branch:
         return "", "No branch specified", -1
+    flag = ["-f"] if force else []
     if branch.startswith("origin/"):
         local_branch = _strip_origin_prefix(branch)
         if _ref_exists(local_branch):
-            return _run(["git", "checkout", local_branch])
+            return _run(["git", "checkout"] + flag + [local_branch])
         return _run(["git", "checkout", "-b", local_branch, "--track", branch])
-    return _run(["git", "checkout", branch])
+    return _run(["git", "checkout"] + flag + [branch])
 
 
 def create_branch(name, base=None):
@@ -464,6 +600,74 @@ def create_branch(name, base=None):
     if base:
         cmd.append(base)
     return _run(cmd)
+
+
+# ── Git Worktree Operations ──────────────────────────────────────────────
+
+def worktree_list():
+    """List all worktrees for the main repository.
+    Returns a list of dicts: {path, head, branch, detached, is_current, is_main}"""
+    out, err, rc = _run(["git", "worktree", "list", "--porcelain"])
+    if rc != 0:
+        return [], err, rc
+    worktrees = []
+    current = None
+    for line in out.splitlines():
+        if line.startswith("worktree "):
+            current = {"path": line[9:].strip(), "head": "", "branch": "", "detached": False, "is_current": False, "is_main": False}
+            worktrees.append(current)
+        elif line.startswith("HEAD "):
+            if current:
+                current["head"] = line[5:].strip()
+        elif line.startswith("branch "):
+            if current:
+                current["branch"] = line[7:].strip()
+        elif line.startswith("detached"):
+            if current:
+                current["detached"] = True
+        elif line == "bare":
+            pass  # bare worktree — skip
+    # Mark current worktree (the one matching PROJECT_PATH)
+    main = get_project_path()
+    for wt in worktrees:
+        if os.path.realpath(wt["path"]) == os.path.realpath(main):
+            wt["is_current"] = True
+        # Main worktree has .git as a directory; worktrees have .git as a file
+        git_path = os.path.join(wt["path"], ".git")
+        if os.path.isdir(git_path):
+            wt["is_main"] = True
+    return worktrees, "", 0
+
+
+def worktree_add(path, branch):
+    """Create a new worktree at `path` for `branch`.
+    Branch is required — creates a new branch if it doesn't exist (via -b flag).
+    Returns (stdout, stderr, returncode)."""
+    path = os.path.abspath(os.path.expanduser(path))
+    if not branch:
+        return "", "Branch name is required", -1
+    # Check if path already exists
+    if os.path.exists(path):
+        return "", f"Path already exists: {path}", -1
+    return _run(["git", "worktree", "add", path, branch])
+
+
+def worktree_remove(path, force=False):
+    """Remove a worktree at `path`.
+    Uses `git worktree remove` (safe) or `--force` for dirty worktrees.
+    Returns (stdout, stderr, returncode)."""
+    path = os.path.abspath(os.path.expanduser(path))
+    cmd = ["git", "worktree", "remove"]
+    if force:
+        cmd.append("--force")
+    cmd.append(path)
+    return _run(cmd)
+
+
+def worktree_prune():
+    """Prune stale worktree metadata (after manual deletion).
+    Returns (stdout, stderr, returncode)."""
+    return _run(["git", "worktree", "prune"])
 
 
 def delete_branch_local(name, force=False):
@@ -476,6 +680,31 @@ def delete_branch_remote(name):
     """删除远端分支，name 应为不含 origin/ 前缀的短名"""
     short = name.replace("origin/", "", 1) if name.startswith("origin/") else name
     return _run(["git", "push", "origin", "--delete", short])
+
+
+def rename_branch(old_name, new_name):
+    """Rename a local branch using git branch -m."""
+    if not old_name or not new_name:
+        return "", "Branch name required", -1
+    if old_name == new_name:
+        return "", "New name is the same as old name", -1
+    return _run(["git", "branch", "-m", old_name, new_name])
+
+
+def rebase_abort():
+    """Abort an in-progress rebase."""
+    return _run(["git", "rebase", "--abort"])
+
+
+def rebase_skip():
+    """Skip the current conflicting commit during a rebase."""
+    return _run(["git", "rebase", "--skip"])
+
+
+def rebase_continue():
+    """Continue an in-progress rebase after conflicts are resolved."""
+    env = {"GIT_EDITOR": "true"}
+    return _run(["git", "rebase", "--continue"], env=env)
 
 
 def fetch():
@@ -537,6 +766,42 @@ _BINARY_EXTENSIONS = {
     "db","sqlite","sqlite3",
 }
 
+# Structured file extensions that CANNOT be safely merged by concatenating ours+theirs.
+# These formats (Xcode project, plist, lock files) have strict syntax; concatenation
+# produces a corrupt/invalid file that breaks the project (e.g. Xcode loses all schemes).
+_STRUCTURED_NO_CONCAT_EXTENSIONS = {
+    # Xcode project / workspace / scheme files
+    "pbxproj", "xcworkspacedata", "xcscheme", "xcbreakpointlist",
+    "xcuserstate", "xctestplan",
+    # Property lists (XML or binary format)
+    "plist",
+    # Package manager lock files / resolved manifests
+    "lock", "resolved",
+}
+
+# Exact basenames that are always structured, regardless of extension
+_STRUCTURED_NO_CONCAT_NAMES = {
+    "Package.resolved",
+    "Podfile.lock",
+    "Cartfile.resolved",
+    "Gemfile.lock",
+}
+
+
+def _is_structured_file(fp):
+    """Return True if fp cannot be safely merged by concatenating both conflict sides.
+
+    Xcode project files, plists, and lock files have strict structured formats;
+    the naïve 'both' strategy (ours + theirs) produces an invalid file that
+    corrupts the Xcode project (schemas disappear, build settings break, etc.).
+    Such files must be resolved with 'ours', 'theirs', or a manual edit.
+    """
+    basename = os.path.basename(fp)
+    if basename in _STRUCTURED_NO_CONCAT_NAMES:
+        return True
+    ext = os.path.splitext(fp)[1].lstrip(".").lower()
+    return ext in _STRUCTURED_NO_CONCAT_EXTENSIONS
+
 
 def _is_binary_file(fp):
     """Return True if fp is a binary file, by extension first, then null-byte scan."""
@@ -569,10 +834,12 @@ def get_conflict_detail(fp):
     Callers should present "Use Ours / Use Theirs" buttons instead of a diff editor.
     """
     binary = _is_binary_file(fp)
+    structured = _is_structured_file(fp)
 
     if binary:
         return {
             "is_binary": True,
+            "is_structured": False,
             "raw": "",
             "ours": "",
             "theirs": "",
@@ -588,7 +855,7 @@ def get_conflict_detail(fp):
     ours, _, _ = _run(["git", "show", f":2:{fp}"])
     theirs, _, _ = _run(["git", "show", f":3:{fp}"])
     blocks = _parse_blocks(raw)
-    return {"is_binary": False, "raw": raw, "ours": ours, "theirs": theirs, "blocks": blocks}
+    return {"is_binary": False, "is_structured": structured, "raw": raw, "ours": ours, "theirs": theirs, "blocks": blocks}
 
 
 def _parse_blocks(raw):
@@ -618,7 +885,7 @@ def _parse_blocks(raw):
 
 def _get_merge_type():
     """Return the current in-progress merge type: 'merge', 'rebase', 'cherry-pick', or None."""
-    cwd = os.getcwd()
+    cwd = PROJECT_PATH
     if os.path.exists(os.path.join(cwd, ".git", "CHERRY_PICK_HEAD")):
         return "cherry-pick"
     if os.path.exists(os.path.join(cwd, ".git", "rebase-merge")) or \
@@ -631,7 +898,7 @@ def _get_merge_type():
 
 def _get_merge_default_msg():
     """Return the default commit message for the current merge (reads .git/MERGE_MSG)."""
-    cwd = os.getcwd()
+    cwd = PROJECT_PATH
     merge_msg_file = os.path.join(cwd, ".git", "MERGE_MSG")
     if os.path.exists(merge_msg_file):
         try:
@@ -645,7 +912,7 @@ def _get_merge_default_msg():
 def _complete_merge_step():
     """After all conflicts are resolved, complete the merge/rebase/cherry-pick."""
     env = {"GIT_EDITOR": "true"}
-    cwd = os.getcwd()
+    cwd = PROJECT_PATH
     if os.path.exists(os.path.join(cwd, ".git", "CHERRY_PICK_HEAD")):
         return _run(["git", "cherry-pick", "--continue"], env=env)
     if os.path.exists(os.path.join(cwd, ".git", "rebase-merge")) or \
@@ -670,6 +937,18 @@ def resolve_conflict(fp, resolution):
     elif resolution == "theirs":
         _run(["git", "checkout", "--theirs", fp])
     elif resolution == "both":
+        if _is_structured_file(fp):
+            name = os.path.basename(fp)
+            return (
+                "",
+                f"'Accept Both' is not supported for structured file '{name}'. "
+                "Xcode project files, plists, and lock files cannot be safely merged "
+                "by concatenation — doing so would corrupt the file and break your "
+                "Xcode project (schemas, build targets, etc. would be lost). "
+                "Please use 'Accept Ours', 'Accept Theirs', or resolve manually.",
+                1,
+                False,
+            )
         ours, _, _ = _run(["git", "show", f":2:{fp}"])
         theirs, _, _ = _run(["git", "show", f":3:{fp}"])
         combined = ours.rstrip("\n") + "\n" + theirs.lstrip("\n")
@@ -709,18 +988,45 @@ def get_file_commits(file_path, page=1, per_page=20):
 
 
 def get_uncommitted_changes():
-    """Return list of uncommitted files with their diffs."""
-    changed = set()
-    for cmd in [["git", "diff", "--name-only"],
-                ["git", "diff", "--cached", "--name-only"],
-                ["git", "ls-files", "--others", "--exclude-standard"]]:
-        out, _, _ = _run(cmd)
-        for l in out.splitlines():
-            l = l.strip()
-            if l: changed.add(l)
+    """Return list of uncommitted files with their diffs.
+
+    Uses `git diff HEAD` so that BOTH staged and unstaged changes are shown
+    together — prevents the bug where a file modified twice (first change staged,
+    second change unstaged) only shows the second (unstaged) change.
+    """
+    unstaged = set()
+    out, _, _ = _run(["git", "diff", "--name-only"])
+    for l in out.splitlines():
+        l = l.strip()
+        if l: unstaged.add(l)
+
+    staged = set()
+    out, _, _ = _run(["git", "diff", "--cached", "--name-only"])
+    for l in out.splitlines():
+        l = l.strip()
+        if l: staged.add(l)
+
+    untracked = set()
+    out, _, _ = _run(["git", "ls-files", "--others", "--exclude-standard"])
+    for l in out.splitlines():
+        l = l.strip()
+        if l: untracked.add(l)
+
+    all_changed = unstaged | staged | untracked
     files = []
-    for p in sorted(changed):
-        diff, _, _ = _run(["git", "diff", "--", p])
+    for p in sorted(all_changed):
+        if p in untracked:
+            # New file not yet added — no diff available from git
+            files.append({"path": p, "diff": ""})
+            continue
+
+        # `git diff HEAD` shows ALL changes (staged + unstaged) compared to
+        # the last commit, so a file edited twice with a git-add in between
+        # will show the complete combined diff.
+        diff, _, _ = _run(["git", "diff", "HEAD", "--", p])
+        if not diff.strip():
+            # No HEAD yet (fresh repo) or edge case — fall back to cached
+            diff, _, _ = _run(["git", "diff", "--cached", "--", p])
         files.append({"path": p, "diff": diff})
     return files
 
@@ -832,6 +1138,11 @@ def revert_commit(hash):
     return _run(["git", "revert", hash, "--no-edit"])
 
 
+def drop_commit(hash):
+    """Remove a commit from history entirely using rebase --onto. No new commit is created."""
+    return _run(["git", "rebase", "--onto", hash + "^", hash])
+
+
 def squash_commits(from_h, to_h, msg):
     """Squash commits from from_h to to_h into a single commit with msg."""
     _, _, rc = _run(["git", "rev-parse", "--verify", from_h + "^"])
@@ -842,6 +1153,143 @@ def squash_commits(from_h, to_h, msg):
     return _run(["git", "commit", "-m", msg])
 
 
+
+_MAX_DIFF_LINES_PER_FILE = 400   # safety cap to keep JSON response manageable
+
+def _parse_diff_by_file(diff_text):
+    """Parse a unified diff into per-file sections with +/- line counts."""
+    files = []
+    current_file = None
+    current_lines = []
+    added = 0
+    removed = 0
+
+    for line in (diff_text or "").splitlines():
+        if line.startswith("diff --git "):
+            if current_file is not None:
+                diff_content = "\n".join(current_lines[:_MAX_DIFF_LINES_PER_FILE])
+                if len(current_lines) > _MAX_DIFF_LINES_PER_FILE:
+                    diff_content += f"\n... ({len(current_lines) - _MAX_DIFF_LINES_PER_FILE} more lines — open in Tab to view full diff)"
+                files.append({
+                    "path": current_file,
+                    "added": added,
+                    "removed": removed,
+                    "diff": diff_content,
+                })
+            parts = line.split(" b/", 1)
+            current_file = parts[1].strip() if len(parts) == 2 else line.split()[-1].strip()
+            current_lines = [line]
+            added = 0
+            removed = 0
+        elif current_file is not None:
+            current_lines.append(line)
+            if line.startswith("+") and not line.startswith("+++"):
+                added += 1
+            elif line.startswith("-") and not line.startswith("---"):
+                removed += 1
+
+    if current_file is not None:
+        diff_content = "\n".join(current_lines[:_MAX_DIFF_LINES_PER_FILE])
+        if len(current_lines) > _MAX_DIFF_LINES_PER_FILE:
+            diff_content += f"\n... ({len(current_lines) - _MAX_DIFF_LINES_PER_FILE} more lines — open in Tab to view full diff)"
+        files.append({
+            "path": current_file,
+            "added": added,
+            "removed": removed,
+            "diff": diff_content,
+        })
+    return files
+
+
+def get_latest_commit_diff():
+    """Return parsed diff for the latest commit (HEAD vs HEAD~1)."""
+    fmt = "%H||%h||%an||%ad||%s"
+    info_out, _, info_rc = _run(
+        ["git", "log", "-1", "--format=" + fmt, "--date=format:%Y-%m-%d %H:%M"]
+    )
+    if info_rc != 0 or not info_out.strip():
+        return {"ok": False, "error": "No commits found"}
+
+    parts = info_out.strip().split("||", 4)
+    if len(parts) < 5:
+        return {"ok": False, "error": "Could not parse commit info"}
+
+    commit_hash, short_hash, author, date, message = parts
+
+    parent_out, _, parent_rc = _run(["git", "rev-parse", "--verify", "HEAD~1"])
+    has_parent = parent_rc == 0
+
+    if has_parent:
+        diff_out, diff_err, diff_rc = _run(["git", "diff", "HEAD~1", "HEAD"])
+    else:
+        diff_out, diff_err, diff_rc = _run(["git", "show", "--format=", "-p", "HEAD"])
+        if diff_out.startswith("\n"):
+            diff_out = diff_out.lstrip("\n")
+
+    if diff_rc != 0:
+        return {"ok": False, "error": diff_err or "git diff failed"}
+
+    files = _parse_diff_by_file(diff_out)
+    return {
+        "ok": True,
+        "commit": commit_hash,
+        "short_hash": short_hash,
+        "author": author,
+        "date": date,
+        "message": message,
+        "parent": "HEAD~1" if has_parent else "(initial commit)",
+        "files": files,
+        "total_added": sum(f["added"] for f in files),
+        "total_removed": sum(f["removed"] for f in files),
+    }
+
+def get_commit_diff_compare(base_hash, head_hash):
+    """Return parsed diff between two commit hashes (base_hash..head_hash)."""
+    fmt = "%H||%h||%an||%ad||%s"
+    # Get info for both commits
+    head_info, _, head_rc = _run(
+        ["git", "log", "-1", "--format=" + fmt, "--date=format:%Y-%m-%d %H:%M", head_hash]
+    )
+    base_info, _, base_rc = _run(
+        ["git", "log", "-1", "--format=" + fmt, "--date=format:%Y-%m-%d %H:%M", base_hash]
+    )
+    if head_rc != 0 or base_rc != 0:
+        return {"ok": False, "error": "Could not resolve one or both commits"}
+
+    def parse_info(line):
+        parts = (line or "").strip().split("||", 4)
+        if len(parts) < 5:
+            return None
+        return {"commit": parts[0], "short_hash": parts[1], "author": parts[2], "date": parts[3], "message": parts[4]}
+
+    head_data = parse_info(head_info)
+    base_data = parse_info(base_info)
+    if not head_data or not base_data:
+        return {"ok": False, "error": "Could not parse commit info"}
+
+    diff_out, diff_err, diff_rc = _run(["git", "diff", base_hash, head_hash])
+    if diff_rc != 0:
+        return {"ok": False, "error": diff_err or "git diff failed"}
+
+    files = _parse_diff_by_file(diff_out)
+    return {
+        "ok": True,
+        "commit": head_data["commit"],
+        "short_hash": head_data["short_hash"],
+        "author": head_data["author"],
+        "date": head_data["date"],
+        "message": head_data["message"],
+        "base_commit": base_data["commit"],
+        "base_short_hash": base_data["short_hash"],
+        "base_message": base_data["message"],
+        "base_date": base_data["date"],
+        "parent": base_hash,
+        "files": files,
+        "total_added": sum(f["added"] for f in files),
+        "total_removed": sum(f["removed"] for f in files),
+    }
+
+
 def abort_merge_or_rebase():
     """Abort any in-progress merge, rebase, or cherry-pick."""
     for cmd in [["git", "merge", "--abort"],
@@ -850,3 +1298,150 @@ def abort_merge_or_rebase():
         out, err, rc = _run(cmd)
         if rc == 0: return out, err, rc
     return "", "no ongoing merge/rebase/cherry-pick", 0
+
+
+def get_git_graph(max_commits=150):
+    """Return structured commit graph data for branch graph visualization.
+
+    The current HEAD branch always occupies lane 0 (leftmost position).
+    refs/stash commits are excluded.
+    """
+    fmt = "%H||%P||%D||%s||%an||%ad"
+
+    def _parse_raw(raw):
+        rows = []
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            p = line.split("||", 5)
+            if len(p) == 6:
+                rows.append(p)
+        return rows
+
+    # Run 1: HEAD branch first → these commits occupy lane 0
+    out1, _, _ = _run([
+        "git", "log", "--topo-order",
+        f"--pretty=format:{fmt}", "--date=short", f"-n{max_commits}", "HEAD"
+    ])
+    rows1 = _parse_raw(out1)
+
+    # Run 2: all other refs, excluding stash explicitly
+    # Use --all --exclude=refs/stash instead of --branches --remotes --tags
+    # so worktree stashes and any non-standard stash refs are all excluded
+    out2, _, _ = _run([
+        "git", "log", "--all", "--exclude=refs/stash",
+        "--topo-order", f"--pretty=format:{fmt}", "--date=short",
+        f"-n{max_commits}", "--not", "HEAD"
+    ])
+    rows2 = _parse_raw(out2)
+
+    # Combine, HEAD commits first, deduplicate
+    seen_hashes = {r[0] for r in rows1}
+    rows = rows1 + [r for r in rows2 if r[0] not in seen_hashes]
+    rows = rows[:max_commits]
+
+    if not rows:
+        return {"commits": [], "edges": [], "max_lane": 0}
+
+    commits = []
+    for h, parents_str, refs, msg, author, date in rows:
+        parents = [p.strip() for p in parents_str.split() if p.strip()]
+
+        labels = []
+        is_head = False
+        for ref in refs.split(","):
+            ref = ref.strip()
+            # Exclude stash refs and symbolic HEAD pointers (origin/HEAD etc.)
+            if not ref or ref == 'refs/stash' or ref.startswith('refs/stash@') \
+                    or ref == 'stash' or ref.startswith('stash@'):
+                continue
+            # Skip symbolic remote HEAD pointers (e.g. origin/HEAD) — not real branches
+            if ref == 'HEAD' or ref.endswith('/HEAD'):
+                if ref == 'HEAD':
+                    is_head = True
+                continue
+            if ref.startswith("HEAD -> "):
+                labels.insert(0, ref[8:])
+                is_head = True
+            elif ref.startswith("tag: "):
+                labels.append("🏷 " + ref[5:])
+            else:
+                labels.append(ref)
+
+        commits.append({
+            "hash": h, "short": h[:7],
+            "parents": parents, "labels": labels,
+            "is_head": is_head,
+            "msg": msg[:80], "author": author, "date": date,
+            "lane": 0,
+        })
+
+    if not commits:
+        return {"commits": [], "edges": [], "max_lane": 0}
+
+    # Lane assignment — topo order (newest first): reserve lanes for parents
+    lane_map = {}   # parent_hash -> reserved lane index
+    free = []
+    nxt = [0]
+
+    def alloc():
+        if free: return free.pop(0)
+        l = nxt[0]; nxt[0] += 1; return l
+
+    def release(l):
+        free.append(l); free.sort()
+
+    for c in commits:
+        h, parents = c["hash"], c["parents"]
+        my_lane = lane_map.pop(h, None)
+        if my_lane is None:
+            my_lane = alloc()
+        c["lane"] = my_lane
+
+        if parents:
+            if parents[0] not in lane_map:
+                lane_map[parents[0]] = my_lane
+            else:
+                release(my_lane)
+            for p in parents[1:]:
+                if p not in lane_map:
+                    lane_map[p] = alloc()
+        else:
+            release(my_lane)
+
+    max_lane = max((c["lane"] for c in commits), default=0)
+
+    hash_to_row = {c["hash"]: i for i, c in enumerate(commits)}
+    edges = []
+    for i, c in enumerate(commits):
+        first_parent = True
+        for ph in c["parents"]:
+            if ph in hash_to_row:
+                pi = hash_to_row[ph]
+                parent = commits[pi]
+                if first_parent and parent["lane"] != c["lane"]:
+                    c["branch_from"] = {
+                        "idx": pi,
+                        "short": parent["short"],
+                        "date": parent["date"],
+                        "labels": parent["labels"][:3],
+                        "msg": parent["msg"][:50],
+                    }
+                edges.append([i, c["lane"], pi, parent["lane"]])
+            first_parent = False
+
+    # A branch is cut exactly ONCE per lane. Keep only the OLDEST branch_from
+    # per lane (highest row index = oldest commit in topo order = true branch start).
+    # All others are topology artifacts from merged commits and lane reuse.
+    oldest_bf_row_per_lane = {}
+    for i, c in enumerate(commits):
+        if c.get("branch_from"):
+            lane = c["lane"]
+            if lane not in oldest_bf_row_per_lane or i > oldest_bf_row_per_lane[lane]:
+                oldest_bf_row_per_lane[lane] = i
+    for i, c in enumerate(commits):
+        if c.get("branch_from") and i != oldest_bf_row_per_lane.get(c["lane"]):
+            del c["branch_from"]
+
+    return {"commits": commits, "edges": edges, "max_lane": max_lane}

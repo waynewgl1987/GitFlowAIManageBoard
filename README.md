@@ -21,7 +21,7 @@
 
 ### What is this?
 
-**GitAutoManageBoard** is a single-file Python script that launches a local web server and opens a full-featured Git dashboard in your browser. It wraps common `git` commands into an intuitive UI — and adds an **AI Git Assistant** powered by GitHub Copilot, Claude, GPT, Gemini, or any OpenAI-compatible model — perfect for developers who want a faster, visual alternative to the command line for daily Git operations.
+**GitAutoManageBoard** is a single-file Python script that launches a local web server and opens a full-featured Git dashboard in your browser. It wraps common `git` commands into an intuitive UI — and adds an **AI Git Assistant** powered by Claude, GPT, Gemini, or any OpenAI-compatible model — perfect for developers who want a faster, visual alternative to the command line for daily Git operations.
 
 No frameworks, no npm, no Docker. Just Python 3 and a modern browser.
 
@@ -31,11 +31,21 @@ No frameworks, no npm, no Docker. Just Python 3 and a modern browser.
 
 #### Git Management Board
 
-![GitAutoManageBoard Screenshot](docs/screenshot2.png)
+> Branches page — local & remote branches with Compare / Merge / Checkout actions, fuzzy search, quick-filter tags, and sortable columns.
 
-#### 🤖 AI Git Assistant
+![GitAutoManageBoard Screenshot](docs/screenshot.png)
 
-![AI Git Assistant Panel](docs/screenshot1.png)
+#### 🤖 AI Git Assistant — Chat Mode
+
+> AI panel open alongside the Commit Log. Quick-action groups (Conflict Resolution, General Git, Commit Analysis) let you analyze, suggest, or explain with one click.
+
+![AI Git Assistant Chat Panel](docs/screenshot_AI_1.png)
+
+#### 🤖 AI Git Assistant — Diff Mode
+
+> AI Diff tab: per-file code diff viewer with inline **Analyze** buttons. The right side panel shows AI-generated suggestions (e.g., security issues, refactoring tips) for each changed file.
+
+![AI Git Assistant Diff Panel](docs/Screenshot_AI_2.png)
 
 ---
 
@@ -51,7 +61,7 @@ No frameworks, no npm, no Docker. Just Python 3 and a modern browser.
 | **Conflicts** | Visual conflict resolution with collapsible context blocks, resolved banners, step-by-step dialogs to commit and push after resolution. |
 | **Stash** | List, inspect, pop, or drop stash entries. Pagination support. |
 | **Remote** | Fetch, Pull, Push — all with live streaming log popups. Force push with `--force-with-lease`. Auto SSH/HTTPS switching. |
-| **🤖 AI Assistant** | Floating AI chat panel — ask anything about your repo. Auto-injects live page context. Quick actions: analyze conflicts, suggest commits, explain diffs, resolve all conflicts in one click. Supports GitHub Copilot (enterprise), Claude, GPT-5, Gemini, DeepSeek, Qwen, Ollama. |
+| **🤖 AI Assistant** | Floating AI chat panel — ask anything about your repo. Auto-injects live page context. **Chat mode** quick actions: analyze conflicts, accept ours/theirs/both, abort merge, suggest commits, explain diffs, recent commits, analyze branch, stash help, clean suggestions. **Diff mode**: per-file code diff with inline Analyze buttons and AI suggestion panel. Supports Claude, GPT-5, Gemini, DeepSeek, Qwen, Ollama. |
 | **Config** | Customise app name and version via `config.ini`. |
 
 ---
@@ -251,7 +261,13 @@ All three operations open a **terminal-style streaming log popup** showing live 
 
 A fully integrated AI chat assistant that understands your **live repository context** — always available via the floating **🤖 AI** button in the bottom-right corner.
 
-![AI Git Assistant](docs/screenshot1.png)
+**Chat Mode** — quick-action buttons grouped by task, free-text chat with full page context auto-injected:
+
+![AI Git Assistant Chat Panel](docs/screenshot_AI_1.png)
+
+**Diff Mode** — per-file code diff viewer with inline AI analysis and side panel suggestions:
+
+![AI Git Assistant Diff Panel](docs/Screenshot_AI_2.png)
 
 **Opening & closing:**
 - Click the **🤖 AI** button (bottom-right) to slide open the chat panel.
@@ -268,17 +284,42 @@ Every message you send automatically includes:
 
 This means you can simply say *"squash the last 3 commits"* or *"which conflict should I keep?"* and the AI already knows everything it needs.
 
-**Quick action buttons:**
+**Quick action buttons** are organised into three groups:
+
+**Conflict Resolution**
 
 | Button | What it does |
 |--------|-------------|
 | 🔍 **Analyze Conflicts** | Fetches conflict data and asks the AI to recommend the best resolution strategy for each block. |
 | ⬅️ **Accept All Ours** | Resolves all conflicts in all files by accepting the current branch (HEAD) version in one click. |
 | ➡️ **Accept All Theirs** | Resolves all conflicts by accepting the incoming version in one click. |
-| 🌿 **Analyze Branch** | Explains the purpose and risks of the current branch in a GitFlow workflow. |
-| 💬 **Suggest Commit** | Fetches current changed files and generates a Conventional Commits–formatted commit message. |
+| ⚡ **Accept Both** | Merges both sides of every conflict block, keeping all content. |
+| 🛑 **Abort Merge** | Runs `git merge --abort` to cancel the current merge and restore the pre-merge state. |
+
+**General Git**
+
+| Button | What it does |
+|--------|-------------|
 | 📊 **Git Status** | Fetches current git status and explains each file's state with recommended actions. |
+| 💬 **Suggest Commit** | Fetches current changed files and generates a Conventional Commits–formatted commit message. |
 | 🔀 **Explain Changes** | Summarises what has changed in the current branch vs its base and describes the impact. |
+| 📜 **Recent Commits** | Lists the most recent commits with a concise summary of each change. |
+| 🌿 **Analyze Branch** | Explains the purpose and risks of the current branch in a GitFlow workflow. |
+| 📦 **Stash Help** | Shows stash list and advises when to pop, drop, or apply stash entries. |
+| 🧹 **Clean Suggestions** | Identifies untracked files, stale branches, and recommends cleanup actions. |
+
+**Commit Analysis**
+
+| Button | What it does |
+|--------|-------------|
+| 🔎 **Analyze Latest Commit** | Switches to Diff mode and runs a full AI code review on the latest commit's diff. |
+
+**Diff Mode:** Click the **📊 Diff** tab in the AI panel header to enter Diff mode. It displays the latest commit's changed files with:
+- Per-file `+N / -N` stats and collapsible diff blocks.
+- **Analyze** button per file — sends that file's diff to AI for focused review (security, logic, style).
+- **Tab** button — opens the file diff in a separate browser tab.
+- **Analyze All** — runs AI review across all changed files at once.
+- **Light / Dark** toggle for the diff viewer theme.
 
 **Per-conflict AI analysis:** Each conflict block in the Conflicts tab has an **🤖 AI** button that sends that specific conflict to the chat for focused analysis and a recommended resolution.
 
@@ -286,7 +327,6 @@ This means you can simply say *"squash the last 3 commits"* or *"which conflict 
 
 | Provider | Models | Key required |
 |----------|--------|-------------|
-| **GitHub Copilot** | claude-sonnet-4.6, claude-opus-4.7, gpt-5.4, gpt-5.2, gemini-2.5-pro, grok-code-fast-1, and more (enterprise full catalogue) | No — uses your local Copilot CLI session |
 | **OpenAI** | gpt-4.1, gpt-4o, gpt-4o-mini, gpt-3.5-turbo, o1-mini | Yes |
 | **Anthropic** | claude-opus-4.7, claude-sonnet-4.6, claude-haiku-4.5 | Yes |
 | **DeepSeek** | deepseek-chat, deepseek-coder, deepseek-reasoner | Yes |
@@ -397,7 +437,7 @@ GitAutoManageBoard/
 │                           #     /api/files, /api/branches, /api/log, /api/conflicts,
 │                           #     /api/stash, /api/compare, /api/project-name,
 │                           #     /api/push-status, /api/gitop-status,
-│                           #     /api/ai/copilot-models, /api/ai/chat-status
+│                           #     /api/ai/chat-status
 │                           #   handle_post(path, data, send_json)   — all POST /api/* routes:
 │                           #     /api/commit, /api/checkout, /api/create-branch,
 │                           #     /api/delete-branch, /api/merge, /api/squash,
@@ -411,29 +451,25 @@ GitAutoManageBoard/
 │   ├── __init__.py         # Package init (empty).
 │   │
 │   └── ai_provider.py      # Decoupled AI provider submodule.
-│                           # Supports: GitHub Copilot (auto-auth via Copilot CLI keychain),
-│                           #   OpenAI-compatible, Anthropic native API, Ollama,
+│                           # Supports: OpenAI-compatible, Anthropic native API, Ollama,
 │                           #   DeepSeek, Qwen, and any custom OpenAI-compatible endpoint.
 │                           # Public API:
-│                           #   get_copilot_models()     — fetch live model list from Copilot API
-│                           #                              (uses Copilot-Integration-Id: copilot-developer-cli
-│                           #                               to get the full enterprise model catalogue)
 │                           #   call_llm(provider, api_key, base_url, model, messages)
 │                           #                            — synchronous LLM call, returns (ok, text)
 │                           #   test_provider(...)       — test connectivity for the settings modal
 │                           #   start_chat_job(...)      — async LLM call, returns job_id
 │                           #   get_job_status(job_id)   — poll async job result
-│                           # Token resolution order (Copilot):
-│                           #   1. COPILOT_GITHUB_TOKEN / GH_TOKEN / GITHUB_TOKEN env vars
-│                           #   2. macOS Keychain entry  (service: "copilot-cli")
-│                           #   3. gh CLI auth token
-│                           #   4. ~/.config/github-copilot/apps.json fallback
 │
 ├── static/
 │   ├── index.html          # HTML skeleton — layout structure, tab panels, modal containers,
-│   │                       # AI chat panel HTML, AI floating button.
+│   │                       # AI chat panel HTML, AI floating button (🤖 + ? badge).
 │   │                       # References /static/style.css, /static/app.js,
 │   │                       # /static/ai-panel.css, /static/ai-panel.js.
+│   │
+│   ├── diff-tab.html       # Standalone AI Diff tab page — opened in a new browser tab when
+│   │                       # the user clicks "Tab" on a file in the AI Diff panel.
+│   │                       # Displays a single file's diff with syntax highlighting,
+│   │                       # light/dark theme toggle, and copyable diff content.
 │   │
 │   ├── style.css           # Core UI styles for the Git board.
 │   │                       # CSS custom properties (:root) define the design token system:
@@ -498,8 +534,13 @@ GitAutoManageBoard/
 │                           #   version = v1.1.0             # displayed below the name badge
 │
 ├── docs/
-│   ├── screenshot1.png     # AI panel screenshot (Commit Log + AI chat open).
-│   └── screenshot2.png     # Git board screenshot (Branches page).
+│   ├── screenshot.png      # Main board screenshot (Branches page — local/remote branch list,
+│   │                       # compare/merge/checkout actions, fuzzy search, quick-filter tags).
+│   ├── screenshot_AI_1.png # AI Chat panel screenshot — Chat mode with quick-action groups
+│   │                       # (Conflict Resolution, General Git, Commit Analysis) and
+│   │                       # free-text chat alongside the Commit Log page.
+│   └── Screenshot_AI_2.png # AI Diff panel screenshot — per-file code diff viewer with
+│                           # inline Analyze buttons and AI suggestions side panel.
 │
 └── README.md               # Full documentation in English and Chinese (this file).
 ```
@@ -515,9 +556,7 @@ The application is split into a Python backend (`git_commit_tool.py`, `git_ops.p
 
 **No third-party packages required.**
 
-For the AI Assistant:
-- **GitHub Copilot** — requires Copilot CLI (`copilot login`) or `GH_TOKEN` env var. Enterprise account recommended for full model access (Claude, GPT-5, Gemini, etc.).
-- **Other providers** — just paste your API key in the ⚙️ settings panel.
+For the AI Assistant, paste your API key in the ⚙️ settings panel.
 
 ---
 
@@ -533,7 +572,7 @@ For the AI Assistant:
 
 ### 这是什么？
 
-**GitAutoManageBoard** 是一个单文件 Python 脚本，运行后会在本地启动一个 Web 服务器，并自动在浏览器中打开一个功能完整的 Git 可视化管理面板，同时内置 **AI Git 智能助手**，支持 GitHub Copilot（企业级）、Claude、GPT、Gemini、DeepSeek、Qwen、Ollama 等大模型。特别适合希望在日常 Git 操作中获得更快、更直观体验的开发者。
+**GitAutoManageBoard** 是一个单文件 Python 脚本，运行后会在本地启动一个 Web 服务器，并自动在浏览器中打开一个功能完整的 Git 可视化管理面板，同时内置 **AI Git 智能助手**，支持 Claude、GPT、Gemini、DeepSeek、Qwen、Ollama 等大模型。特别适合希望在日常 Git 操作中获得更快、更直观体验的开发者。
 
 无需任何框架、无需 npm、无需 Docker。只需 Python 3 和一个现代浏览器。
 
@@ -543,11 +582,21 @@ For the AI Assistant:
 
 #### Git 管理看板
 
-![GitAutoManageBoard 界面截图](docs/screenshot2.png)
+> 分支管理页面 — 本地与远端分支列表，支持 Compare / Merge / Checkout 操作、模糊搜索、快速筛选标签和列排序。
 
-#### 🤖 AI Git 智能助手
+![GitAutoManageBoard 界面截图](docs/screenshot.png)
 
-![AI Git 智能助手面板](docs/screenshot1.png)
+#### 🤖 AI Git 智能助手 — 聊天模式
+
+> AI 面板与提交日志并排展示。快速操作按钮按任务分组（冲突解决、通用 Git、提交分析），一键触发分析。
+
+![AI Git 智能助手聊天面板](docs/screenshot_AI_1.png)
+
+#### 🤖 AI Git 智能助手 — Diff 模式
+
+> AI Diff 标签页：逐文件代码 diff 视图，每个文件带独立 **Analyze（分析）** 按钮。右侧面板显示 AI 生成的改进建议（安全问题、重构提示等）。
+
+![AI Git 智能助手 Diff 面板](docs/Screenshot_AI_2.png)
 
 ---
 
@@ -563,7 +612,7 @@ For the AI Assistant:
 | **冲突 (Conflicts)** | 可视化冲突解决，上下文默认收缩、已解决标记横幅、逐步弹窗引导 commit 和 push。 |
 | **暂存 (Stash)** | 列出、查看、Pop 或删除 stash 条目。支持分页。 |
 | **远端 (Remote)** | Fetch、Pull、Push — 全部支持实时流式日志弹窗。Force Push（`--force-with-lease`）。自动 SSH/HTTPS 切换。 |
-| **🤖 AI 助手** | 浮动 AI 聊天面板 — 直接对话布置任务。自动注入当前页面实时上下文。快速操作：分析冲突、建议提交、解释变更、一键解决所有冲突。支持 GitHub Copilot（企业）、Claude、GPT-5、Gemini、DeepSeek、Qwen、Ollama。 |
+| **🤖 AI 助手** | 浮动 AI 聊天面板 — 直接对话布置任务。自动注入当前页面实时上下文。**聊天模式**快速操作：分析冲突、接受我方/他方/双方、中止合并、建议提交、解释变更、最近提交、分析分支、Stash 帮助、清理建议。**Diff 模式**：逐文件 diff 视图 + 内联 Analyze 按钮 + AI 建议面板。支持 Claude、GPT-5、Gemini、DeepSeek、Qwen、Ollama。 |
 | **配置 (Config)** | 通过 `config.ini` 自定义应用名称和版本号。 |
 
 ---
@@ -741,7 +790,13 @@ python3 /path/to/git_commit_tool.py
 
 完全集成的 AI 聊天助手，自动理解你的**实时仓库上下文** — 点击右下角浮动的 **🤖 AI** 按钮即可使用。
 
-![AI Git 智能助手](docs/screenshot1.png)
+**聊天模式（Chat）** — 按任务分组的快速操作按钮 + 自动注入页面上下文的自由聊天：
+
+![AI Git 智能助手聊天面板](docs/screenshot_AI_1.png)
+
+**Diff 模式** — 逐文件 diff 视图 + 内联 AI 分析 + 右侧建议面板：
+
+![AI Git 智能助手 Diff 面板](docs/Screenshot_AI_2.png)
 
 **打开与关闭：**
 - 点击右下角 **🤖 AI** 按钮（带橙色 **?** 徽章，一眼可见），聊天面板从右侧滑入。
@@ -757,17 +812,42 @@ python3 /path/to/git_commit_tool.py
 
 这意味着你可以直接说 *"帮我 squash 最近三个 commit"* 或 *"这个冲突应该保留哪边？"*，AI 已经知道一切所需上下文。
 
-**快速操作按钮：**
+**快速操作按钮**按三组分类：
+
+**冲突解决（Conflict Resolution）**
 
 | 按钮 | 功能 |
 |------|------|
 | 🔍 **分析冲突 (Analyze Conflicts)** | 获取冲突数据，让 AI 为每个冲突块推荐最佳解决策略。 |
 | ⬅️ **接受我方 (Accept All Ours)** | 一键将所有文件的所有冲突块解决为当前分支（HEAD）版本。 |
 | ➡️ **接受他方 (Accept All Theirs)** | 一键将所有文件的所有冲突块解决为传入版本。 |
-| 🌿 **分析分支 (Analyze Branch)** | 解释当前分支在 GitFlow 工作流中的用途和操作注意事项。 |
-| 💬 **建议提交信息 (Suggest Commit)** | 获取当前改动文件列表，生成符合 Conventional Commits 规范的提交信息。 |
+| ⚡ **双方保留 (Accept Both)** | 合并每个冲突块两侧内容，全部保留。 |
+| 🛑 **中止合并 (Abort Merge)** | 执行 `git merge --abort`，取消当前合并并恢复合并前状态。 |
+
+**通用 Git（General Git）**
+
+| 按钮 | 功能 |
+|------|------|
 | 📊 **Git 状态 (Git Status)** | 获取当前 git status，解释每个文件状态并给出建议操作。 |
+| 💬 **建议提交信息 (Suggest Commit)** | 获取当前改动文件列表，生成符合 Conventional Commits 规范的提交信息。 |
 | 🔀 **解释变更 (Explain Changes)** | 总结当前分支相较于基础分支的所有变更及其影响。 |
+| 📜 **最近提交 (Recent Commits)** | 列出最近的提交并对每次变更作简要总结。 |
+| 🌿 **分析分支 (Analyze Branch)** | 解释当前分支在 GitFlow 工作流中的用途和操作注意事项。 |
+| 📦 **Stash 帮助 (Stash Help)** | 展示 stash 列表，建议何时应 Pop、Drop 或 Apply。 |
+| 🧹 **清理建议 (Clean Suggestions)** | 识别未跟踪文件和过时分支，推荐清理操作。 |
+
+**提交分析（Commit Analysis）**
+
+| 按钮 | 功能 |
+|------|------|
+| 🔎 **分析最新提交 (Analyze Latest Commit)** | 切换到 Diff 模式，对最新提交的 diff 运行完整 AI 代码审查。 |
+
+**Diff 模式：** 点击 AI 面板头部的 **📊 Diff** 标签切换到 Diff 模式，展示最新提交变更文件，包含：
+- 每个文件的 `+N / -N` 统计和可折叠 diff 块。
+- 每个文件的 **Analyze** 按钮 — 将该文件 diff 发送给 AI 进行专项审查（安全、逻辑、风格）。
+- **Tab** 按钮 — 在新浏览器标签页中打开该文件 diff。
+- **Analyze All** — 一次性对所有变更文件运行 AI 审查。
+- **Light / Dark** 切换 diff 视图主题。
 
 **单个冲突块 AI 分析：** 在 Conflicts 标签页中，每个冲突块都有 **🤖 AI** 按钮，可将该冲突块发送给 AI 进行针对性分析并获取推荐的最终代码。
 
@@ -775,7 +855,6 @@ python3 /path/to/git_commit_tool.py
 
 | 服务商 | 可用模型 | 是否需要 API Key |
 |--------|----------|----------------|
-| **GitHub Copilot** | claude-sonnet-4.6、claude-opus-4.7、gpt-5.4、gpt-5.2、gemini-2.5-pro、grok-code-fast-1 等（企业版完整目录 20+ 个模型） | 否 — 自动读取本地 Copilot CLI 会话 |
 | **OpenAI** | gpt-4.1、gpt-4o、gpt-4o-mini、gpt-3.5-turbo、o1-mini | 是 |
 | **Anthropic** | claude-opus-4.7、claude-sonnet-4.6、claude-haiku-4.5 | 是 |
 | **DeepSeek** | deepseek-chat、deepseek-coder、deepseek-reasoner | 是 |
@@ -880,7 +959,7 @@ GitAutoManageBoard/
 │                           #     /api/files、/api/branches、/api/log、/api/conflicts、
 │                           #     /api/stash、/api/compare、/api/project-name、
 │                           #     /api/push-status、/api/gitop-status、
-│                           #     /api/ai/copilot-models、/api/ai/chat-status
+│                           #     /api/ai/chat-status
 │                           #   handle_post(path, data, send_json)   — 所有 POST /api/* 路由：
 │                           #     /api/commit、/api/checkout、/api/create-branch、
 │                           #     /api/delete-branch、/api/merge、/api/squash、
@@ -894,29 +973,24 @@ GitAutoManageBoard/
 │   ├── __init__.py         # 包初始化文件（空）。
 │   │
 │   └── ai_provider.py      # 解耦的 AI 服务商子模块。
-│                           # 支持：GitHub Copilot（通过 Copilot CLI Keychain 自动认证）、
-│                           #   OpenAI 兼容 API、Anthropic 原生 API、Ollama、
+│                           # 支持：OpenAI 兼容 API、Anthropic 原生 API、Ollama、
 │                           #   DeepSeek、Qwen（通义千问）及任意自定义 OpenAI 兼容端点。
 │                           # 公开 API：
-│                           #   get_copilot_models()     — 从 Copilot API 获取实时模型列表
-│                           #                              （使用 Copilot-Integration-Id: copilot-developer-cli
-│                           #                               获取企业版完整模型目录，含 Claude/GPT-5/Gemini）
 │                           #   call_llm(provider, api_key, base_url, model, messages)
 │                           #                            — 同步 LLM 调用，返回 (ok, text)
 │                           #   test_provider(...)       — 测试连通性（用于设置弹窗）
 │                           #   start_chat_job(...)      — 异步 LLM 调用，返回 job_id
 │                           #   get_job_status(job_id)   — 轮询异步任务结果
-│                           # Copilot Token 解析优先级：
-│                           #   1. COPILOT_GITHUB_TOKEN / GH_TOKEN / GITHUB_TOKEN 环境变量
-│                           #   2. macOS Keychain 条目（服务名："copilot-cli"）
-│                           #   3. gh CLI auth token
-│                           #   4. ~/.config/github-copilot/apps.json 兜底
 │
 ├── static/
 │   ├── index.html          # HTML 骨架 — 页面布局、Tab 面板、Modal 容器、
 │   │                       # AI 聊天面板 HTML、AI 浮动按钮（🤖 + ? 徽章）。
 │   │                       # 引用 /static/style.css、/static/app.js、
 │   │                       # /static/ai-panel.css、/static/ai-panel.js。
+│   │
+│   ├── diff-tab.html       # 独立 AI Diff 标签页 — 当用户在 AI Diff 面板点击某文件的
+│   │                       # "Tab" 按钮时在新浏览器标签页打开。
+│   │                       # 展示单个文件的 diff，支持语法高亮、亮/暗主题切换和内容复制。
 │   │
 │   ├── style.css           # Git 看板核心 UI 样式。
 │   │                       # :root CSS 自定义属性定义设计令牌体系：
@@ -981,8 +1055,12 @@ GitAutoManageBoard/
 │                           #   version = v1.1.0             # 显示在名称徽章下方
 │
 ├── docs/
-│   ├── screenshot1.png     # AI 聊天面板截图（提交日志页 + AI 面板展开状态）。
-│   └── screenshot2.png     # Git 看板截图（分支管理页）。
+│   ├── screenshot.png      # 主看板截图（分支管理页 — 本地/远端分支列表、
+│   │                       # compare/merge/checkout 操作、模糊搜索、快速筛选标签）。
+│   ├── screenshot_AI_1.png # AI 聊天面板截图 — 聊天模式，展示快速操作按钮分组
+│   │                       # （冲突解决、通用 Git、提交分析）及与提交日志页并排的界面。
+│   └── Screenshot_AI_2.png # AI Diff 面板截图 — 逐文件 diff 视图，带内联 Analyze 按钮
+│                           # 和右侧 AI 建议面板（安全问题、重构提示等）。
 │
 └── README.md               # 完整文档，中英双语（本文件）。
 ```
@@ -998,9 +1076,7 @@ GitAutoManageBoard/
 
 **无需安装任何第三方依赖包。**
 
-**AI 助手额外要求：**
-- **GitHub Copilot** — 需要已安装并登录 Copilot CLI（`copilot login`）或设置 `GH_TOKEN` 环境变量。企业账号可获得完整模型目录（Claude、GPT-5、Gemini 等）。
-- **其他服务商** — 在面板 ⚙️ 设置中粘贴对应的 API Key 即可，无需额外安装。
+**AI 助手额外要求：** 在面板 ⚙️ 设置中粘贴对应的 API Key 即可，无需额外安装。
 
 ---
 

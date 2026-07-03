@@ -6,7 +6,7 @@ Usage: python3 git_commit_tool.py
 Browser opens http://127.0.0.1:8989
 """
 
-import os, json, socket
+import os, json, socket, sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
@@ -27,14 +27,17 @@ class Handler(BaseHTTPRequestHandler):
     def _send(self, code, ctype, body, extra_headers=None):
         if isinstance(body, str):
             body = body.encode("utf-8")
-        self.send_response(code)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", len(body))
-        if extra_headers:
-            for k, v in extra_headers.items():
-                self.send_header(k, v)
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", len(body))
+            if extra_headers:
+                for k, v in extra_headers.items():
+                    self.send_header(k, v)
+            self.end_headers()
+            self.wfile.write(body)
+        except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
+            pass  # Client disconnected before response was sent — benign
 
     def _json(self, obj, err_code=None):
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
@@ -90,12 +93,22 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": False, "error": "unknown endpoint"}, 404)
 
 
+_QUIET_ERRORS = (ConnectionResetError, BrokenPipeError, ConnectionAbortedError)
+
+class QuietServer(HTTPServer):
+    """HTTPServer that silently ignores client-disconnect errors."""
+    def handle_error(self, request, client_address):
+        if sys.exc_info()[0] in _QUIET_ERRORS:
+            return
+        super().handle_error(request, client_address)
+
+
 def main():
     import git_ops
     port = git_ops.PORT
     while True:
         try:
-            server = HTTPServer(("127.0.0.1", port), Handler)
+            server = QuietServer(("127.0.0.1", port), Handler)
             git_ops.PORT = port
             break
         except (socket.error, OSError):

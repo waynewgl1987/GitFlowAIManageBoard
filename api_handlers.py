@@ -7,26 +7,32 @@ Dispatches GET and POST API requests to git_ops functions.
 
 import os, json, re
 from ai_module.ai_provider import (
-    get_copilot_models, test_provider as ai_test_provider,
+    test_provider as ai_test_provider,
     start_chat_job, get_job_status,
 )
 from git_ops import (
-    PORT, _MSGLOG, _MSGLOG_LOCK, _PUSH_JOBS, _PUSH_JOBS_LOCK,
+    PORT, set_project_path, _MSGLOG, _MSGLOG_LOCK, _PUSH_JOBS, _PUSH_JOBS_LOCK,
     _run, _run_push_streaming, _run_gitop_streaming,
     current_branch, display_branch, get_project_info,
-    get_protected_config, is_branch_protected,
+    get_project_path, get_protected_config, is_branch_protected,
+    get_network_timeout, save_network_timeout,
+    get_gpg_sign, save_gpg_sign,
+    check_unsigned_commits, resign_branch_commits,
     _ref_exists, _resolve_ref_for_compare,
     get_branches, has_uncommitted, stash_changes,
     stash_list, stash_diff, commit_diff, search_diff_code,
     stash_pop, stash_drop, file_commit_diff,
     checkout_branch, create_branch,
-    delete_branch_local, delete_branch_remote,
+    delete_branch_local, delete_branch_remote, rename_branch,
     fetch, pull_current, set_upstream, push_set_upstream,
     get_conflicts, get_conflict_detail,
     _get_merge_type, _get_merge_default_msg,
     resolve_conflict, get_file_commits,
     get_uncommitted_changes, get_commit_log,
-    reset_to, revert_commit, squash_commits, abort_merge_or_rebase,
+    reset_to, revert_commit, drop_commit, squash_commits, abort_merge_or_rebase,
+    rebase_abort, rebase_skip, rebase_continue,
+    worktree_list, worktree_add, worktree_remove, worktree_prune,
+    get_git_graph,
 )
 
 
@@ -57,8 +63,39 @@ def handle_get(path, params, send_json, send_stream=None):
         send_json(get_project_info())
         return True
 
+    elif path == "/api/project-path":
+        send_json({"path": get_project_path()})
+        return True
+
+    elif path == "/api/check-project-path":
+        import os as _os
+        check_path = params.get("path", [""])[0]
+        check_path = _os.path.abspath(_os.path.expanduser(check_path))
+        git_dir = _os.path.join(check_path, ".git")
+        valid = _os.path.isdir(check_path) and (_os.path.isdir(git_dir) or _os.path.isfile(git_dir))
+        send_json({"valid": valid, "path": check_path})
+        return True
+
+    elif path == "/api/network-timeout":
+        send_json({"network_timeout": get_network_timeout()})
+        return True
+
+    elif path == "/api/gpg-sign":
+        send_json({"gpg_sign": get_gpg_sign()})
+        return True
+
+    elif path == "/api/unsigned-commits":
+        base = params.get("base", ["develop"])[0]
+        send_json(check_unsigned_commits(base))
+        return True
+
     elif path == "/api/protected-branches":
         send_json(get_protected_config())
+        return True
+
+    elif path == "/api/git-graph":
+        max_n = int(params.get("max", ["150"])[0])
+        send_json(get_git_graph(max_n))
         return True
 
     elif path == "/api/branches":
@@ -101,7 +138,12 @@ def handle_get(path, params, send_json, send_stream=None):
 
     elif path == "/api/conflicts":
         cf = get_conflicts()
-        send_json({"files": cf, "count": len(cf)})
+        send_json({
+            "files": cf,
+            "count": len(cf),
+            "branch": current_branch(),
+            "merge_type": _get_merge_type(),
+        })
         return True
 
     elif path == "/api/commits":
@@ -144,7 +186,7 @@ def handle_get(path, params, send_json, send_stream=None):
         if not base or not head:
             send_json({"ok": False, "error": "base and head required"}, 400)
             return True
-        cwd = os.getcwd()
+        cwd = get_project_path()
         base_ref = _resolve_ref_for_compare(base, base_source)
         head_ref = _resolve_ref_for_compare(head, head_source)
         if not _ref_exists(base_ref):
@@ -177,7 +219,7 @@ def handle_get(path, params, send_json, send_stream=None):
         return True
 
     elif path == "/api/ignored-list":
-        gitignore_path = os.path.join(os.getcwd(), '.gitignore')
+        gitignore_path = os.path.join(get_project_path(), '.gitignore')
         try:
             with open(gitignore_path, 'r') as gf:
                 entries = [l.strip() for l in gf.read().splitlines()
@@ -185,11 +227,6 @@ def handle_get(path, params, send_json, send_stream=None):
         except FileNotFoundError:
             entries = []
         send_json({"entries": entries})
-        return True
-
-    elif path == "/api/ai/copilot-models":
-        models = get_copilot_models()
-        send_json({"ok": True, "models": models})
         return True
 
     elif path == "/api/ai/chat-status":
@@ -201,10 +238,85 @@ def handle_get(path, params, send_json, send_stream=None):
             send_json(status)
         return True
 
+    elif path == "/api/latest-commit-diff":
+        from git_ops import get_latest_commit_diff
+        send_json(get_latest_commit_diff())
+        return True
+
+    elif path == "/api/commit-diff-compare":
+        from git_ops import get_commit_diff_compare
+        base_hash = params.get("base", [""])[0].strip()
+        head_hash = params.get("head", ["HEAD"])[0].strip() or "HEAD"
+        if not base_hash:
+            send_json({"ok": False, "error": "base commit hash required"}, 400)
+            return True
+        send_json(get_commit_diff_compare(base_hash, head_hash))
+        return True
+
+    elif path == "/api/worktrees":
+        trees, err, rc = worktree_list()
+        send_json({"ok": rc == 0, "worktrees": trees, "error": err if rc != 0 else ""})
+        return True
+
     return False
 
 
 def handle_post(path, data, send_json):
+
+    if path == "/api/switch-project":
+        new_path = data.get("path", "").strip()
+        if not new_path:
+            send_json({"ok": False, "error": "path required"}, 400)
+            return True
+        ok, msg = set_project_path(new_path)
+        send_json({"ok": ok, "path": msg if ok else "", "error": msg if not ok else ""})
+        return True
+
+    if path == "/api/browse-project":
+        import subprocess, platform
+        selected = ""
+        try:
+            system = platform.system()
+            if system == "Darwin":
+                r = subprocess.run(
+                    ["osascript", "-e",
+                     'POSIX path of (choose folder with prompt "Select Git Project")'],
+                    capture_output=True, text=True, timeout=300,
+                )
+                selected = r.stdout.strip()
+            elif system == "Windows":
+                import tempfile, os as _os
+                vbs = (
+                    'Set objShell = CreateObject("Shell.Application")\r\n'
+                    'Set objFolder = objShell.BrowseForFolder(0, "Select Git Project", 0, 17)\r\n'
+                    'If Not objFolder Is Nothing Then\r\n'
+                    '    WScript.Echo objFolder.Self.Path\r\n'
+                    'End If'
+                )
+                tmp = tempfile.NamedTemporaryFile(suffix=".vbs", delete=False, mode="w")
+                tmp.write(vbs)
+                tmp.close()
+                r = subprocess.run(
+                    ["cscript", "//Nologo", tmp.name],
+                    capture_output=True, text=True, timeout=300,
+                )
+                _os.unlink(tmp.name)
+                selected = r.stdout.strip()
+            else:
+                # Linux: try zenity, then kdialog
+                for cmd in (["zenity", "--file-selection", "--directory", "--title=Select Git Project"],
+                             ["kdialog", "--getexistingdirectory"]):
+                    try:
+                        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+                        if r.returncode == 0 and r.stdout.strip():
+                            selected = r.stdout.strip()
+                            break
+                    except Exception:
+                        pass
+        except Exception:
+            selected = ""
+        send_json({"ok": True, "path": selected if selected else ""})
+        return True
 
     if path == "/api/toggle":
         fp = data.get("path", "")
@@ -224,9 +336,9 @@ def handle_post(path, data, send_json):
         if not fp:
             send_json({"ok": False, "error": "No path"}, 400)
             return True
-        abs_fp = os.path.join(os.getcwd(), fp)
+        abs_fp = os.path.join(get_project_path(), fp)
         entry = fp.rstrip('/') + ('/' if (os.path.isdir(abs_fp) or fp.endswith('/')) else '')
-        gitignore_path = os.path.join(os.getcwd(), '.gitignore')
+        gitignore_path = os.path.join(get_project_path(), '.gitignore')
         try:
             with open(gitignore_path, 'r') as gf: lines = gf.read().splitlines()
         except FileNotFoundError:
@@ -240,7 +352,7 @@ def handle_post(path, data, send_json):
 
     elif path == "/api/unignore":
         entry = data.get("entry", "").strip()
-        gitignore_path = os.path.join(os.getcwd(), '.gitignore')
+        gitignore_path = os.path.join(get_project_path(), '.gitignore')
         try:
             with open(gitignore_path, 'r') as gf: lines = gf.read().splitlines()
             lines = [l for l in lines if l.strip() != entry]
@@ -264,7 +376,11 @@ def handle_post(path, data, send_json):
         if diff_rc == 0:
             send_json({"ok": False, "error": "Nothing to commit — selected files have no staged changes."}, 400)
             return True
-        stdout, stderr, rc = _run(["git", "commit", "-m", msg])
+        cmd = ["git", "commit"]
+        if get_gpg_sign():
+            cmd.append("-S")
+        cmd.extend(["-m", msg])
+        stdout, stderr, rc = _run(cmd)
         if rc == 0:
             send_json({"ok": True, "stdout": stdout})
         else:
@@ -273,7 +389,8 @@ def handle_post(path, data, send_json):
 
     elif path == "/api/checkout":
         branch = data.get("branch", "")
-        stdout, stderr, rc = checkout_branch(branch)
+        force  = bool(data.get("force", False))
+        stdout, stderr, rc = checkout_branch(branch, force=force)
         if rc == 0:
             send_json({"ok": True, "stdout": stdout})
         else:
@@ -316,7 +433,9 @@ def handle_post(path, data, send_json):
         return True
 
     elif path == "/api/stash":
-        stdout, stderr, rc = stash_changes()
+        msg = data.get("message", "").strip()
+        paths = data.get("paths") or []
+        stdout, stderr, rc = stash_changes(msg or None, paths or None)
         if rc == 0:
             send_json({"ok": True, "stdout": stdout})
         else:
@@ -348,6 +467,33 @@ def handle_post(path, data, send_json):
             send_json({"ok": True, "log": log})
         else:
             send_json({"ok": False, "error": stderr or log, "log": log}, 400)
+        return True
+
+    elif path == "/api/network-timeout":
+        seconds = data.get("network_timeout")
+        ok, result = save_network_timeout(seconds)
+        if ok:
+            send_json({"ok": True, "network_timeout": result})
+        else:
+            send_json({"ok": False, "error": result}, 400)
+        return True
+
+    elif path == "/api/gpg-sign":
+        enabled = data.get("gpg_sign", False)
+        ok, result = save_gpg_sign(enabled)
+        if ok:
+            send_json({"ok": True, "gpg_sign": result})
+        else:
+            send_json({"ok": False, "error": result}, 400)
+        return True
+
+    elif path == "/api/resign-commits":
+        base = data.get("base", "develop")
+        ok, msg = resign_branch_commits(base)
+        if ok:
+            send_json({"ok": True, "message": msg})
+        else:
+            send_json({"ok": False, "error": msg}, 400)
         return True
 
     elif path == "/api/fetch":
@@ -392,6 +538,7 @@ def handle_post(path, data, send_json):
         username = data.get("username", "").strip()
         password = data.get("password", "").strip()
         force = bool(data.get("force", False))
+        remote_branch = data.get("remote_branch", "").strip() or None
         remote_url, _, _ = _run(["git", "remote", "get-url", "origin"])
         is_ssh = remote_url.startswith("git@") or remote_url.startswith("ssh://")
         job_id = str(uuid.uuid4())[:8]
@@ -408,7 +555,7 @@ def handle_post(path, data, send_json):
             extra_env = {"GIT_ASKPASS": tmp_file, "GIT_TERMINAL_PROMPT": "0"}
         def _job():
             try:
-                _run_push_streaming(job_id, branch, extra_env, force=force, is_ssh=is_ssh)
+                _run_push_streaming(job_id, branch, extra_env, force=force, is_ssh=is_ssh, remote_branch=remote_branch)
             finally:
                 if tmp_file:
                     try: os.unlink(tmp_file)
@@ -442,6 +589,24 @@ def handle_post(path, data, send_json):
                            "error": cerr if crc != 0 else ""})
         else:
             send_json({"ok": False, "log": combined, "hasConflict": has_conflict, "error": combined})
+        return True
+
+    elif path == "/api/rebase":
+        source = data.get("branch", "").strip()
+        if not source:
+            send_json({"ok": False, "error": "No branch specified"}, 400)
+            return True
+        out, err, rc = _run(["git", "rebase", source])
+        combined = (out + "\n" + err).strip()
+        has_conflict = rc != 0 and ("CONFLICT" in combined or "conflict" in combined.lower())
+        already_up_to_date = rc == 0 and "is up to date" in combined
+        send_json({
+            "ok": rc == 0,
+            "log": combined,
+            "hasConflict": has_conflict,
+            "alreadyUpToDate": already_up_to_date,
+            "error": combined if rc != 0 else "",
+        })
         return True
 
     elif path == "/api/switch-remote-ssh":
@@ -488,9 +653,18 @@ def handle_post(path, data, send_json):
             send_json({"ok": False, "error": "no resolution"}, 400)
             return True
         if rc == 0:
-            resp = {"ok": True, "all_resolved": all_resolved}
+            remaining = get_conflicts()
+            merge_type = _get_merge_type()
+            resp = {
+                "ok": True,
+                "all_resolved": all_resolved,
+                "resolved_file": fp,
+                "remaining_files": remaining,
+                "remaining_count": len(remaining),
+                "branch": current_branch(),
+                "merge_type": merge_type,
+            }
             if all_resolved:
-                resp["merge_type"] = _get_merge_type()
                 resp["default_msg"] = _get_merge_default_msg()
             send_json(resp)
         else:
@@ -499,23 +673,24 @@ def handle_post(path, data, send_json):
 
     elif path == "/api/complete-merge":
         msg = data.get("message", "")
-        cwd = os.getcwd()
+        cwd = get_project_path()
         env = {"GIT_EDITOR": "true"}
+        gpg_flag = ["-S"] if get_gpg_sign() else []
         if os.path.exists(os.path.join(cwd, ".git", "CHERRY_PICK_HEAD")):
-            stdout, stderr, rc = _run(["git", "cherry-pick", "--continue"], env=env)
+            stdout, stderr, rc = _run(["git", "cherry-pick", "--continue"] + gpg_flag, env=env)
         elif os.path.exists(os.path.join(cwd, ".git", "rebase-merge")) or \
              os.path.exists(os.path.join(cwd, ".git", "rebase-apply")):
-            stdout, stderr, rc = _run(["git", "rebase", "--continue"], env=env)
+            stdout, stderr, rc = _run(["git", "rebase", "--continue"] + gpg_flag, env=env)
         elif os.path.exists(os.path.join(cwd, ".git", "MERGE_HEAD")):
             if msg:
-                stdout, stderr, rc = _run(["git", "commit", "-m", msg])
+                stdout, stderr, rc = _run(["git", "commit"] + gpg_flag + ["-m", msg])
             else:
-                stdout, stderr, rc = _run(["git", "commit", "--no-edit"], env=env)
+                stdout, stderr, rc = _run(["git", "commit", "--no-edit"] + gpg_flag, env=env)
         else:
             if not msg:
                 send_json({"ok": False, "error": "Commit message required"}, 400)
                 return True
-            stdout, stderr, rc = _run(["git", "commit", "-m", msg])
+            stdout, stderr, rc = _run(["git", "commit"] + gpg_flag + ["-m", msg])
         if rc == 0:
             send_json({"ok": True, "stdout": stdout})
         else:
@@ -541,6 +716,15 @@ def handle_post(path, data, send_json):
             send_json({"ok": False, "error": stderr or stdout}, 400)
         return True
 
+    elif path == "/api/drop_commit":
+        commit = data.get("commit", "")
+        stdout, stderr, rc = drop_commit(commit)
+        if rc == 0:
+            send_json({"ok": True, "stdout": stdout})
+        else:
+            send_json({"ok": False, "error": stderr or stdout}, 400)
+        return True
+
     elif path == "/api/squash":
         from_h = data.get("from", "")
         to_h = data.get("to", "")
@@ -550,6 +734,53 @@ def handle_post(path, data, send_json):
             send_json({"ok": True, "stdout": stdout})
         else:
             send_json({"ok": False, "error": stderr or stdout}, 400)
+        return True
+
+    elif path == "/api/rename-branch":
+        old_name = data.get("old_name", "").strip()
+        new_name = data.get("new_name", "").strip()
+        if not old_name or not new_name:
+            send_json({"ok": False, "error": "Both old and new branch names are required"}, 400)
+            return True
+        if is_branch_protected(old_name):
+            send_json({"ok": False, "error": f"Cannot rename protected branch '{old_name}'"}, 403)
+            return True
+        if is_branch_protected(new_name):
+            send_json({"ok": False, "error": f"Cannot rename to protected branch name '{new_name}'"}, 403)
+            return True
+        stdout, stderr, rc = rename_branch(old_name, new_name)
+        if rc == 0:
+            send_json({"ok": True, "stdout": stdout})
+        else:
+            send_json({"ok": False, "error": stderr or stdout}, 400)
+        return True
+
+    elif path == "/api/rebase-abort":
+        stdout, stderr, rc = rebase_abort()
+        combined = (stdout + "\n" + stderr).strip()
+        if rc == 0:
+            send_json({"ok": True, "stdout": combined or "Rebase aborted"})
+        else:
+            send_json({"ok": False, "error": stderr or stdout}, 400)
+        return True
+
+    elif path == "/api/rebase-skip":
+        stdout, stderr, rc = rebase_skip()
+        combined = (stdout + "\n" + stderr).strip()
+        if rc == 0:
+            send_json({"ok": True, "stdout": combined or "Commit skipped"})
+        else:
+            send_json({"ok": False, "error": stderr or stdout}, 400)
+        return True
+
+    elif path == "/api/rebase-continue":
+        stdout, stderr, rc = rebase_continue()
+        combined = (stdout + "\n" + stderr).strip()
+        if rc == 0:
+            send_json({"ok": True, "stdout": combined or "Rebase continued"})
+        else:
+            has_conflict = "CONFLICT" in combined or "conflict" in combined.lower()
+            send_json({"ok": False, "error": stderr or stdout, "hasConflict": has_conflict}, 400)
         return True
 
     elif path == "/api/abort":
@@ -569,11 +800,14 @@ def handle_post(path, data, send_json):
             send_json({"ok": False, "error": "provider is required"}, 400)
             return True
         ok, msg = ai_test_provider(provider, api_key, base_url, model)
-        send_json({"ok": ok, "message": msg})
+        if ok:
+            send_json({"ok": True, "message": msg})
+        else:
+            send_json({"ok": False, "error": msg})
         return True
 
     elif path == "/api/ai/chat":
-        provider = data.get("provider", "copilot")
+        provider = data.get("provider", "openai")
         api_key  = data.get("api_key", "")
         base_url = data.get("base_url", "")
         model    = data.get("model", "")
@@ -583,6 +817,35 @@ def handle_post(path, data, send_json):
             return True
         job_id = start_chat_job(provider, api_key, base_url, model, messages)
         send_json({"ok": True, "jobId": job_id})
+        return True
+
+    elif path == "/api/worktree-add":
+        path = data.get("path", "").strip()
+        branch = data.get("branch", "").strip()
+        stdout, stderr, rc = worktree_add(path, branch)
+        if rc == 0:
+            send_json({"ok": True, "stdout": stdout})
+        else:
+            send_json({"ok": False, "error": stderr or stdout}, 400)
+        return True
+
+    elif path == "/api/worktree-remove":
+        path = data.get("path", "").strip()
+        force = data.get("force", False)
+        stdout, stderr, rc = worktree_remove(path, force=force)
+        if rc == 0:
+            send_json({"ok": True, "stdout": stdout})
+        else:
+            send_json({"ok": False, "error": stderr or stdout}, 400)
+        return True
+
+    elif path == "/api/worktree-switch":
+        new_path = data.get("path", "").strip()
+        if not new_path:
+            send_json({"ok": False, "error": "path required"}, 400)
+            return True
+        ok, msg = set_project_path(new_path)
+        send_json({"ok": ok, "path": msg if ok else "", "error": msg if not ok else ""})
         return True
 
     return False
