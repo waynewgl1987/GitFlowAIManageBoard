@@ -17,6 +17,7 @@ from git_ops import (
     get_project_path, get_protected_config, is_branch_protected,
     get_network_timeout, save_network_timeout,
     get_gpg_sign, save_gpg_sign,
+    check_unsigned_commits, resign_branch_commits,
     _ref_exists, _resolve_ref_for_compare,
     get_branches, has_uncommitted, stash_changes,
     stash_list, stash_diff, commit_diff, search_diff_code,
@@ -81,6 +82,11 @@ def handle_get(path, params, send_json, send_stream=None):
 
     elif path == "/api/gpg-sign":
         send_json({"gpg_sign": get_gpg_sign()})
+        return True
+
+    elif path == "/api/unsigned-commits":
+        base = params.get("base", ["develop"])[0]
+        send_json(check_unsigned_commits(base))
         return True
 
     elif path == "/api/protected-branches":
@@ -474,6 +480,15 @@ def handle_post(path, data, send_json):
             send_json({"ok": True, "gpg_sign": result})
         else:
             send_json({"ok": False, "error": result}, 400)
+        return True
+
+    elif path == "/api/resign-commits":
+        base = data.get("base", "develop")
+        ok, msg = resign_branch_commits(base)
+        if ok:
+            send_json({"ok": True, "message": msg})
+        else:
+            send_json({"ok": False, "error": msg}, 400)
         return True
 
     elif path == "/api/fetch":

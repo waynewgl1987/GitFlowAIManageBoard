@@ -116,6 +116,47 @@ def save_gpg_sign(enabled):
     return True, enabled
 
 
+def check_unsigned_commits(base="develop"):
+    """Check if current branch has unsigned commits relative to base.
+    Returns {"has_unsigned": bool, "unsigned_count": int, "total_count": int}."""
+    branch = current_branch()
+    if not branch or branch == base:
+        return {"has_unsigned": False, "unsigned_count": 0, "total_count": 0}
+    # List commits on this branch not in base, with signature status
+    out, _, rc = _run(["git", "log", "--format=%H %G?", f"{base}..HEAD"])
+    if rc != 0 or not out.strip():
+        return {"has_unsigned": False, "unsigned_count": 0, "total_count": 0}
+    lines = [l.strip() for l in out.strip().splitlines() if l.strip()]
+    total = len(lines)
+    # G=good, U=good untrusted, B=bad, X=expired, Y=expired key, R=revoked, E=error, N=none
+    unsigned = [l for l in lines if l.split()[-1] in ("N", "B", "E")]
+    return {"has_unsigned": len(unsigned) > 0, "unsigned_count": len(unsigned), "total_count": total}
+
+
+def resign_branch_commits(base="develop"):
+    """Re-sign all commits on current branch relative to base using GPG.
+    Returns (ok, message)."""
+    branch = current_branch()
+    if not branch:
+        return False, "Not on any branch"
+    if branch == base:
+        return False, f"Cannot re-sign: currently on base branch '{base}'"
+    # Check if there are commits to re-sign
+    info = check_unsigned_commits(base)
+    if not info["has_unsigned"]:
+        return True, "All commits are already signed"
+    # Do the rebase with GPG signing
+    stdout, stderr, rc = _run(
+        ["git", "rebase", "--exec", "git commit --amend --no-edit -S", base],
+        timeout=120
+    )
+    if rc != 0:
+        # Try to abort failed rebase
+        _run(["git", "rebase", "--abort"])
+        return False, stderr or stdout or "Rebase failed"
+    return True, f"Successfully re-signed {info['unsigned_count']} commit(s)"
+
+
 def get_protected_config():
     """Return protected branch config as {"exact": [...], "contains": [...]}."""
     _, _, exact, contains, _ = _load_app_config()

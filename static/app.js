@@ -1280,6 +1280,52 @@ function checkConflicts(){
 
 // ═══════════ Pull + Fetch ═══════════
 function doPush(credentials, force, remoteBranch){
+  var gpgToggle = document.getElementById('gpg-sign-toggle');
+  var gpgEnabled = gpgToggle && gpgToggle.checked;
+
+  // If GPG signing is enabled, check for unsigned commits before pushing
+  if (gpgEnabled && !doPush._skipResignCheck) {
+    apiGet('/api/unsigned-commits?base=develop', function(info) {
+      if (info.has_unsigned) {
+        showModalDouble(
+          '🔏 Unsigned Commits Detected',
+          'Found <b>' + info.unsigned_count + '</b> unsigned commit(s) out of ' + info.total_count + ' on this branch.<br><br>' +
+          'Re-sign all commits with GPG before pushing?<br>' +
+          '<span style="font-size:12px;color:#6b7280">(This will rebase and force push)</span>',
+          '🔏 Re-sign & Push',
+          function() {
+            addMsg('🔏 Re-signing commits...', 'info');
+            apiPost('/api/resign-commits', {base: 'develop'}, function(d) {
+              if (d.ok) {
+                addMsg('✅ ' + d.message, 'success');
+                // Now force push since rebase rewrites history
+                doPush._skipResignCheck = true;
+                doPush(credentials, true, remoteBranch);
+                doPush._skipResignCheck = false;
+              } else {
+                addMsg('❌ Re-sign failed: ' + (d.error || ''), 'error');
+              }
+            });
+          },
+          'Skip & Push Anyway',
+          function() {
+            doPush._skipResignCheck = true;
+            doPush(credentials, force, remoteBranch);
+            doPush._skipResignCheck = false;
+          },
+          'btn-primary',
+          'btn-secondary'
+        );
+      } else {
+        // All signed, proceed normally
+        doPush._skipResignCheck = true;
+        doPush(credentials, force, remoteBranch);
+        doPush._skipResignCheck = false;
+      }
+    });
+    return;
+  }
+
   var branchEl=document.getElementById('branch-name');
   var branch=(branchEl&&branchEl.textContent)||'?';
   var body=credentials||{};
