@@ -661,7 +661,7 @@ def worktree_list():
 
 def worktree_add(path, branch):
     """Create a new worktree at `path` for `branch`.
-    Branch is required — creates a new branch if it doesn't exist (via -b flag).
+    If branch exists, check it out; if not, create it with -b.
     Returns (stdout, stderr, returncode)."""
     path = os.path.abspath(os.path.expanduser(path))
     if not branch:
@@ -669,7 +669,16 @@ def worktree_add(path, branch):
     # Check if path already exists
     if os.path.exists(path):
         return "", f"Path already exists: {path}", -1
-    return _run(["git", "worktree", "add", path, branch])
+    # Check if branch already exists (local or remote tracking)
+    _, _, rc = _run(["git", "rev-parse", "--verify", branch])
+    if rc == 0:
+        return _run(["git", "worktree", "add", path, branch])
+    # Check if there's a remote tracking branch
+    _, _, rc2 = _run(["git", "rev-parse", "--verify", f"origin/{branch}"])
+    if rc2 == 0:
+        return _run(["git", "worktree", "add", path, branch])
+    # Branch doesn't exist — create it with -b
+    return _run(["git", "worktree", "add", "-b", branch, path])
 
 
 def worktree_remove(path, force=False):
