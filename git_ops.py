@@ -340,8 +340,8 @@ def _run_gitop_streaming(job_id, op, mode=None):
         _append(f'🌿 Branch: {branch_name}')
 
         if op == 'fetch':
-            _append('⬇️ Operation: fetch --all --prune --verbose')
-            cmd = ["git", "fetch", "--all", "--prune", "--verbose"]
+            _append('⬇️ Operation: fetch origin --prune --verbose')
+            cmd = ["git", "fetch", "origin", "--prune", "--verbose"]
         else:
             mode_str = mode or 'merge'
             if mode_str == 'rebase':
@@ -387,7 +387,9 @@ def _run_gitop_streaming(job_id, op, mode=None):
             job['done'] = True
             job['ok'] = (rc == 0)
             if rc != 0:
-                job['error'] = '\n'.join(job['lines'])
+                # Only include actual error lines, not verbose status output
+                err_lines = [l for l in job['lines'] if any(k in l.lower() for k in ['error', 'fatal', 'failed', 'timed out', 'couldn\'t', 'unable'])]
+                job['error'] = '\n'.join(err_lines) if err_lines else '\n'.join(job['lines'][-10:])
     except Exception as e:
         with _PUSH_JOBS_LOCK:
             job['done'] = True
@@ -708,8 +710,8 @@ def rebase_continue():
 
 
 def fetch():
-    """Fetch all remotes with pruning."""
-    out, err, rc = _run(["git", "fetch", "--all", "--prune", "--verbose"])
+    """Fetch from origin with pruning."""
+    out, err, rc = _run(["git", "fetch", "origin", "--prune", "--verbose"])
     combined = (out + "\n" + err).strip()
     return combined, err, rc
 
