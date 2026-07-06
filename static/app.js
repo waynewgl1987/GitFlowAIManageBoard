@@ -570,8 +570,10 @@ function escapeHtml(s){s=s==null?'':String(s);return s.replace(/&/g,'&amp;').rep
 function escapeAttr(s){s=s==null?'':String(s);return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function escapeJS(s){return escapeAttr(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
 
-function addMsg(msg, cls) {
+function addMsg(msg, cls, opts) {
   cls=cls||'info';
+  opts=opts||{};
+  var maxLines = opts.maxLines || 0; // 0 = no limit
   msgLog.push({time:new Date().toLocaleString(), type:cls, text:msg});
   updateMsgCount();
   var area=document.getElementById('msg-area');
@@ -580,7 +582,13 @@ function addMsg(msg, cls) {
   var div=document.createElement('div');
   div.className='msg-item '+cls;
   div.id=id;
-  div.innerHTML='<span class="msg-text">'+escapeHtml(msg)+'</span><span class="msg-close" onclick="dismissMsg(\''+id+'\')">✕</span>';
+  var lines = msg.split('\n');
+  var needScroll = maxLines > 0 && lines.length > maxLines;
+  if (needScroll) {
+    div.innerHTML='<span class="msg-text msg-text-scroll" style="display:block;max-height:'+(maxLines*1.6)+'em;overflow-y:auto;white-space:pre-wrap;font-family:monospace;font-size:12px;line-height:1.6">'+escapeHtml(msg)+'</span><span class="msg-close" onclick="dismissMsg(\''+id+'\')">✕</span>';
+  } else {
+    div.innerHTML='<span class="msg-text">'+escapeHtml(msg)+'</span><span class="msg-close" onclick="dismissMsg(\''+id+'\')">✕</span>';
+  }
   area.appendChild(div);
 }
 
@@ -1650,7 +1658,7 @@ function _startGitopStream(op, mode, onDone){
             // Page log (always fires even if modal was closed)
             var errTxt=r.error||'';
             if(op==='pull') handlePullErr(errTxt);
-            else addMsg('❌ '+t('fetch_fail')+errTxt,'error');
+            else addMsg('❌ '+t('fetch_fail')+errTxt,'error',{maxLines:10});
           }
           checkConflicts();
           if(r.ok && op==='pull'){
@@ -1736,15 +1744,42 @@ function doFetch() {
 }
 
 function handlePullErr(err) {
+  if(err.indexOf('CONFLICT')>=0||err.indexOf('conflict')>=0||err.indexOf('Automatic merge failed')>=0){
+    addMsg('⚠️ '+t('pull_conflict')+' — 请在 Conflicts 标签页中手动解决冲突','error');
+    checkConflicts();
+    loadConflicts();
+    return;
+  }
   if(err.indexOf('overwritten by merge')>=0||err.indexOf('would be overwritten')>=0){
     addMsgWithAction('⚠️ Pull blocked: local file changes conflict with remote. Auto-stash and retry?','error',[
       {label:'Stash & Retry Pull',onClick:function(){
         apiPost('/api/stash',{},function(s){
-          if(!s.ok){addMsg('Stash failed: '+(s.error||''),'error');return}
-          _executePull('rebase',function(){
+          if(!s.ok){
+            // If stash also fails due to conflict, go directly to conflicts
+            if(s.error&&(s.error.indexOf('CONFLICT')>=0||s.error.indexOf('conflict')>=0)){
+              addMsg('⚠️ Conflict detected — 请在 Conflicts 标签页中解决','error');
+              checkConflicts();
+              loadConflicts();
+            } else {
+              addMsg('Stash failed: '+(s.error||''),'error');
+            }
+            return;
+          }
+          _executePull('rebase',function(ok){
+            if(!ok){
+              // Pull after stash still has conflicts — go to conflicts tab
+              checkConflicts();
+              loadConflicts();
+              return;
+            }
             apiPost('/api/stash-pop',{index:0},function(p){
-              if(!p.ok)addMsg('Stash pop conflict — check Conflicts tab','error');
-              else addMsg('✅ Restored local changes after pull','ok');
+              if(!p.ok){
+                addMsg('⚠️ Stash pop conflict — 请在 Conflicts 标签页中解决','error');
+                checkConflicts();
+                loadConflicts();
+              } else {
+                addMsg('✅ Restored local changes after pull','ok');
+              }
               loadFiles();
             });
           });
@@ -1752,7 +1787,6 @@ function handlePullErr(err) {
       }}
     ]);
   }
-  else if(err.indexOf('CONFLICT')>=0||err.indexOf('conflict')>=0){addMsg(t('pull_conflict'),'error');checkConflicts()}
   else if(err.indexOf('divergent')>=0||err.indexOf('reconcile')>=0||err.indexOf('Need to specify')>=0){
     addMsgWithAction('Divergent branches detected. Choose strategy:', 'error', [
       {label:'Pull --merge', onClick:function(){_executePull('merge',function(){loadFiles()})}},
@@ -1764,7 +1798,7 @@ function handlePullErr(err) {
     addMsgWithAction(t('branch_no_upstream'),'error',[{label:t('fix_upstream'),onClick:function(){apiPost('/api/set-upstream',{},function(r){if(r.ok){addMsg(t('upstream_set_ok'),'ok');doPull()}else addMsg(t('upstream_set_fail')+(r.error||''),'error')})}}]);
   }else if(err.indexOf('remote ref')>=0||err.indexOf("couldn't find")>=0){
     addMsg(t('pull_fail')+err,'error');
-  }else addMsg(t('pull_fail')+err,'error');
+  }else addMsg(t('pull_fail')+err,'error',{maxLines:10});
 }
 
 // ═══════════ Branches ═══════════
@@ -1896,7 +1930,7 @@ function _renderBranchesByTab(data,page,perPage){
   }else if(isLocal){
     html+='<div class="branch-list">';
     pageBranches.forEach(function(b,bi){
-      var isCur=(b.name===current);
+      var isCur=(b.name===current)||(b.name.toLowerCase()===current.toLowerCase());
       var wid='bwrap-l-'+bi;
       var cls=isCur?' branch-item current':' branch-item';
       var nameHtml=search?_highlightBranchMatch(escapeHtml(b.name),search):escapeHtml(b.name);
@@ -4910,3 +4944,182 @@ function showGraphNodeInfo(event, idx) {
 }
 
 _initGraphPanel();
+
+// ═══════════ AI: Analyze Graph ═══════════
+function aiAnalyzeGraph() {
+  if (!_graphData || !_graphData.commits || !_graphData.commits.length) {
+    showToast('Please load the graph first (click ↻)', 'error', 3000);
+    return;
+  }
+  var btn = document.getElementById('btn-ai-graph');
+  if (btn) { btn.textContent = '⏳ Analyzing...'; btn.disabled = true; }
+
+  // Build a concise summary of the graph for AI analysis
+  var branches = {};
+  _graphData.commits.forEach(function(c) {
+    (c.labels || []).forEach(function(l) {
+      if (!branches[l]) branches[l] = { latest: c.msg, date: c.date, lane: c.lane };
+    });
+  });
+  var summary = 'Branch Graph Summary (latest ' + _graphData.commits.length + ' commits):\n';
+  summary += 'Branches:\n';
+  Object.keys(branches).forEach(function(b) {
+    summary += '  - ' + b + ' (latest: "' + (branches[b].latest || '').substring(0, 60) + '")\n';
+  });
+  summary += '\nRecent commits:\n';
+  _graphData.commits.slice(0, 20).forEach(function(c) {
+    var labels = (c.labels || []).length ? ' [' + c.labels.join(', ') + ']' : '';
+    summary += '  ' + (c.hash || '').substring(0, 7) + ' ' + (c.msg || '').substring(0, 80) + labels + '\n';
+  });
+
+  var cfg = (typeof getAIConfig === 'function') ? getAIConfig() : null;
+  if (!cfg || !cfg.provider) {
+    showToast('Please configure AI provider first (in AI panel)', 'error', 4000);
+    if (btn) { btn.textContent = '🤖 AI Analysis'; btn.disabled = false; }
+    return;
+  }
+
+  var messages = [
+    { role: 'system', content: 'You are a Git expert. Analyze the branch graph summary and provide insights: active branches, merge status, potential issues (stale branches, divergence). Be concise (under 300 words). Use markdown. Answer in the same language as the branch/commit content (Chinese if mixed).' },
+    { role: 'user', content: summary }
+  ];
+
+  fetch('/api/ai/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider: cfg.provider, api_key: cfg.api_key, base_url: cfg.base_url, model: cfg.model, messages: messages }),
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (!data.ok) {
+      showToast('AI error: ' + (data.error || ''), 'error', 4000);
+      if (btn) { btn.textContent = '🤖 AI Analysis'; btn.disabled = false; }
+      return;
+    }
+    _pollGraphAI(data.jobId, btn);
+  })
+  .catch(function(e) {
+    showToast('AI network error: ' + e.message, 'error', 4000);
+    if (btn) { btn.textContent = '🤖 AI Analysis'; btn.disabled = false; }
+  });
+}
+
+function _pollGraphAI(jobId, btn) {
+  fetch('/api/ai/chat-status?jobId=' + jobId)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.done) { setTimeout(function() { _pollGraphAI(jobId, btn); }, 800); return; }
+      if (btn) { btn.textContent = '🤖 AI Analysis'; btn.disabled = false; }
+      if (data.ok) {
+        _showGraphAIResult(data.text);
+      } else {
+        showToast('AI analysis failed: ' + (data.error || ''), 'error', 4000);
+      }
+    })
+    .catch(function() { setTimeout(function() { _pollGraphAI(jobId, btn); }, 1200); });
+}
+
+function _showGraphAIResult(text) {
+  var wrap = document.getElementById('graph-svg-wrap');
+  if (!wrap) return;
+  // Show AI result in a floating panel above the graph
+  var existing = document.getElementById('graph-ai-result');
+  if (existing) existing.remove();
+  var div = document.createElement('div');
+  div.id = 'graph-ai-result';
+  div.style.cssText = 'position:absolute;top:8px;left:8px;right:8px;z-index:20;background:#1e293b;border:1px solid #334155;border-radius:8px;padding:14px 16px;font-size:12px;color:#e2e8f0;line-height:1.7;max-height:60%;overflow-y:auto;white-space:pre-wrap;box-shadow:0 4px 12px rgba(0,0,0,.3)';
+  div.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="color:#a78bfa">🤖 AI Graph Analysis</b><button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:16px">✕</button></div><div>' + escapeHtml(text).replace(/\n/g, '<br>') + '</div>';
+  wrap.style.position = 'relative';
+  wrap.appendChild(div);
+}
+
+// ═══════════ AI: Create Worktree ═══════════
+function aiCreateWorktree() {
+  var branch = prompt('Enter branch name for new worktree:');
+  if (!branch || !branch.trim()) return;
+  branch = branch.trim();
+
+  // Auto-generate path: sibling of current project directory
+  var projectPath = '';
+  var pathEl = document.getElementById('project-path-display');
+  if (pathEl) projectPath = pathEl.textContent || pathEl.getAttribute('data-path') || '';
+
+  // Show a log modal
+  var uid = 'ai-wt-' + Date.now();
+  var logDivId = 'ai-wt-log-' + uid;
+  var logBox = '<div id="' + logDivId + '" style="'
+    + 'background:#0f172a;color:#d1fae5;font-family:monospace;font-size:12px;line-height:1.6;'
+    + 'padding:12px 14px;border-radius:8px;min-height:100px;max-height:280px;'
+    + 'overflow-y:auto;white-space:pre-wrap;word-break:break-all;border:1px solid #1e293b">'
+    + '</div>';
+
+  showModal(
+    '🤖 AI Creating Worktree — <span style="font-size:12px;font-weight:400;color:#a78bfa">' + escapeHtml(branch) + '</span>',
+    logBox, 'Close', null
+  );
+
+  var ld = document.getElementById(logDivId);
+  function log(msg, color) {
+    if (!ld) ld = document.getElementById(logDivId);
+    if (ld) ld.innerHTML += '<span style="color:' + (color || '#e2e8f0') + '">' + escapeHtml(msg) + '</span>\n';
+    if (ld) ld.scrollTop = ld.scrollHeight;
+  }
+
+  log('🌿 Branch: ' + branch, '#c4b5fd');
+  log('📍 Fetching project path...', '#94a3b8');
+
+  // Step 1: Get current project path
+  fetch(API_BASE + '/api/project-path')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var basePath = data.path || '';
+      if (!basePath) { log('❌ Cannot determine project path', '#f87171'); return; }
+
+      // Auto-generate worktree path as sibling directory
+      var parentDir = basePath.replace(/\/[^/]+\/?$/, '');
+      var wtPath = parentDir + '/' + branch.replace(/[^a-zA-Z0-9_.-]/g, '-');
+
+      log('📂 Worktree path: ' + wtPath, '#67e8f9');
+      log('⏳ Creating worktree...', '#fbbf24');
+
+      // Step 2: Create worktree
+      fetch(API_BASE + '/api/worktree-add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch: branch, path: wtPath })
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(result) {
+        if (result.ok) {
+          log('✅ Worktree created successfully!', '#4ade80');
+          log('🔄 Switching to new worktree...', '#fbbf24');
+
+          // Step 3: Switch to new worktree
+          fetch(API_BASE + '/api/worktree-switch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: wtPath })
+          })
+          .then(function(r) { return r.json(); })
+          .then(function(swResult) {
+            if (swResult.ok) {
+              log('✅ Switched to worktree: ' + branch, '#4ade80');
+              log('🎉 Done! Reloading page...', '#4ade80');
+              setTimeout(function() { window.location.reload(); }, 1500);
+            } else {
+              log('⚠️ Created but switch failed: ' + (swResult.error || ''), '#f87171');
+              log('You can manually switch from the Worktree panel.', '#94a3b8');
+            }
+          })
+          .catch(function(e) { log('❌ Switch error: ' + e.message, '#f87171'); });
+        } else {
+          log('❌ Failed: ' + (result.error || 'unknown error'), '#f87171');
+          if (result.error && result.error.indexOf('already exists') >= 0) {
+            log('💡 Tip: The branch or path already exists. Try a different name.', '#fbbf24');
+          }
+        }
+      })
+      .catch(function(e) { log('❌ Network error: ' + e.message, '#f87171'); });
+    })
+    .catch(function(e) { log('❌ Cannot get project path: ' + e.message, '#f87171'); });
+}

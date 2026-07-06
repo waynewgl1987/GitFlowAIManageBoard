@@ -340,8 +340,8 @@ def _run_gitop_streaming(job_id, op, mode=None):
         _append(f'🌿 Branch: {branch_name}')
 
         if op == 'fetch':
-            _append('⬇️ Operation: fetch --all --prune --verbose')
-            cmd = ["git", "fetch", "--all", "--prune", "--verbose"]
+            _append('⬇️ Operation: fetch origin --prune --verbose')
+            cmd = ["git", "fetch", "origin", "--prune", "--verbose"]
         else:
             mode_str = mode or 'merge'
             if mode_str == 'rebase':
@@ -357,37 +357,57 @@ def _run_gitop_streaming(job_id, op, mode=None):
         _append_raw('─' * 52)
         _append_raw('$ ' + ' '.join(cmd))
 
-        try:
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               text=True, cwd=PROJECT_PATH, env=run_env)
-        except Exception as e:
-            _append(f'ERROR: {e}')
-            with _PUSH_JOBS_LOCK:
-                job['done'] = True; job['ok'] = False; job['error'] = str(e)
-            return
+        def _exec_cmd(command):
+            """Execute command, stream output, return exit code."""
+            try:
+                proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   text=True, cwd=PROJECT_PATH, env=run_env)
+            except Exception as e:
+                _append(f'ERROR: {e}')
+                return -1
 
-        def rd(stream):
-            for l in stream:
-                _append(l)
+            def rd(stream):
+                for l in stream:
+                    _append(l)
 
-        t1 = threading.Thread(target=rd, args=(proc.stdout,), daemon=True)
-        t2 = threading.Thread(target=rd, args=(proc.stderr,), daemon=True)
-        t1.start(); t2.start()
+            t1 = threading.Thread(target=rd, args=(proc.stdout,), daemon=True)
+            t2 = threading.Thread(target=rd, args=(proc.stderr,), daemon=True)
+            t1.start(); t2.start()
 
-        timeout = get_network_timeout()
-        try:
-            proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            _append(f'⏱ Operation timed out after {timeout}s — check your network.')
+            timeout = get_network_timeout()
+            try:
+                proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                _append(f'⏱ Operation timed out after {timeout}s — check your network.')
 
-        t1.join(); t2.join()
-        rc = proc.returncode
+            t1.join(); t2.join()
+            return proc.returncode
+
+        rc = _exec_cmd(cmd)
+
+        # Auto-fix "cannot lock ref" errors by pruning stale refs and retrying
+        if rc != 0 and op == 'fetch':
+            lines_text = '\n'.join(job['lines'])
+            if 'cannot lock ref' in lines_text or 'unable to update local ref' in lines_text:
+                _append_raw('')
+                _append('🔧 Detected stale ref lock — running gc & prune, then retrying...')
+                _append_raw('$ git gc --prune=now')
+                subprocess.run(["git", "gc", "--prune=now"], cwd=PROJECT_PATH, env=run_env,
+                             capture_output=True, text=True, timeout=60)
+                _append_raw('$ git remote prune origin')
+                subprocess.run(["git", "remote", "prune", "origin"], cwd=PROJECT_PATH, env=run_env,
+                             capture_output=True, text=True, timeout=30)
+                _append_raw('$ ' + ' '.join(cmd))
+                rc = _exec_cmd(cmd)
+
         with _PUSH_JOBS_LOCK:
             job['done'] = True
             job['ok'] = (rc == 0)
             if rc != 0:
-                job['error'] = '\n'.join(job['lines'])
+                # Only include actual error lines, not verbose status output
+                err_lines = [l for l in job['lines'] if any(k in l.lower() for k in ['error', 'fatal', 'failed', 'timed out', 'couldn\'t', 'unable'])]
+                job['error'] = '\n'.join(err_lines) if err_lines else '\n'.join(job['lines'][-10:])
     except Exception as e:
         with _PUSH_JOBS_LOCK:
             job['done'] = True
@@ -708,8 +728,8 @@ def rebase_continue():
 
 
 def fetch():
-    """Fetch all remotes with pruning."""
-    out, err, rc = _run(["git", "fetch", "--all", "--prune", "--verbose"])
+    """Fetch from origin with pruning."""
+    out, err, rc = _run(["git", "fetch", "origin", "--prune", "--verbose"])
     combined = (out + "\n" + err).strip()
     return combined, err, rc
 

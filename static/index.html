@@ -14,6 +14,7 @@
   <div class="graph-panel-hdr">
     <span class="graph-panel-title">🌳 Branch Graph</span>
     <div style="display:flex;gap:4px">
+      <button class="graph-btn" onclick="aiAnalyzeGraph()" title="AI Analyze Graph" id="btn-ai-graph">🤖 AI Analysis</button>
       <button class="graph-btn" onclick="loadGitGraph()" title="Refresh graph">↻</button>
       <button class="graph-btn" onclick="toggleGraphPanel()" title="Close">✕</button>
     </div>
@@ -485,7 +486,10 @@
 <div class="worktree-popup" id="worktree-popup" style="display:none">
   <div class="wtp-header">
     <span class="wtp-header-title" data-i18n="wtp_header">🌲 Worktrees</span>
-    <button class="wtp-help-btn" onclick="toggleWorktreeHelp()" data-i18n-title="wtp_help_tooltip" title="What are worktrees?">?</button>
+    <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+      <button onclick="aiCreateWorktree()" title="AI Create Worktree" style="background:#6366f1;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;padding:4px 10px;white-space:nowrap;font-weight:600">🤖 AI</button>
+      <button class="wtp-help-btn" onclick="toggleWorktreeHelp()" data-i18n-title="wtp_help_tooltip" title="What are worktrees?">?</button>
+    </div>
   </div>
 
   <!-- Help panel (rendered by JS for i18n support) -->
