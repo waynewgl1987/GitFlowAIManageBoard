@@ -176,6 +176,11 @@ var T = {
   wtp_remove_failed: {en:'Remove failed: ', zh:'删除失败: '},
   wtp_btn_label: {en:'🌲 Worktrees', zh:'🌲 工作树'},
   wtp_occupied_prefix: {en:'⚠️ Branches already in use: ', zh:'⚠️ 已被占用的分支: '},
+  ai_wt_title: {en:'🤖 AI Create Worktree', zh:'🤖 AI 创建工作树'},
+  ai_wt_input_label: {en:'Enter branch name for new worktree:', zh:'请输入新工作树的分支名：'},
+  ai_wt_placeholder: {en:'e.g. feature/my-feature', zh:'例如 feature/my-feature'},
+  ai_wt_cancel: {en:'Cancel', zh:'取消'},
+  ai_wt_confirm: {en:'Create', zh:'创建'},
 
   // ── AI Panel ───────────────────────────────────────────────────
   ai_title: {en:'🤖 AI Git Assistant', zh:'🤖 AI Git 助手'},
@@ -5035,15 +5040,49 @@ function _showGraphAIResult(text) {
 
 // ═══════════ AI: Create Worktree ═══════════
 function aiCreateWorktree() {
-  var branch = prompt('Enter branch name for new worktree:');
-  if (!branch || !branch.trim()) return;
-  branch = branch.trim();
+  // Show input modal instead of system prompt
+  var inputId = 'ai-wt-input-' + Date.now();
+  var body = '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">' + t('ai_wt_input_label') + '</label>'
+    + '<input type="text" id="' + inputId + '" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;outline:none" placeholder="' + escapeAttr(t('ai_wt_placeholder')) + '" autofocus>';
 
-  // Auto-generate path: sibling of current project directory
-  var projectPath = '';
-  var pathEl = document.getElementById('project-path-display');
-  if (pathEl) projectPath = pathEl.textContent || pathEl.getAttribute('data-path') || '';
+  document.getElementById('modal-title').innerHTML = t('ai_wt_title');
+  document.getElementById('modal-msg').innerHTML = body;
+  var btnsDiv = document.getElementById('modal-btns');
+  btnsDiv.innerHTML = '';
 
+  var cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn btn-secondary';
+  cancelBtn.textContent = t('ai_wt_cancel');
+  cancelBtn.onclick = closeModal;
+
+  var confirmBtn = document.createElement('button');
+  confirmBtn.className = 'btn btn-primary';
+  confirmBtn.textContent = t('ai_wt_confirm');
+  confirmBtn.onclick = function() {
+    var inp = document.getElementById(inputId);
+    var branch = (inp && inp.value || '').trim();
+    if (!branch) { inp.style.borderColor = '#ef4444'; inp.focus(); return; }
+    closeModal();
+    _doAiCreateWorktree(branch);
+  };
+
+  btnsDiv.appendChild(cancelBtn);
+  btnsDiv.appendChild(confirmBtn);
+  document.getElementById('modal-bg').classList.add('show');
+
+  // Focus input and handle Enter key
+  setTimeout(function() {
+    var inp = document.getElementById(inputId);
+    if (inp) {
+      inp.focus();
+      inp.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { confirmBtn.click(); }
+      });
+    }
+  }, 100);
+}
+
+function _doAiCreateWorktree(branch) {
   // Show a log modal
   var uid = 'ai-wt-' + Date.now();
   var logDivId = 'ai-wt-log-' + uid;
