@@ -157,6 +157,38 @@ def resign_branch_commits(base="develop"):
     return True, f"Successfully re-signed {info['unsigned_count']} commit(s)"
 
 
+def resign_branch_commits_with_autostash(base="develop"):
+    """Auto-stash local changes, re-sign commits, then return (ok, message)."""
+    branch = current_branch()
+    if not branch:
+        return False, "Not on any branch"
+    if branch == base:
+        return False, f"Cannot re-sign: currently on base branch '{base}'"
+
+    # Clear leftover rebase state if present; ignore "no rebase in progress".
+    _run(["git", "rebase", "--abort"])
+
+    dirty_out, dirty_err, dirty_rc = _run(["git", "status", "--porcelain"])
+    if dirty_rc != 0:
+        return False, dirty_err or dirty_out or "Failed to inspect working tree"
+
+    stashed = False
+    if dirty_out.strip():
+        import time as _time
+        stash_label = f"auto-stash-before-resign-{int(_time.time())}"
+        stash_out, stash_err, stash_rc = _run(["git", "stash", "push", "-u", "-m", stash_label])
+        if stash_rc != 0:
+            return False, stash_err or stash_out or "Failed to stash local changes"
+        stashed = True
+
+    ok, msg = resign_branch_commits(base)
+    if not ok:
+        return False, msg
+    if stashed:
+        return True, f"{msg}. Local changes were auto-stashed."
+    return True, msg
+
+
 def get_protected_config():
     """Return protected branch config as {"exact": [...], "contains": [...]}."""
     _, _, exact, contains, _ = _load_app_config()

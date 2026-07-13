@@ -1316,7 +1316,35 @@ function doPush(credentials, force, remoteBranch){
                 doPush(credentials, true, remoteBranch);
                 doPush._skipResignCheck = false;
               } else {
-                addMsg('❌ Re-sign failed: ' + (d.error || ''), 'error');
+                var resignErr = (d && d.error) || '';
+                addMsg('❌ Re-sign failed: ' + resignErr, 'error');
+                var canAutoFix = /cannot rebase:\s*You have unstaged changes/i.test(resignErr) ||
+                                 /Please commit or stash them/i.test(resignErr);
+                if (canAutoFix) {
+                  showModalDouble(
+                    '🧹 Auto Fix Re-sign Failure',
+                    'Detected local changes blocking rebase.<br><br>' +
+                    'Run <b>auto stash + re-sign</b>, then push immediately?',
+                    '🧹 Auto Fix & Push',
+                    function() {
+                      addMsg('🧹 Auto-fixing and re-signing commits...', 'info');
+                      apiPost('/api/resign-commits-autofix', {base: 'develop'}, function(fix) {
+                        if (fix.ok) {
+                          addMsg('✅ ' + fix.message, 'success');
+                          doPush._skipResignCheck = true;
+                          doPush(credentials, true, remoteBranch);
+                          doPush._skipResignCheck = false;
+                        } else {
+                          addMsg('❌ Auto-fix failed: ' + ((fix && fix.error) || ''), 'error');
+                        }
+                      });
+                    },
+                    'Close',
+                    function() {},
+                    'btn-primary',
+                    'btn-secondary'
+                  );
+                }
               }
             });
           },

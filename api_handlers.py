@@ -17,7 +17,7 @@ from git_ops import (
     get_project_path, get_protected_config, is_branch_protected,
     get_network_timeout, save_network_timeout,
     get_gpg_sign, save_gpg_sign,
-    check_unsigned_commits, resign_branch_commits,
+    check_unsigned_commits, resign_branch_commits, resign_branch_commits_with_autostash,
     _ref_exists, _resolve_ref_for_compare,
     get_branches, has_uncommitted, stash_changes,
     stash_list, stash_diff, commit_diff, search_diff_code,
@@ -490,6 +490,15 @@ def handle_post(path, data, send_json):
     elif path == "/api/resign-commits":
         base = data.get("base", "develop")
         ok, msg = resign_branch_commits(base)
+        if ok:
+            send_json({"ok": True, "message": msg})
+        else:
+            send_json({"ok": False, "error": msg}, 400)
+        return True
+
+    elif path == "/api/resign-commits-autofix":
+        base = data.get("base", "develop")
+        ok, msg = resign_branch_commits_with_autostash(base)
         if ok:
             send_json({"ok": True, "message": msg})
         else:
