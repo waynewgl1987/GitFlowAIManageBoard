@@ -1414,7 +1414,8 @@ function doPush(credentials, force, remoteBranch){
             var col='#e2e8f0';
             var lineBody=line.replace(/^\[\d{2}:\d{2}:\d{2}\] /,''); // strip timestamp for matching
             if(/^─+$/.test(line)) col='#334155';
-            else if(/^error:|fatal:|ERROR|timed out/i.test(lineBody)) col='#f87171';
+            else if(/^(error:|fatal:|ERROR:)|\btimed out\b/i.test(lineBody)) col='#f87171';
+            else if(/Create a pull request|\[new branch\]|updating local tracking ref/i.test(lineBody)) col='#4ade80';
             else if(/^remote:|^To /i.test(lineBody)) col='#67e8f9';
             else if(/^\$/.test(lineBody)) col='#fbbf24';
             else if(/writing objects|compressing|counting|enumerating/i.test(lineBody)) col='#a5f3fc';
@@ -1693,7 +1694,7 @@ function _startGitopStream(op, mode, onDone){
             var col='#e2e8f0';
             var lineBody=line.replace(/^\[\d{2}:\d{2}:\d{2}\] /,'');
             if(/^─+$/.test(line)) col='#334155';
-            else if(/^error:|fatal:|ERROR|timed out/i.test(lineBody)) col='#f87171';
+            else if(/^(error:|fatal:|ERROR:)|\btimed out\b/i.test(lineBody)) col='#f87171';
             else if(/^remote:|^From |^origin\//i.test(lineBody)) col='#67e8f9';
             else if(/^\$/.test(lineBody)) col='#fbbf24';
             else if(/Already up.to.date/i.test(lineBody)) col='#4ade80';
@@ -2277,7 +2278,7 @@ function _doDeleteRemote(branchName, shortName){
       output.split('\n').forEach(function(line){
         if(!line.trim()) return;
         var col='#e2e8f0';
-        if(/^error:|fatal:|ERROR/i.test(line)) col='#f87171';
+        if(/^(error:|fatal:|ERROR:)/i.test(line)) col='#f87171';
         else if(/^remote:|^To /i.test(line)) col='#67e8f9';
         else if(/deleted/i.test(line)) col='#4ade80';
         else if(/hint:/i.test(line)) col='#94a3b8';
