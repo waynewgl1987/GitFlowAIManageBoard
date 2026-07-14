@@ -101,6 +101,7 @@ The default landing page. Shows all **unstaged and staged changes** in your work
 - Type your commit message and click **Confirm Commit**.
 - After a successful commit, a modal offers to **push to remote** immediately.
 - ⚠️ **Protected Branch Warning** — committing directly to `main`, `master`, `develop`, or `release` triggers a confirmation dialog to prevent accidental commits to shared branches.
+- The Commit list now auto-filters invalid/noise paths (such as `.` and `sourcepackage` / `sourcepackages`) so they won't be staged accidentally.
 
 **Gitignore Management:**
 - Click the **📋 Gitignore** button at the bottom toolbar to view and manage entries in `.gitignore`.
@@ -652,6 +653,7 @@ python3 /path/to/git_commit_tool.py
 - 填写提交信息，点击**确认 Commit** 即可提交。
 - 提交成功后弹出模态框，可选择**立即推送到远端**。
 - ⚠️ **重要分支警告** — 在 `main`、`master`、`develop` 或 `release` 分支上直接提交会弹出确认对话框，防止误向共享分支提交。
+- Commit 文件列表会自动过滤无效/噪音路径（如 `.`、`sourcepackage` / `sourcepackages`），避免误加入提交。
 
 **Gitignore 管理：**
 - 点击底部工具栏的 **📋 Gitignore** 按钮查看和管理 `.gitignore` 中的条目。

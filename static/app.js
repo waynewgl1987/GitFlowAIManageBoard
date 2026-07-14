@@ -1496,16 +1496,39 @@ function doPush(credentials, force, remoteBranch){
               pullRetryBtn.onclick=function(){
                 pullRetryBtn.disabled=true;pullRetryBtn.textContent='Pulling...';
                 var ld4=document.getElementById(logDivId);
-                if(ld4) ld4.innerHTML+='<span style="color:#94a3b8">⏳ Pulling (rebase)...\n</span>';
-                apiPost('/api/pull',{mode:'rebase'},function(pd){
-                  if(pd.ok){
-                    if(ld4) ld4.innerHTML+='<span style="color:#4ade80">✅ Pull OK — retrying push...\n</span>';
-                    closeModal();
-                    setTimeout(function(){ doPush(credentials||undefined); },300);
-                  }else{
-                    if(ld4) ld4.innerHTML+='<span style="color:#f87171">❌ Pull failed: '+escapeHtml(pd.error||pd.log||'')+'</span>\n';
-                    pullRetryBtn.disabled=false;pullRetryBtn.textContent='⬇️ Pull & Retry Push';
-                  }
+                apiGet('/api/has-uncommitted',function(hasData){
+                  var shouldStash=!!(hasData&&hasData.hasChanges);
+                  var doPullAndRetry=function(){
+                    if(ld4) ld4.innerHTML+='<span style="color:#94a3b8">⏳ Pulling (rebase)...\n</span>';
+                    apiPost('/api/pull',{mode:'rebase'},function(pd){
+                      if(pd.ok){
+                        if(ld4) ld4.innerHTML+='<span style="color:#4ade80">✅ Pull OK — retrying push...\n</span>';
+                        closeModal();
+                        setTimeout(function(){ doPush(credentials||undefined); },300);
+                        return;
+                      }
+                      var errTxt=pd.error||pd.log||'';
+                      if(ld4) ld4.innerHTML+='<span style="color:#f87171">❌ Pull failed: '+escapeHtml(errTxt)+'</span>\n';
+                      if(/CONFLICT|conflict|Automatic merge failed/.test(errTxt||'')){
+                        addMsg('⚠️ Pull 发生冲突，请先到 Conflicts 标签页解决后再 Push。','error');
+                        checkConflicts();
+                        loadConflicts();
+                      }
+                      pullRetryBtn.disabled=false;pullRetryBtn.textContent='⬇️ Pull & Retry Push';
+                    });
+                  };
+                  if(!shouldStash){doPullAndRetry();return;}
+                  var stashMsg='auto-stash-before-pull-retry-'+Date.now();
+                  if(ld4) ld4.innerHTML+='<span style="color:#94a3b8">📦 Local changes detected, stashing before pull...\n</span>';
+                  apiPost('/api/stash',{message:stashMsg},function(sd){
+                    if(!sd.ok){
+                      if(ld4) ld4.innerHTML+='<span style="color:#f87171">❌ Auto-stash failed: '+escapeHtml(sd.error||'')+'</span>\n';
+                      pullRetryBtn.disabled=false;pullRetryBtn.textContent='⬇️ Pull & Retry Push';
+                      return;
+                    }
+                    if(ld4) ld4.innerHTML+='<span style="color:#4ade80">✅ Stashed local changes. Continue pulling...\n</span>';
+                    doPullAndRetry();
+                  });
                 });
               };
               var forceBtn=document.createElement('button');
@@ -4400,49 +4423,27 @@ document.getElementById('commit-btn').addEventListener('click',function(){
       'Commit message: <b>'+escapeHtml(msg)+'</b><br><br>Files:<br>'+paths.map(escapeHtml).join('<br>'),
       'Confirm Commit',
       function(){
-      addMsg(t('stashing_pulling'),'info');
-      apiPost('/api/stash',{},function(stashData){
-        if(!stashData.ok){addMsg(t('stash_failed')+(stashData.error||''),'error');return}
-        apiPost('/api/pull',{mode:'merge'},function(pullData){
-          if(!pullData.ok){
-            addMsg(t('pull_fail')+(pullData.error||''),'error');
-            checkConflicts();
-            apiPost('/api/stash-pop',{index:0},function(){loadFiles()});
-            return;
-          }
-          addMsg(t('pull_ok_pop'),'info');
-          apiPost('/api/stash-pop',{index:0},function(popData){
-            if(!popData.ok){
-              addMsg(t('stash_conflict'),'error');
-              checkConflicts();
-              loadFiles();
-              return;
-            }
-            loadFiles();
-            apiPost('/api/commit',{message:msg,paths:paths},function(data){
-              if(data.ok){
-                addMsg(t('commit_ok')+': '+(data.stdout||''),'success');
-                document.getElementById('msg-input').value='';checkedPaths={};expandedPaths={};loadFiles();
-                var branchName=document.getElementById('branch-name').textContent||'';
-                setTimeout(function(){
-                  showModalDouble(
-                    '🚀 Push to remote?',
-                    'Commit successful!<br><br>Do you want to push to <b>origin/'+escapeHtml(branchName)+'</b> now?',
-                    'Push Now',
-                    function(){ doPush(); },
-                    'Skip (Local Only)',
-                    null,
-                    'btn-success',
-                    'btn-secondary'
-                  );
-                }, 300);
-              }else addMsg(t('commit_fail')+': '+(data.error||''),'error');
-            });
-          });
-        });
+      apiPost('/api/commit',{message:msg,paths:paths},function(data){
+        if(data.ok){
+          addMsg(t('commit_ok')+': '+(data.stdout||''),'success');
+          document.getElementById('msg-input').value='';checkedPaths={};expandedPaths={};loadFiles();
+          var branchName=document.getElementById('branch-name').textContent||'';
+          setTimeout(function(){
+            showModalDouble(
+              '🚀 Push to remote?',
+              'Commit successful!<br><br>Do you want to push to <b>origin/'+escapeHtml(branchName)+'</b> now?',
+              'Push Now',
+              function(){ doPush(); },
+              'Skip (Local Only)',
+              null,
+              'btn-success',
+              'btn-secondary'
+            );
+          }, 300);
+        }else addMsg(t('commit_fail')+': '+(data.error||''),'error');
       });
-    }); // close showModal
-  }); // end _warnProtectedThenDo
+        });
+    }); // close _warnProtectedThenDo
 }); // close addEventListener
 
 // ═══════════ Reset all ═══════════

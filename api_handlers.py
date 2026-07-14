@@ -29,6 +29,7 @@ from git_ops import (
     _get_merge_type, _get_merge_default_msg,
     resolve_conflict, get_file_commits,
     get_uncommitted_changes, get_commit_log,
+    is_valid_commit_path,
     reset_to, revert_commit, drop_commit, squash_commits, abort_merge_or_rebase,
     rebase_abort, rebase_skip, rebase_continue,
     worktree_list, worktree_add, worktree_remove, worktree_prune,
@@ -320,6 +321,9 @@ def handle_post(path, data, send_json):
 
     if path == "/api/toggle":
         fp = data.get("path", "")
+        if not is_valid_commit_path(fp):
+            send_json({"ok": False, "error": f"Invalid commit path: {fp}"}, 400)
+            return True
         action = data.get("action")
         if action == "add":
             stdout, stderr, rc = _run(["git", "add", fp])
@@ -371,7 +375,12 @@ def handle_post(path, data, send_json):
         if not paths:
             send_json({"ok": False, "error": "no files"}, 400)
             return True
-        for p in paths: _run(["git", "add", p])
+        clean_paths = [p for p in paths if is_valid_commit_path(p)]
+        if not clean_paths:
+            send_json({"ok": False, "error": "No valid files to commit"}, 400)
+            return True
+        for p in clean_paths:
+            _run(["git", "add", p])
         _, _, diff_rc = _run(["git", "diff", "--cached", "--quiet"])
         if diff_rc == 0:
             send_json({"ok": False, "error": "Nothing to commit — selected files have no staged changes."}, 400)

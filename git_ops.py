@@ -1048,6 +1048,25 @@ def get_file_commits(file_path, page=1, per_page=20):
     return {"commits": commits, "total": total, "page": page, "per_page": per_page, "file": file_path}
 
 
+def is_valid_commit_path(path):
+    """Return True if path is safe and meaningful for staging/commit UI actions."""
+    p = (path or "").strip().replace("\\", "/")
+    if not p:
+        return False
+    if p in {".", "./"}:
+        return False
+    # Prevent path traversal / out-of-repo paths.
+    if p.startswith("/") or p.startswith("../") or "/../" in p:
+        return False
+    low = p.lower().rstrip("/")
+    # Exclude noisy/generated package folders that should not appear in commit list.
+    if low in {"sourcepackage", "sourcepackages"}:
+        return False
+    if low.startswith("sourcepackage/") or low.startswith("sourcepackages/"):
+        return False
+    return True
+
+
 def get_uncommitted_changes():
     """Return list of uncommitted files with their diffs.
 
@@ -1076,6 +1095,8 @@ def get_uncommitted_changes():
     all_changed = unstaged | staged | untracked
     files = []
     for p in sorted(all_changed):
+        if not is_valid_commit_path(p):
+            continue
         if p in untracked:
             # New file not yet added — no diff available from git
             files.append({"path": p, "diff": ""})
