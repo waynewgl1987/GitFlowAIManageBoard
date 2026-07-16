@@ -25,6 +25,7 @@ from git_ops import (
     checkout_branch, create_branch,
     delete_branch_local, delete_branch_remote, rename_branch,
     fetch, pull_current, set_upstream, push_set_upstream,
+    rebase_current_onto, is_rebase_in_progress,
     get_conflicts, get_conflict_detail,
     _get_merge_type, _get_merge_default_msg,
     resolve_conflict, get_file_commits,
@@ -614,14 +615,16 @@ def handle_post(path, data, send_json):
         if not source:
             send_json({"ok": False, "error": "No branch specified"}, 400)
             return True
-        out, err, rc = _run(["git", "rebase", source])
+        out, err, rc = rebase_current_onto(source)
         combined = (out + "\n" + err).strip()
         has_conflict = rc != 0 and ("CONFLICT" in combined or "conflict" in combined.lower())
         already_up_to_date = rc == 0 and "is up to date" in combined
+        rebase_in_progress = is_rebase_in_progress()
         send_json({
             "ok": rc == 0,
             "log": combined,
             "hasConflict": has_conflict,
+            "rebaseInProgress": rebase_in_progress,
             "alreadyUpToDate": already_up_to_date,
             "error": combined if rc != 0 else "",
         })

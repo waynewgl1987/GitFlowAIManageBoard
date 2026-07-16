@@ -2672,43 +2672,132 @@ function _doMerge(sourceBranch,curBranch,msg){
 }
 
 function _doRebase(sourceBranch,curBranch){
-  addMsg(t('rebase_progress')+sourceBranch+'...','info');
-  apiPost('/api/rebase',{branch:sourceBranch},function(data){
-    var logBox='<div style="background:#0f172a;color:#e2e8f0;font-family:monospace;font-size:12px;'
-      +'line-height:1.6;padding:12px 14px;border-radius:8px;max-height:260px;overflow-y:auto;white-space:pre-wrap;margin-bottom:12px">'
-      +escapeHtml((data.log||'').trim())+'</div>';
-    if(data.ok){
-      if(data.alreadyUpToDate){
-        addMsg(t('rebase_up_to_date'),'info');
-        showModal('ℹ️ '+(L==='zh'?'已是最新':'Already Up To Date'),
-          '<div style="padding:12px 4px;color:#1e40af;font-size:14px">✅ <b>'+escapeHtml(curBranch)+'</b> '
-          +(L==='zh'?'已包含 <b>'+escapeHtml(sourceBranch)+'</b> 的所有最新代码，无需 Rebase。'
-            :'is already up to date with <b>'+escapeHtml(sourceBranch)+'</b>. Nothing to rebase.')+'</div>',
-          'OK',null);
-      }else{
+  function showForcePushPrompt(logBox){
+    var pushDesc=tf('rebase_push_desc',L,{branch:curBranch});
+    showModalDouble(
+      t('rebase_ok_title'),
+      logBox+'<div style="background:#fff7ed;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;font-size:13px;color:#92400e;margin-bottom:8px">'
+      +(L==='zh'?'⚠️ Rebase 重写了 commit 历史，若已推送到远端需要 <b>Force Push</b>。':'⚠️ Rebase rewrites commit history. If you already pushed, you need to <b>Force Push</b>.')
+      +'</div><b>'+pushDesc+'</b>',
+      L==='zh'?'Force Push 到远端':'Force Push to Remote',
+      function(){ doPushForce(); },
+      L==='zh'?'稍后手动推送':'Later (push manually)',
+      null,
+      'btn-warning','btn-secondary'
+    );
+  }
+
+  function runRebase(stashedBeforeRebase){
+    addMsg(t('rebase_progress')+sourceBranch+'...','info');
+    apiPost('/api/rebase',{branch:sourceBranch},function(data){
+      var logBox='<div style="background:#0f172a;color:#e2e8f0;font-family:monospace;font-size:12px;'
+        +'line-height:1.6;padding:12px 14px;border-radius:8px;max-height:260px;overflow-y:auto;white-space:pre-wrap;margin-bottom:12px">'
+        +escapeHtml((data.log||'').trim())+'</div>';
+      if(data.ok){
+        if(data.alreadyUpToDate){
+          addMsg(t('rebase_up_to_date'),'info');
+          showModal('ℹ️ '+(L==='zh'?'已是最新':'Already Up To Date'),
+            '<div style="padding:12px 4px;color:#1e40af;font-size:14px">✅ <b>'+escapeHtml(curBranch)+'</b> '
+            +(L==='zh'?'已包含 <b>'+escapeHtml(sourceBranch)+'</b> 的所有最新代码，无需 Rebase。'
+              :'is already up to date with <b>'+escapeHtml(sourceBranch)+'</b>. Nothing to rebase.')+'</div>',
+            'OK',null);
+          return;
+        }
+
         addMsg(t('rebase_ok'),'success');
         loadFiles();loadLog(1);checkConflicts();
-        var pushDesc=tf('rebase_push_desc',L,{branch:curBranch});
-        showModalDouble(
-          t('rebase_ok_title'),
-          logBox+'<div style="background:#fff7ed;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;font-size:13px;color:#92400e;margin-bottom:8px">'
-          +(L==='zh'?'⚠️ Rebase 重写了 commit 历史，若已推送到远端需要 <b>Force Push</b>。':'⚠️ Rebase rewrites commit history. If you already pushed, you need to <b>Force Push</b>.')
-          +'</div><b>'+pushDesc+'</b>',
-          L==='zh'?'Force Push 到远端':'Force Push to Remote',
-          function(){ doPushForce(); },
-          L==='zh'?'稍后手动推送':'Later (push manually)',
-          null,
-          'btn-warning','btn-secondary'
-        );
+
+        if(stashedBeforeRebase){
+          showModalDouble(
+            L==='zh'?'📦 Rebase 完成，恢复 Stash？':'📦 Rebase done, restore stash?',
+            logBox+'<div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:10px 14px;font-size:13px;color:#1e3a8a;margin-bottom:8px">'
+            +(L==='zh'
+              ?'检测到你在 Rebase 前已自动 Stash 本地改动。建议现在执行 <b>stash pop</b>。'
+              :'Your local changes were stashed before rebase. It is recommended to run <b>stash pop</b> now.')
+            +'</div>',
+            L==='zh'?'现在 Pop Stash':'Pop Stash Now',
+            function(){
+              apiPost('/api/stash-pop',{index:0},function(popData){
+                if(popData.ok){
+                  addMsg(L==='zh'?'✅ Stash 已恢复':'✅ Stash restored','success');
+                  loadFiles();
+                  showForcePushPrompt(logBox);
+                  return;
+                }
+                var popErr=popData.error||'';
+                var isConflict=popErr.indexOf('CONFLICT')>=0||popErr.toLowerCase().indexOf('conflict')>=0;
+                if(isConflict){
+                  addMsg(L==='zh'?'⚠️ Stash pop 出现冲突，请到 Conflicts 标签页解决':'⚠️ Stash pop has conflicts — go to Conflicts tab','error');
+                  checkConflicts();
+                  loadConflicts();
+                }else{
+                  addMsg((L==='zh'?'❌ Stash pop 失败: ':'❌ Stash pop failed: ')+popErr,'error');
+                }
+              });
+            },
+            L==='zh'?'稍后手动处理':'Later',
+            function(){ showForcePushPrompt(logBox); },
+            'btn-primary','btn-secondary'
+          );
+          return;
+        }
+
+        showForcePushPrompt(logBox);
+      }else if(data.hasConflict || data.rebaseInProgress){
+        addMsg(t('rebase_conflict_title')+' '+sourceBranch,'error');
+        if(stashedBeforeRebase){
+          addMsg(L==='zh'
+            ?'ℹ️ 你 Rebase 前的本地改动已在 Stash 中。先解决当前 Rebase 冲突，完成后再 Pop。'
+            :'ℹ️ Your pre-rebase local changes are safely in stash. Resolve rebase conflicts first, then pop stash.',
+            'info');
+        }
+        checkConflicts();
+        _showRebaseFailureModal(t('rebase_conflict_title'), logBox, true);
+      }else{
+        addMsg(t('rebase_fail_title')+': '+(data.error||''),'error');
+        showModal(t('rebase_fail_title'),logBox,'Close',null);
       }
-    }else if(data.hasConflict){
-      addMsg(t('rebase_conflict_title')+' '+sourceBranch,'error');
-      checkConflicts();
-      _showRebaseFailureModal(t('rebase_conflict_title'), logBox, true);
-    }else{
-      addMsg(t('rebase_fail_title')+': '+(data.error||''),'error');
-      _showRebaseFailureModal(t('rebase_fail_title'), logBox, false);
-    }
+    });
+  }
+
+  apiGet('/api/has-uncommitted',function(hasData){
+    if(!(hasData&&hasData.hasChanges)){ runRebase(false); return; }
+    document.getElementById('modal-title').innerHTML=L==='zh'?'🔒 检测到本地未提交改动':'🔒 Local Changes Detected';
+    document.getElementById('modal-msg').innerHTML='<div style="font-size:14px;line-height:1.7">'
+      +(L==='zh'
+        ?'Rebase 前建议先把当前本地修改保存到 Stash。<br><br><b>📦 Stash & Rebase</b>：先 stash，再 rebase；完成后会提示你 pop。<br><b>🔀 Rebase Anyway</b>：不 stash 直接 rebase（可能失败或冲突）。'
+        :'Before rebasing, it is recommended to stash local changes first.<br><br><b>📦 Stash & Rebase</b>: stash first, then rebase; you will be prompted to pop stash afterward.<br><b>🔀 Rebase Anyway</b>: run rebase without stashing (may fail or conflict).')
+      +'</div>';
+    var btnsDiv=document.getElementById('modal-btns');
+    btnsDiv.innerHTML='';
+    var cancelBtn=document.createElement('button');
+    cancelBtn.className='btn btn-secondary';
+    cancelBtn.textContent='Cancel';
+    cancelBtn.onclick=closeModal;
+    var rebaseBtn=document.createElement('button');
+    rebaseBtn.className='btn btn-primary';
+    rebaseBtn.textContent=L==='zh'?'🔀 Rebase Anyway':'🔀 Rebase Anyway';
+    rebaseBtn.onclick=function(){ closeModal(); runRebase(false); };
+    var stashBtn=document.createElement('button');
+    stashBtn.className='btn btn-warning';
+    stashBtn.textContent=L==='zh'?'📦 Stash & Rebase':'📦 Stash & Rebase';
+    stashBtn.onclick=function(){
+      closeModal();
+      var stashMsg='auto-stash-before-rebase-'+Date.now();
+      addMsg(L==='zh'?'📦 正在 stash 本地改动...':'📦 Stashing local changes...','info');
+      apiPost('/api/stash',{message:stashMsg},function(sd){
+        if(!sd.ok){
+          addMsg((L==='zh'?'❌ Stash 失败: ':'❌ Stash failed: ')+(sd.error||''),'error');
+          return;
+        }
+        addMsg(L==='zh'?'✅ 已 stash，本次将继续 Rebase':'✅ Stashed. Continuing rebase','info');
+        runRebase(true);
+      });
+    };
+    btnsDiv.appendChild(cancelBtn);
+    btnsDiv.appendChild(rebaseBtn);
+    btnsDiv.appendChild(stashBtn);
+    document.getElementById('modal-bg').classList.add('show');
   });
 }
 

@@ -752,6 +752,18 @@ def rename_branch(old_name, new_name):
     return _run(["git", "branch", "-m", old_name, new_name])
 
 
+def is_rebase_in_progress():
+    """Return True when .git has an in-progress rebase state."""
+    cwd = get_project_path()
+    return os.path.exists(os.path.join(cwd, ".git", "rebase-merge")) or \
+        os.path.exists(os.path.join(cwd, ".git", "rebase-apply"))
+
+
+def rebase_current_onto(source):
+    """Rebase current branch onto source, with git autostash explicitly disabled."""
+    return _run(["git", "-c", "rebase.autoStash=false", "rebase", source])
+
+
 def rebase_abort():
     """Abort an in-progress rebase."""
     return _run(["git", "rebase", "--abort"])
