@@ -2754,7 +2754,37 @@ function _doRebase(sourceBranch,curBranch){
         checkConflicts();
         _showRebaseFailureModal(t('rebase_conflict_title'), logBox, true);
       }else{
-        addMsg(t('rebase_fail_title')+': '+(data.error||''),'error');
+        var errTxt=(data.error||'');
+        var needStashBeforeRebase=/cannot rebase:.*unstaged changes|Please commit or stash them|uncommitted changes/i.test(errTxt);
+        if(needStashBeforeRebase){
+          addMsg(L==='zh'?'⚠️ Rebase 前需要先 stash 或 commit 本地改动':'⚠️ Rebase requires stashing or committing local changes first','error');
+          showModalDouble(
+            L==='zh'?'⚠️ 本地改动阻止 Rebase':'⚠️ Local changes block rebase',
+            logBox+'<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px;color:#92400e;font-size:13px;margin-bottom:8px">'
+            +(L==='zh'
+              ?'检测到未提交改动。建议先执行 <b>Stash</b>，再自动重试 Rebase。'
+              :'Uncommitted local changes detected. Stash first, then retry rebase.')
+            +'</div>',
+            L==='zh'?'📦 Stash & Retry Rebase':'📦 Stash & Retry Rebase',
+            function(){
+              var stashMsg='auto-stash-before-rebase-retry-'+Date.now();
+              addMsg(L==='zh'?'📦 正在 stash 本地改动...':'📦 Stashing local changes...','info');
+              apiPost('/api/stash',{message:stashMsg},function(sd){
+                if(!sd.ok){
+                  addMsg((L==='zh'?'❌ Stash 失败: ':'❌ Stash failed: ')+(sd.error||''),'error');
+                  return;
+                }
+                addMsg(L==='zh'?'✅ 已 stash，正在重试 Rebase':'✅ Stashed. Retrying rebase','info');
+                runRebase(true);
+              });
+            },
+            L==='zh'?'取消':'Cancel',
+            null,
+            'btn-warning','btn-secondary'
+          );
+          return;
+        }
+        addMsg(t('rebase_fail_title')+': '+errTxt,'error');
         showModal(t('rebase_fail_title'),logBox,'Close',null);
       }
     });
