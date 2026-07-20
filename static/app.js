@@ -3623,8 +3623,12 @@ function _openCommitAIComparePanel(filePath, commitHash, currentDiff){
         +'<div style="padding:8px 12px;font-size:12px;color:#64748b;border-bottom:1px solid #f1f5f9">'
           +'Current: <code>'+escapeHtml((cInfo.short_hash||commitHash.substring(0,7)||''))+'</code>'
           +(cInfo.message?(' · '+escapeHtml(cInfo.message)):'')
+          +(cInfo.date?('<div style="margin-top:4px">Date: '+escapeHtml(cInfo.date)+'</div>'):'')
         +'</div>'
         +'<div id="commit-ai-current-diff" style="flex:1;overflow-y:auto;padding:10px;background:#fafafa">'+highlightDiff(currentDiff||'')+'</div>'
+        +'<div style="padding:8px 12px;border-top:1px solid #f1f5f9;background:#f8fafc">'
+          +'<button id="commit-ai-purpose-btn" class="btn btn-success" style="padding:5px 10px;font-size:12px" onclick="runCurrentCommitPurposeAnalysis()">🎯 Analyze purpose & reasonableness</button>'
+        +'</div>'
       +'</div>'
       +'<div style="width:35%;min-width:340px;border:1px solid #e5e7eb;border-radius:10px;display:flex;flex-direction:column;overflow:hidden;background:#fff">'
         +'<div style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;font-weight:700;color:#0f172a">🤖 AI Analysis Result</div>'
@@ -3814,6 +3818,97 @@ function runCommitHistoryAICompare(){
     if(runBtn){ runBtn.disabled=false; runBtn.textContent='Analyze'; }
     if(result) result.innerHTML='<div style="color:#ef4444">❌ '+escapeHtml(e.message||'Network error')+'</div>';
   });
+}
+
+function runCurrentCommitPurposeAnalysis(){
+  var st=_commitAIPanelState;
+  if(!st||!st.currentDiff)return;
+  var cfg=(typeof getAIConfig==='function')?getAIConfig():null;
+  if(!cfg||!cfg.provider){
+    addMsg('❌ Please configure AI provider first (AI panel).','error');
+    return;
+  }
+
+  var purposeBtn=document.getElementById('commit-ai-purpose-btn');
+  if(purposeBtn){ purposeBtn.disabled=true; purposeBtn.textContent='Analyzing...'; }
+  var result=document.getElementById('commit-ai-result');
+  if(result){
+    result.innerHTML='<div style="color:#64748b">AI is analyzing the intent and reasonableness of current commit changes...</div>';
+  }
+  var progressWrap=document.getElementById('commit-ai-analyze-progress');
+  if(progressWrap) progressWrap.style.display='block';
+  var timer=_startAutoProgress('commit-ai-analyze-progress','AI analyzing');
+
+  var curMeta=_logCommitMap[st.currentCommitHash]||{};
+  var prompt=
+    'Analyze the purpose and reasonableness of this code change for file "'+st.filePath+'".\n\n'
+    +'Commit metadata:\n'
+    +'- hash: '+(curMeta.short_hash||st.currentCommitHash.substring(0,7))+'\n'
+    +'- author: '+(curMeta.author||'')+'\n'
+    +'- date: '+(curMeta.date||'')+'\n'
+    +'- message: '+(curMeta.message||'')+'\n\n'
+    +'File diff:\n```diff\n'+st.currentDiff.slice(0,7000)+'\n```\n\n'
+    +'Please provide:\n'
+    +'1. The likely business/technical intent of this change\n'
+    +'2. Whether the implementation is reasonable and why\n'
+    +'3. Possible side effects or risks\n'
+    +'4. Suggestions to improve robustness/readability';
+
+  var messages=[
+    {role:'system',content:'You are an expert senior engineer. Analyze code-change intent and implementation reasonableness. Be concise, practical, and specific.'},
+    {role:'user',content:prompt}
+  ];
+
+  fetch('/api/ai/chat',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({provider:cfg.provider,api_key:cfg.api_key,base_url:cfg.base_url,model:cfg.model,messages:messages})
+  })
+  .then(function(r){return r.json();})
+  .then(function(data){
+    if(!data.ok){
+      _stopAutoProgress(timer,'commit-ai-analyze-progress','Failed');
+      if(progressWrap) progressWrap.style.display='none';
+      if(purposeBtn){ purposeBtn.disabled=false; purposeBtn.textContent='🎯 Analyze purpose & reasonableness'; }
+      if(result) result.innerHTML='<div style="color:#ef4444">❌ '+escapeHtml(data.error||'AI request failed')+'</div>';
+      return;
+    }
+    _pollCommitAIPurposeResult(data.jobId,timer,purposeBtn,result,progressWrap);
+  })
+  .catch(function(e){
+    _stopAutoProgress(timer,'commit-ai-analyze-progress','Failed');
+    if(progressWrap) progressWrap.style.display='none';
+    if(purposeBtn){ purposeBtn.disabled=false; purposeBtn.textContent='🎯 Analyze purpose & reasonableness'; }
+    if(result) result.innerHTML='<div style="color:#ef4444">❌ '+escapeHtml(e.message||'Network error')+'</div>';
+  });
+}
+
+function _pollCommitAIPurposeResult(jobId,timer,purposeBtn,result,progressWrap){
+  fetch('/api/ai/chat-status?jobId='+jobId)
+    .then(function(r){return r.json();})
+    .then(function(data){
+      if(!data.done){
+        setTimeout(function(){_pollCommitAIPurposeResult(jobId,timer,purposeBtn,result,progressWrap);},800);
+        return;
+      }
+      _stopAutoProgress(timer,'commit-ai-analyze-progress','Completed');
+      setTimeout(function(){ if(progressWrap) progressWrap.style.display='none'; },300);
+      if(purposeBtn){ purposeBtn.disabled=false; purposeBtn.textContent='🎯 Analyze purpose & reasonableness'; }
+      if(!data.ok){
+        if(result) result.innerHTML='<div style="color:#ef4444">❌ '+escapeHtml(data.error||'AI analysis failed')+'</div>';
+        return;
+      }
+      if(result){
+        result.innerHTML='<div style="font-size:12px;color:#0f172a;background:#eafff2;border:1px solid #a7f3d0;border-radius:8px;padding:8px 10px;margin-bottom:10px">'
+          +'Current commit purpose/reasonableness analysis completed.'
+          +'</div>'
+          +'<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;white-space:pre-wrap;line-height:1.75">'
+          +escapeHtml(data.text||'').replace(/\n/g,'<br>')+'</div>';
+      }
+    })
+    .catch(function(){
+      setTimeout(function(){_pollCommitAIPurposeResult(jobId,timer,purposeBtn,result,progressWrap);},1200);
+    });
 }
 
 function _pollCommitAICompareResult(jobId,timer,runBtn,result,progressWrap){
