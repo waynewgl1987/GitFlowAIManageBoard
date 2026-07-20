@@ -79,7 +79,8 @@
   <div class="top-bar-row top-bar-row--tabs">
     <button class="btn-tab active" id="tab-commit" onclick="switchPage('main')" data-i18n="tab_commit">Commit</button>
     <button class="btn-tab" id="tab-branches" onclick="loadBranches(1)" data-i18n="tab_branches">Branches</button>
-    <button class="btn-tab" id="tab-log" onclick="loadLog(1)" data-i18n="tab_log">Commit Log</button>
+    <button class="btn-tab" id="tab-log" onclick="loadLog(1)" data-i18n="tab_log">Commits History</button>
+    <button class="btn-tab" id="tab-prs" onclick="loadPullRequests(1)" data-i18n="tab_prs">Pull Requests</button>
     <button class="btn-tab" id="tab-conflicts" onclick="loadConflicts()" data-i18n="tab_conflicts">Conflicts</button>
     <button class="btn-tab" id="tab-stash" onclick="loadStash()" data-i18n="tab_stash">Stash</button>
     <button class="btn-tab" id="btn-graph-toggle" onclick="toggleGraphPanel()" data-i18n="tab_graph">Graph 🌳</button>
@@ -256,7 +257,7 @@
 <!-- ═══════════ Log Page ═══════════ -->
 <div class="page" id="page-log">
   <button class="btn btn-secondary btn-back" onclick="switchPage('main')">← <span data-i18n="back">Back</span></button>
-  <h2 style="margin-bottom:16px" data-i18n="log_title">Commit Log</h2>
+  <h2 style="margin-bottom:16px" data-i18n="log_title">Commits History</h2>
   <div class="log-controls">
     <input type="text" id="log-search" data-i18n-placeholder="log_search_placeholder" placeholder="Search hash / author / message..." style="width:200px" oninput="onLogSearchInput()">
     <input type="text" id="log-code-search" data-i18n-placeholder="code_search_placeholder" placeholder="Search code in diffs..." style="width:200px" oninput="filterCommitDiffs()">
@@ -282,6 +283,27 @@
   </div>
   <div id="log-content"></div>
   <div class="pagination" id="log-pagination"></div>
+</div>
+
+<!-- ═══════════ Pull Requests Page ═══════════ -->
+<div class="page" id="page-prs">
+  <button class="btn btn-secondary btn-back" onclick="switchPage('main')">← <span data-i18n="back">Back</span></button>
+  <h2 style="margin-bottom:16px" data-i18n="prs_title">Pull Requests</h2>
+  <div class="log-controls">
+    <input type="text" id="prs-search" data-i18n-placeholder="prs_search_placeholder" placeholder="Search PR # / author / title..." style="width:240px" oninput="onPRSearchInput()">
+    <button class="btn btn-sm btn-primary" id="prs-search-btn" onclick="clearPRSearch()" style="display:none">✕</button>
+    <select id="prs-per-page" onchange="onPerPageChange(this,'prs')">
+      <option value="1">1/pg</option><option value="5">5/pg</option><option value="10" selected>10/pg</option><option value="20">20/pg</option><option value="50">50/pg</option><option value="100">100/pg</option><option value="200">200/pg</option><option value="300">300/pg</option><option value="0">All ⚠️</option>
+    </select>
+    <span id="prs-all-warn" style="display:none;font-size:12px;color:#d97706;background:#fef3c7;padding:2px 10px;border-radius:6px" data-i18n="all_mode_slow">⚠️ Loading all may be slow</span>
+    <div style="display:flex;gap:6px;align-items:center">
+      <button id="prs-tab-in-review" class="btn btn-sm btn-primary" onclick="setPRState('in_review')" data-i18n="prs_tab_in_review">In Review</button>
+      <button id="prs-tab-merged" class="btn btn-sm btn-secondary" onclick="setPRState('merged')" data-i18n="prs_tab_merged">Merged</button>
+      <button id="prs-tab-closed" class="btn btn-sm btn-secondary" onclick="setPRState('closed')" data-i18n="prs_tab_closed">Closed</button>
+    </div>
+  </div>
+  <div id="prs-content"></div>
+  <div class="pagination" id="prs-pagination"></div>
 </div>
 
 <!-- ═══════════ Msg Log Page ═══════════ -->

@@ -365,6 +365,20 @@ input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:var(--
 }
 .log-actions{white-space:nowrap}
 .log-actions button{margin-right:4px}
+.commit-ai-thinking{
+  font-size:12px;
+  font-weight:700;
+  background:linear-gradient(90deg,#2563eb,#7c3aed,#06b6d4,#2563eb);
+  background-size:220% 100%;
+  -webkit-background-clip:text;
+  background-clip:text;
+  color:transparent;
+  animation:commitAiThinkingGradient 1.6s linear infinite;
+}
+@keyframes commitAiThinkingGradient{
+  0%{background-position:0% 50%}
+  100%{background-position:220% 50%}
+}
 .pagination{display:flex;gap:6px;align-items:center;margin-top:16px;justify-content:center;flex-wrap:wrap}
 .pagination .page-num{padding:6px 12px;border-radius:6px;border:1px solid #d1d5db;cursor:pointer;font-size:13px;background:#fff}
 .pagination .page-num:hover{background:var(--color-border)}

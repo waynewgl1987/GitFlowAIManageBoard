@@ -22,6 +22,7 @@ from git_ops import (
     get_branches, has_uncommitted, stash_changes,
     stash_list, stash_diff, commit_diff, commit_files, search_diff_code,
     stash_pop, stash_drop, file_commit_diff,
+    pull_request_diff,
     checkout_branch, create_branch,
     delete_branch_local, delete_branch_remote, rename_branch,
     fetch, pull_current, set_upstream, push_set_upstream,
@@ -29,7 +30,7 @@ from git_ops import (
     get_conflicts, get_conflict_detail,
     _get_merge_type, _get_merge_default_msg,
     resolve_conflict, get_file_commits,
-    get_uncommitted_changes, get_commit_log,
+    get_uncommitted_changes, get_commit_log, get_pull_requests,
     is_valid_commit_path,
     reset_to, revert_commit, drop_commit, squash_commits, abort_merge_or_rebase,
     rebase_abort, rebase_skip, rebase_continue,
@@ -143,6 +144,12 @@ def handle_get(path, params, send_json, send_stream=None):
         send_json({"diff": file_commit_diff(commit, file_path)})
         return True
 
+    elif path == "/api/pull-request-diff":
+        number = params.get("number", [""])[0]
+        out, err, rc = pull_request_diff(number)
+        send_json({"ok": rc == 0, "diff": out if rc == 0 else "", "error": err if rc != 0 else ""})
+        return True
+
     elif path == "/api/conflicts":
         cf = get_conflicts()
         send_json({
@@ -159,6 +166,14 @@ def handle_get(path, params, send_json, send_stream=None):
         search = params.get("search", [""])[0]
         order = params.get("order", ["desc"])[0]
         send_json(get_commit_log(page, per_page, search, order))
+        return True
+
+    elif path == "/api/pull-requests":
+        page = int(params.get("page", ["1"])[0])
+        per_page = int(params.get("per_page", ["10"])[0])
+        search = params.get("search", [""])[0]
+        state = params.get("state", ["in_review"])[0]
+        send_json(get_pull_requests(page, per_page, state, search))
         return True
 
     elif path == "/api/search-diff":

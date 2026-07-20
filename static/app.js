@@ -9,7 +9,8 @@ var T = {
   branches_title: {en:'Branches', zh:'分支列表'},
   stash_title: {en:'Stash List', zh:'Stash 列表'},
   conflicts_title: {en:'Conflict Resolution', zh:'冲突解决'},
-  log_title: {en:'Commit Log', zh:'提交记录'},
+  log_title: {en:'Commits History', zh:'提交历史'},
+  prs_title: {en:'Pull Requests', zh:'拉取请求'},
   msglog_title: {en:'Message Log', zh:'消息日志'},
   abort_conflict: {en:'Reset Conflict State', zh:'重置冲突状态'},
   msg_count: {en:'Messages: {n}', zh:'消息: {n} 条'},
@@ -294,10 +295,21 @@ var T = {
   squash_msg_placeholder: {en:'New commit message...', zh:'合并后的新 commit 消息...'},
   restore_page_title: {en:'Restore File to Commit', zh:'还原文件到指定 Commit'},
   restore_page_desc: {en:'Select a commit below to restore this file to that version. This will overwrite your current working copy.', zh:'选择一个 commit，将当前文件还原到该版本（会覆盖当前工作区文件）。'},
-  back_to_log: {en:'← Back to Log', zh:'← 返回 Commit Log'},
+  back_to_log: {en:'← Back to Commits History', zh:'← 返回提交历史'},
   tab_commit: {en:'Commit', zh:'提交'},
   tab_branches: {en:'Branches', zh:'分支'},
-  tab_log: {en:'Commit Log', zh:'提交日志'},
+  tab_log: {en:'Commits History', zh:'提交历史'},
+  tab_prs: {en:'Pull Requests', zh:'拉取请求'},
+  prs_tab_in_review: {en:'In Review', zh:'评审中'},
+  prs_tab_merged: {en:'Merged', zh:'已合并'},
+  prs_tab_closed: {en:'Closed', zh:'已关闭'},
+  prs_search_placeholder: {en:'Search PR # / author / title...', zh:'搜索 PR 编号 / 作者 / 标题...'},
+  prs_no_match: {en:'No matching pull requests', zh:'无匹配的拉取请求'},
+  prs_open: {en:'In Review', zh:'评审中'},
+  prs_merged: {en:'Merged', zh:'已合并'},
+  prs_closed: {en:'Closed', zh:'已关闭'},
+  prs_draft: {en:'Draft', zh:'草稿'},
+  prs_view: {en:'View', zh:'查看'},
   tab_conflicts: {en:'Conflicts', zh:'冲突'},
   tab_stash: {en:'Stash', zh:'暂存'},
   tab_graph: {en:'Graph 🌳', zh:'图谱 🌳'},
@@ -497,6 +509,7 @@ function switchLang(lang) {
     else if (id === 'page-stash') loadStash();
     else if (id === 'page-conflicts') loadConflicts();
     else if (id === 'page-log') loadLog(1);
+    else if (id === 'page-prs') loadPullRequests(1);
     else if (id === 'page-msglog') loadMsgLog(1);
   }
 }
@@ -527,13 +540,42 @@ function applyI18n() {
 
 var msgLog = [];
 var msgId = 0;
+var _MSGLOG_STORAGE_KEY='git_tool_msg_log_v1';
+var _MSGLOG_MAX_ENTRIES=3000;
+
+function _saveMsgLogToStorage(){
+  try{
+    if(msgLog.length>_MSGLOG_MAX_ENTRIES){
+      msgLog=msgLog.slice(msgLog.length-_MSGLOG_MAX_ENTRIES);
+    }
+    localStorage.setItem(_MSGLOG_STORAGE_KEY, JSON.stringify(msgLog));
+  }catch(e){}
+}
+
+function _loadMsgLogFromStorage(){
+  try{
+    var raw=localStorage.getItem(_MSGLOG_STORAGE_KEY);
+    if(!raw)return;
+    var arr=JSON.parse(raw);
+    if(Array.isArray(arr)){
+      msgLog=arr.filter(function(it){
+        return it && typeof it.time==='string' && typeof it.type==='string' && typeof it.text==='string';
+      });
+      if(msgLog.length>_MSGLOG_MAX_ENTRIES){
+        msgLog=msgLog.slice(msgLog.length-_MSGLOG_MAX_ENTRIES);
+      }
+    }
+  }catch(e){}
+}
 
 // Init
 (function(){
   try {
+    _loadMsgLogFromStorage();
     var sel = document.getElementById('lang-sel');
     if (sel) sel.value = L;
     applyI18n();
+    updateMsgCount();
   } catch(e) {
     document.body.insertAdjacentHTML('afterbegin','<div style="background:#fee2e2;color:#991b1b;padding:10px;margin:10px;border-radius:8px">JS Error: '+e.message+'</div>');
   }
@@ -572,6 +614,7 @@ function onPerPageChange(sel, section){
   if(warn)warn.style.display=isAll?'inline-block':'none';
   if(section==='branches')renderBranchPage(1);  // use cache; no network call needed
   else if(section==='log')loadLog(1);
+  else if(section==='prs')loadPullRequests(1);
   else if(section==='stash')loadStash(1);
 }
 
@@ -584,6 +627,7 @@ function addMsg(msg, cls, opts) {
   opts=opts||{};
   var maxLines = opts.maxLines || 0; // 0 = no limit
   msgLog.push({time:new Date().toLocaleString(), type:cls, text:msg});
+  _saveMsgLogToStorage();
   updateMsgCount();
   var area=document.getElementById('msg-area');
   area.innerHTML='';
@@ -604,6 +648,7 @@ function addMsg(msg, cls, opts) {
 function addMsgWithAction(msg, cls, actions) {
   cls=cls||'info';
   msgLog.push({time:new Date().toLocaleString(), type:cls, text:msg});
+  _saveMsgLogToStorage();
   updateMsgCount();
   var area=document.getElementById('msg-area');
   area.innerHTML='';
@@ -653,9 +698,10 @@ function loadMsgLog(page) {
   switchPage('msglog');
   var perPage=10;
   var total=msgLog.length;
-  var totalPages=Math.ceil(total/perPage);
+  var totalPages=Math.max(1,Math.ceil(total/perPage));
   var start=(page-1)*perPage;
-  var items=msgLog.slice(start,start+perPage).reverse();
+  var newestFirst=msgLog.slice().reverse();
+  var items=newestFirst.slice(start,start+perPage);
   var container=document.getElementById('msglog-content');
   if(!items.length){container.innerHTML='<div class="empty">No messages</div>';return}
   var html='<table class="log-table"><thead><tr><th>Time</th><th>Type</th><th>Message</th></tr></thead><tbody>';
@@ -665,20 +711,13 @@ function loadMsgLog(page) {
   });
   html+='</tbody></table>';
   container.innerHTML=html;
-  // pagination
-  var pag=document.getElementById('msglog-pagination');
-  if(totalPages<=1){pag.innerHTML='';return}
-  var phtml='<span class="page-info">Total '+total+'</span>';
-  for(var i=1;i<=totalPages;i++){
-    var cl=(i===page)?' page-num active':' page-num';
-    phtml+='<span class="'+cl+'" onclick="loadMsgLog('+i+')">'+i+'</span>';
-  }
-  pag.innerHTML=phtml;
+  _setSmartPagination('msglog', totalPages, page, 'loadMsgLog', total);
 }
 
 function clearMsgLog() {
   showModal(t('confirm_clear_msg'), t('confirm_clear_msg'), 'Clear', function(){
     msgLog=[];
+    _saveMsgLogToStorage();
     updateMsgCount();
     addMsg(t('msg_cleared'),'success');
     loadMsgLog(1);
@@ -750,7 +789,7 @@ function switchPage(name) {
   if(target)target.classList.add('active');
   var tabs=document.querySelectorAll('.btn-tab');
   for(var j=0;j<tabs.length;j++)tabs[j].classList.remove('active');
-  var tabMap={main:'commit',branches:'branches',stash:'stash',conflicts:'conflicts',log:'log',msglog:'log',restore:'log'};
+  var tabMap={main:'commit',branches:'branches',stash:'stash',conflicts:'conflicts',log:'log',prs:'prs',msglog:'log',restore:'log'};
   var tabId='tab-'+(tabMap[name]||name);
   var activeTab=document.getElementById(tabId);
   if(activeTab)activeTab.classList.add('active');
@@ -3304,6 +3343,10 @@ function showStashDialog(paths, onSuccess) {
 // ═══════════ Log page ═══════════
 var logDebounceTimer=null;
 var logSortOrder='desc'; // 'desc' = newest first, 'asc' = oldest first
+var prDebounceTimer=null;
+var prState='in_review';
+var currentPRData=null;
+var _prDiffCache={}; // prNumber -> unified diff text
 var _logCommitMap={}; // full-hash -> commit row data
 var _commitFileDiffStore={}; // key: "<commit>::<file>" -> file diff text for that commit
 var _commitAIPanelState=null;
@@ -3328,6 +3371,40 @@ function clearLogSearch(){
   loadLog(1);
 }
 
+function onPRSearchInput(){
+  var val=document.getElementById('prs-search').value;
+  document.getElementById('prs-search-btn').style.display=val?'inline-block':'none';
+  clearTimeout(prDebounceTimer);
+  prDebounceTimer=setTimeout(function(){loadPullRequests(1)},300);
+}
+
+function clearPRSearch(){
+  document.getElementById('prs-search').value='';
+  document.getElementById('prs-search-btn').style.display='none';
+  loadPullRequests(1);
+}
+
+function setPRState(state){
+  prState=(state==='merged'||state==='closed')?state:'in_review';
+  _updatePRStateTabs();
+  loadPullRequests(1);
+}
+
+function _updatePRStateTabs(){
+  var inBtn=document.getElementById('prs-tab-in-review');
+  var mgBtn=document.getElementById('prs-tab-merged');
+  var clBtn=document.getElementById('prs-tab-closed');
+  if(inBtn){
+    inBtn.className='btn btn-sm '+(prState==='in_review'?'btn-primary':'btn-secondary');
+  }
+  if(mgBtn){
+    mgBtn.className='btn btn-sm '+(prState==='merged'?'btn-primary':'btn-secondary');
+  }
+  if(clBtn){
+    clBtn.className='btn btn-sm '+(prState==='closed'?'btn-primary':'btn-secondary');
+  }
+}
+
 function toggleLogSort(){
   logSortOrder=logSortOrder==='desc'?'asc':'desc';
   loadLog(1);
@@ -3350,6 +3427,187 @@ function loadLog(page){
     renderLog(data);
     renderPagination(data);
     if(data.commits&&data.commits.length)showToast('Loaded '+data.commits.length+' commit(s)','ok',2000);
+  });
+}
+
+function loadPullRequests(page){
+  page=page||1;
+  switchPage('prs');
+  _updatePRStateTabs();
+  document.getElementById('prs-content').innerHTML='<div class="loading-bar"><span class="spinner"></span>'+(L==='zh'?'正在加载拉取请求...':'Loading pull requests...')+'</div>';
+  document.getElementById('prs-pagination').innerHTML='';
+  var search=document.getElementById('prs-search').value;
+  var ppv=document.getElementById('prs-per-page').value;
+  var perPage=ppv===''?10:parseInt(ppv,10);
+  var url='/api/pull-requests?page='+page+'&per_page='+perPage+'&state='+encodeURIComponent(prState);
+  if(search) url+='&search='+encodeURIComponent(search);
+  fetch(API_BASE+url).then(function(r){return r.json();}).then(function(data){
+    currentPRData=data||{};
+    renderPullRequests(currentPRData);
+    renderPRPagination(currentPRData);
+    if(currentPRData.error){
+      addMsg(t('loading_failed')+currentPRData.error,'error');
+    }
+  }).catch(function(e){
+    document.getElementById('prs-content').innerHTML='<div class="empty">'+t('network_err')+escapeHtml(e.message||'')+'</div>';
+    document.getElementById('prs-pagination').innerHTML='';
+    addMsg(t('network_err')+(e.message||''),'error');
+  });
+}
+
+function renderPullRequests(data){
+  var container=document.getElementById('prs-content');
+  var list=(data&&data.pull_requests)||[];
+  if(!list.length){container.innerHTML='<div class="empty">'+t('prs_no_match')+'</div>';return}
+  var html='<table class="log-table"><thead><tr>';
+  html+='<th>PR</th><th>Author</th><th>Date</th><th>Message</th><th>Status</th><th>Actions</th><th style="width:20px"></th>';
+  html+='</tr></thead><tbody>';
+  list.forEach(function(pr,idx){
+    if(pr.head_sha){
+      _logCommitMap[pr.head_sha]={
+        hash:pr.head_sha, short_hash:(pr.head_sha||'').substring(0,7),
+        author:pr.author||'', date:(pr.updated_at||pr.created_at||''),
+        message:pr.title||''
+      };
+    }
+    var date=(pr.merged_at||'')||(pr.updated_at||pr.created_at||'');
+    var merged=(pr.state==='merged')||(prState==='merged');
+    var closed=(pr.state==='closed')||(prState==='closed');
+    var statusCell=
+      '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;'
+      +(merged
+        ?'background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;'
+        :(closed
+          ?'background:#f3f4f6;color:#374151;border:1px solid #d1d5db;'
+          :'background:#fffbeb;color:#92400e;border:1px solid #fcd34d;'))
+      +'border-radius:20px;padding:3px 10px;white-space:nowrap;cursor:default">'
+      +(merged?('✅ '+t('prs_merged')):(closed?('⚪ '+t('prs_closed')):('🟡 '+t('prs_open'))))
+      +(pr.is_draft?(' · '+t('prs_draft')):'')
+      +'</span>';
+    html+='<tr style="cursor:pointer" onclick="togglePRDiff('+Number(pr.number||0)+','+idx+',\''+escapeAttr(pr.head_sha||'')+'\')">';
+    html+='<td><span class="log-hash">#'+escapeHtml(String(pr.number||''))+'</span></td>';
+    html+='<td class="log-author">'+escapeHtml(pr.author||'')+'</td>';
+    html+='<td class="log-date">'+escapeHtml(date||'')+'</td>';
+    html+='<td class="log-msg"><div class="commit-msg-box"><div>'+escapeHtml(pr.title||'')+'</div><div style="margin-top:4px;font-size:11px;color:#64748b">'+escapeHtml((pr.head_ref||'')+' → '+(pr.base_ref||''))+'</div></div></td>';
+    html+='<td class="log-status">'+statusCell+'</td>';
+    html+='<td class="log-actions">'
+      +'<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();window.open(\''+escapeJS(pr.url||'')+'\',\'_blank\')">'+t('prs_view')+'</button>'
+      +'<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();openPRAIAnalysis('+Number(pr.number||0)+',\''+escapeAttr(pr.head_sha||'')+'\')">🤖 '+_aiCmpText('AI 分析','AI Analysis')+'</button>'
+      +'</td>';
+    html+='<td style="text-align:center"><span class="file-toggle" id="pr-toggle-'+idx+'">▶</span></td>';
+    html+='</tr>';
+    html+='<tr id="pr-diff-row-'+idx+'" style="display:none"><td colspan="7" style="padding:0"><div id="pr-diff-'+idx+'" style="padding:12px 16px;max-height:600px;overflow-y:auto"></div></td></tr>';
+  });
+  html+='</tbody></table>';
+  container.innerHTML=html;
+}
+
+function renderPRPagination(data){
+  var totalPages=data.per_page>0?Math.ceil(data.total/data.per_page):1;
+  _setSmartPagination('prs', totalPages, data.page, 'loadPullRequests', data.total);
+}
+
+function togglePRDiff(prNumber, idx, headSha){
+  var row=document.getElementById('pr-diff-row-'+idx);
+  var diffEl=document.getElementById('pr-diff-'+idx);
+  var toggle=document.getElementById('pr-toggle-'+idx);
+  if(!row||!diffEl)return;
+  if(row.style.display!=='none'){
+    row.style.display='none';
+    if(toggle)toggle.classList.remove('open');
+    return;
+  }
+  row.style.display='table-row';
+  if(toggle)toggle.classList.add('open');
+  if(diffEl.innerHTML)return;
+  diffEl.innerHTML='<div class="loading-bar"><span class="spinner"></span>'+(L==='zh'?'正在加载 PR 代码改动...':'Loading PR diff...')+'</div>';
+  var key=''+prNumber;
+  if(_prDiffCache[key]){
+    diffEl.innerHTML='<div class="diff-block">'+highlightPRDiffFiles(_prDiffCache[key],headSha,prNumber)+'</div>';
+    return;
+  }
+  apiGet('/api/pull-request-diff?number='+encodeURIComponent(prNumber),function(data){
+    if(!data||!data.ok){
+      diffEl.innerHTML='<div class="empty">'+escapeHtml((data&&data.error)||_aiCmpText('加载失败','Load failed'))+'</div>';
+      return;
+    }
+    _prDiffCache[key]=data.diff||'';
+    diffEl.innerHTML='<div class="diff-block">'+highlightPRDiffFiles(data.diff||'',headSha,prNumber)+'</div>';
+  });
+}
+
+function highlightPRDiffFiles(text, headSha, prNumber){
+  if(!text)return'';
+  var lines=text.split('\n');
+  var sections=[];
+  var currentSection=null;
+  for(var i=0;i<lines.length;i++){
+    var line=lines[i];
+    var m=line.match(/^diff --git a\/(.*) b\/(.*)/);
+    if(m){
+      if(currentSection) sections.push(currentSection);
+      currentSection={file:m[1], lines:[line]};
+      continue;
+    }
+    if(currentSection) currentSection.lines.push(line);
+  }
+  if(currentSection) sections.push(currentSection);
+  if(!sections.length){
+    var h='';
+    for(var j=0;j<lines.length;j++) h+='<div style="font-family:monospace;font-size:12px;line-height:1.6;white-space:pre-wrap;padding:1px 8px">'+escapeHtml(lines[j])+'</div>';
+    return h;
+  }
+  var html='';
+  sections.forEach(function(sec, si){
+    var fileId='pr-diff-file-'+prNumber+'-'+si;
+    var fileDiffText=(sec.lines||[]).join('\n');
+    if(headSha){
+      _commitFileDiffStore[_commitDiffStoreKey(headSha, sec.file)] = fileDiffText;
+    }
+    html+='<div style="border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;overflow:hidden">';
+    html+='<div style="display:flex;align-items:center;padding:8px 14px;background:#f9fafb;cursor:pointer" onclick="toggleDiffFile(\''+fileId+'\',this)">';
+    html+='<span class="file-toggle" id="'+fileId+'-toggle">▶</span>';
+    html+='<b style="color:#2563eb;flex:1;margin-left:8px">'+escapeHtml(sec.file)+'</b>';
+    html+='<span style="font-size:11px;color:#9ca3af">'+sec.lines.length+' lines</span>';
+    html+='</div>';
+    html+='<div id="'+fileId+'" style="display:none">'+highlightDiff(fileDiffText)+'</div>';
+    html+='<div style="padding:4px 14px;border-top:1px solid #e5e7eb;background:#fafafa">';
+    html+='<button class="btn btn-sm btn-primary" title="'+escapeAttr(_aiCmpText('分析此文件改动','Analyze this file changes'))+'" onclick="event.stopPropagation();openPRAICompareFile(\''+escapeAttr(sec.file)+'\',\''+escapeAttr(headSha||'')+'\',\''+escapeAttr(prNumber)+'\')">🤖 AI Compare</button>';
+    html+='</div></div>';
+  });
+  return html;
+}
+
+function openPRAICompareFile(filePath, headSha, prNumber){
+  var key=_commitDiffStoreKey(headSha,filePath);
+  var currentDiff=_commitFileDiffStore[key];
+  if(!currentDiff){
+    addMsg('❌ '+_aiCmpText('请先展开该 PR 的代码改动后再分析文件。','Please expand this PR diff first, then analyze file.'),'error');
+    return;
+  }
+  _openCommitAIComparePanel({mode:'file',filePath:filePath,commitHash:headSha||('pr-'+prNumber),currentDiff:currentDiff});
+}
+
+function openPRAIAnalysis(prNumber, headSha){
+  var key=''+prNumber;
+  var openWithDiff=function(diffText){
+    if(!diffText||!diffText.trim()){
+      addMsg('❌ '+_aiCmpText('无法加载该 PR 的代码改动。','Cannot load this PR diff.'),'error');
+      return;
+    }
+    _openCommitAIComparePanel({mode:'commit',filePath:'',commitHash:headSha||('pr-'+prNumber),currentDiff:diffText});
+  };
+  if(_prDiffCache[key]){
+    openWithDiff(_prDiffCache[key]);
+    return;
+  }
+  apiGet('/api/pull-request-diff?number='+encodeURIComponent(prNumber),function(data){
+    if(!data||!data.ok){
+      addMsg('❌ '+((data&&data.error)||_aiCmpText('加载失败','Load failed')),'error');
+      return;
+    }
+    _prDiffCache[key]=data.diff||'';
+    openWithDiff(_prDiffCache[key]);
   });
 }
 
@@ -3597,6 +3855,146 @@ function _commitDiffStoreKey(commitHash, filePath){
   return (commitHash||'')+'::'+(filePath||'');
 }
 
+function _parseDiffSectionsForAI(diffText){
+  var text=diffText||'';
+  var lines=text.split('\n');
+  var sections=[];
+  var current=null;
+  for(var i=0;i<lines.length;i++){
+    var line=lines[i];
+    var m=line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+    if(m){
+      if(current) sections.push(current);
+      current={title:m[2]||m[1], lines:[line]};
+      continue;
+    }
+    if(current){
+      current.lines.push(line);
+    }
+  }
+  if(current) sections.push(current);
+  return sections;
+}
+
+function _renderAIDiffSections(diffText, idPrefix, forcedTitle){
+  var text=diffText||'';
+  if(!text.trim()){
+    return '<div style="padding:10px;color:#94a3b8;font-size:12px">'+_aiCmpText('无可用 diff。','No diff available.')+'</div>';
+  }
+  var sections=_parseDiffSectionsForAI(text);
+  if(!sections.length){
+    if(forcedTitle){
+      sections=[{title:forcedTitle,lines:text.split('\n')}];
+    }else{
+      sections=[{title:_aiCmpText('整体改动','Full changes'),lines:text.split('\n')}];
+    }
+  }
+  var html='';
+  for(var i=0;i<sections.length;i++){
+    var sec=sections[i];
+    var bodyId=idPrefix+'-sec-'+i;
+    var count=(sec.lines||[]).length;
+    html+='<div style="border:1px solid #e5e7eb;border-radius:8px;background:#fff;overflow:hidden;margin-bottom:8px">';
+    html+='<div style="display:flex;align-items:center;padding:8px 10px;background:#f8fafc;cursor:pointer" onclick="toggleDiffFile(\''+bodyId+'\',this)">';
+    html+='<span class="file-toggle" id="'+bodyId+'-toggle">▶</span>';
+    html+='<b style="margin-left:8px;color:#1d4ed8;flex:1;font-size:12px">'+escapeHtml(sec.title||_aiCmpText('未命名文件','Unnamed file'))+'</b>';
+    html+='<span style="font-size:11px;color:#94a3b8">'+count+' '+_aiCmpText('行','lines')+'</span>';
+    html+='</div>';
+    html+='<div id="'+bodyId+'" style="display:none">'+highlightDiff((sec.lines||[]).join('\n'))+'</div>';
+    html+='</div>';
+  }
+  return html;
+}
+
+function _buildAIDiffSectionList(diffText, forcedTitle){
+  var text=diffText||'';
+  if(!text.trim()){
+    return [];
+  }
+  var parsed=_parseDiffSectionsForAI(text);
+  if(!parsed.length){
+    return [{
+      title: forcedTitle || _aiCmpText('整体改动','Full changes'),
+      text: text
+    }];
+  }
+  var out=[];
+  for(var i=0;i<parsed.length;i++){
+    out.push({
+      title: parsed[i].title || forcedTitle || _aiCmpText('未命名文件','Unnamed file'),
+      text: (parsed[i].lines||[]).join('\n')
+    });
+  }
+  return out;
+}
+
+function _renderAIDiffComparisonSections(st){
+  if(!st) return '';
+  var forcedTitle=st.mode==='file' ? st.filePath : '';
+  var currSections=_buildAIDiffSectionList(st.currentDiff||'', forcedTitle);
+  var histSections=_buildAIDiffSectionList(st.selectedHistoryDiff||'', forcedTitle);
+  var currMap={};
+  var histMap={};
+  var order=[];
+  for(var i=0;i<currSections.length;i++){
+    var c=currSections[i];
+    if(!currMap[c.title]) order.push(c.title);
+    currMap[c.title]=c.text;
+  }
+  for(var j=0;j<histSections.length;j++){
+    var h=histSections[j];
+    if(!currMap[h.title] && !histMap[h.title]) order.push(h.title);
+    histMap[h.title]=h.text;
+  }
+  if(!order.length){
+    return '<div style="padding:10px;color:#94a3b8;font-size:12px">'+_aiCmpText('无可用 diff。','No diff available.')+'</div>';
+  }
+  var html='<div style="font-size:11px;color:#64748b;margin-bottom:6px">'+_aiCmpText('按文件分段对比（默认折叠）','Sectioned comparison by file (collapsed by default)')+'</div>';
+  if(!st.selectedHistoryDiff){
+    html+='<div style="font-size:11px;color:#64748b;margin-bottom:8px">'+_aiCmpText('请在左侧选择历史提交后查看逐段对比。','Select a historical commit on the left to view section-by-section comparison.')+'</div>';
+  }
+  for(var k=0;k<order.length;k++){
+    var title=order[k];
+    var curText=currMap[title]||'';
+    var oldText=histMap[title]||'';
+    var bodyId='commit-ai-cmp-sec-'+k;
+    html+='<div style="border:1px solid #e5e7eb;border-radius:8px;background:#fff;overflow:hidden;margin-bottom:8px">';
+    html+='<div style="display:flex;align-items:center;padding:8px 10px;background:#f8fafc;cursor:pointer" onclick="toggleDiffFile(\''+bodyId+'\',this)">';
+    html+='<span class="file-toggle" id="'+bodyId+'-toggle">▶</span>';
+    html+='<b style="margin-left:8px;color:#1d4ed8;flex:1;font-size:12px">'+escapeHtml(title)+'</b>';
+    html+='<span style="font-size:10px;color:#64748b;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:1px 6px;margin-right:4px">C '+(curText?curText.split('\n').length:0)+'</span>';
+    html+='<span style="font-size:10px;color:#64748b;background:#ecfeff;border:1px solid #a5f3fc;border-radius:10px;padding:1px 6px">H '+(oldText?oldText.split('\n').length:0)+'</span>';
+    html+='</div>';
+    html+='<div id="'+bodyId+'" style="display:none;padding:8px 10px;background:#fff">';
+    html+='<div style="font-size:11px;color:#0f766e;margin-bottom:6px;font-weight:700">'+_aiCmpText('当前提交','Current Commit')+'</div>';
+    html+=(curText?highlightDiff(curText):('<div style="padding:8px;color:#94a3b8;font-size:12px">'+_aiCmpText('当前提交该 section 无改动','No changes in this section for current commit')+'</div>'));
+    html+='<div style="height:8px"></div>';
+    html+='<div style="font-size:11px;color:#0369a1;margin-bottom:6px;font-weight:700">'+_aiCmpText('历史提交','Historical Commit')+'</div>';
+    html+=(oldText?highlightDiff(oldText):('<div style="padding:8px;color:#94a3b8;font-size:12px">'+_aiCmpText('历史提交该 section 无改动','No changes in this section for historical commit')+'</div>'));
+    html+='</div></div>';
+  }
+  return html;
+}
+
+function _renderCommitAIComparisonDiffs(){
+  var st=_commitAIPanelState;
+  if(!st)return;
+  var targetEl=document.getElementById('commit-ai-compare-target');
+  var compareEl=document.getElementById('commit-ai-compare-sections');
+  if(targetEl){
+    if(st.selectedHistoryCommit){
+      targetEl.innerHTML=_aiCmpText('对比历史: ','Comparing with: ')+'<code>'
+        +escapeHtml(st.selectedHistoryCommit.short_hash||st.selectedHistoryCommit.hash.substring(0,7))
+        +'</code>'+(st.selectedHistoryCommit.message?(' · '+escapeHtml(st.selectedHistoryCommit.message)):'');
+    }else{
+      targetEl.textContent=_aiCmpText('对比历史: 未选择','Comparing with: not selected');
+    }
+  }
+  if(compareEl){
+    compareEl.innerHTML=_renderAIDiffComparisonSections(st);
+  }
+}
+
 function _setProgressBar(rootId, percent, label){
   var bar=document.getElementById(rootId+'-bar');
   var txt=document.getElementById(rootId+'-label');
@@ -3706,8 +4104,11 @@ function _openCommitAIComparePanel(opts){
           +_aiCmpText('当前: ','Current: ')+'<code>'+escapeHtml((cInfo.short_hash||commitHash.substring(0,7)||''))+'</code>'
           +(cInfo.message?(' · '+escapeHtml(cInfo.message)):'')
           +(cInfo.date?('<div style="margin-top:4px">'+_aiCmpText('日期: ','Date: ')+escapeHtml(cInfo.date)+'</div>'):'')
+          +'<div id="commit-ai-compare-target" style="margin-top:4px">'+_aiCmpText('对比历史: 未选择','Comparing with: not selected')+'</div>'
         +'</div>'
-        +'<div id="commit-ai-current-diff" style="flex:1;overflow-y:auto;padding:10px;background:#fafafa">'+highlightDiff(currentDiff||'')+'</div>'
+        +'<div id="commit-ai-current-diff" style="flex:1;overflow-y:auto;padding:10px;background:#fafafa">'
+          +'<div id="commit-ai-compare-sections"></div>'
+        +'</div>'
         +'<div style="padding:8px 12px;border-top:1px solid #f1f5f9;background:#f8fafc">'
           +'<button id="commit-ai-purpose-btn" class="btn btn-success" style="padding:5px 10px;font-size:12px" onclick="runCurrentCommitPurposeAnalysis()">🎯 '+(mode==='file'?_aiCmpText('分析修改目的与合理性','Analyze purpose & reasonableness'):_aiCmpText('分析该 Commit 目的与合理性','Analyze this commit purpose & reasonableness'))+'</button>'
         +'</div>'
@@ -3758,6 +4159,7 @@ function _openCommitAIComparePanel(opts){
       :_aiCmpText('请选择左侧历史提交后点击“分析”，对比整个 Commit 的改动；或点击中间底部按钮分析当前 Commit 的目的与合理性。分析完成后可在底部继续对话。','Select a historical commit on the left and click "Analyze" to compare full commit changes; or use the middle-bottom button to analyze current commit purpose/reasonableness. After analysis, continue chatting below.'))
   }];
   _renderCommitAIChat();
+  _renderCommitAIComparisonDiffs();
   _loadMoreCommitAIHistory();
 }
 
@@ -3776,7 +4178,7 @@ function _renderCommitAIChat(){
       +'</div></div>';
   }
   if(st.chatLoading){
-    html+='<div style="font-size:12px;color:#64748b">'+_aiCmpText('AI 正在思考...','AI is thinking...')+'</div>';
+    html+='<div class="commit-ai-thinking">'+_aiCmpText('AI 正在思考...','AI is thinking...')+'</div>';
   }
   result.innerHTML=html;
   result.scrollTop=result.scrollHeight;
@@ -3838,6 +4240,9 @@ function _loadMoreCommitAIHistory(){
     for(var i=0;i<items.length;i++) st.historyItems.push(items[i]);
     if(!items.length || st.historyItems.length>=st.historyTotal) st.historyDone=true;
     _renderCommitAIHistoryList();
+    if(!st.selectedHistoryCommit && st.historyItems.length){
+      selectCommitAIHistory(st.historyItems[0].hash);
+    }
   });
 }
 
@@ -3851,6 +4256,7 @@ function selectCommitAIHistory(hash){
   if(!item)return;
   st.selectedHistoryCommit=item;
   st.selectedHistoryDiff='';
+  _renderCommitAIComparisonDiffs();
   _renderCommitAIHistoryList();
   var runBtn=document.getElementById('commit-ai-run-btn');
   if(runBtn) runBtn.disabled=true;
@@ -3858,12 +4264,14 @@ function selectCommitAIHistory(hash){
   if(info) info.textContent=_aiCmpText('正在加载选中提交 diff: ','Loading selected commit diff: ')+(item.short_hash||hash.substring(0,7));
   var result=document.getElementById('commit-ai-result');
   if(result) result.innerHTML='<div style="color:#64748b">'+_aiCmpText('正在加载历史提交 diff...','Loading selected historical commit diff...')+'</div>';
+  _renderCommitAIComparisonDiffs();
 
   var diffUrl=(st.mode==='file')
     ?('/api/file-commit-diff?commit='+encodeURIComponent(hash)+'&file='+encodeURIComponent(st.filePath))
     :('/api/commit-diff?commit='+encodeURIComponent(hash));
   apiGet(diffUrl,function(data){
     st.selectedHistoryDiff=(data.diff||'').trim();
+    _renderCommitAIComparisonDiffs();
     if(info) info.textContent=_aiCmpText('已选: ','Selected: ')+(item.short_hash||hash.substring(0,7))+' — '+(item.message||'');
     if(runBtn) runBtn.disabled=!st.selectedHistoryDiff;
     if(result){
@@ -5299,11 +5707,12 @@ loadGpgSign();
 (function(){
   var saved=null;
   try{saved=localStorage.getItem('git_tool_active_tab');}catch(e){}
-  var safeTabs={main:1,branches:1,log:1,stash:1,conflicts:1};
+  var safeTabs={main:1,branches:1,log:1,prs:1,stash:1,conflicts:1};
   if(saved&&safeTabs[saved]){
     switchPage(saved);
     if(saved==='branches')loadBranches(1);
     else if(saved==='log')loadLog(1);
+    else if(saved==='prs')loadPullRequests(1);
     else if(saved==='stash')loadStash();
     else if(saved==='conflicts'){loadFiles();checkConflicts();}
     else{loadFiles();checkConflicts();}

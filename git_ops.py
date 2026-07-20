@@ -5,7 +5,7 @@ git_ops.py — Git helper functions for Git Manage Board.
 All git operations, state globals, and streaming helpers live here.
 """
 
-import os, json, subprocess, socket, configparser, threading
+import os, re, json, subprocess, socket, configparser, threading
 
 PORT    = 8989
 PROJECT_PATH = os.getcwd()  # current git project directory
@@ -1253,6 +1253,178 @@ def get_commit_log(page=1, per_page=10, search="", order="desc"):
     page_commits = commits[skip:skip + per_page] if per_page > 0 else commits
     page_commits = _attach_release_refs(page_commits)
     return {"commits": page_commits, "total": total, "page": page, "per_page": per_page, "order": order}
+
+
+def _pr_state_query_clause(state: str) -> str:
+    if state == "in_review":
+        return "is:open"
+    if state == "closed":
+        return "is:closed -is:merged"
+    return "is:merged"
+
+
+def _pull_request_total_count(state="in_review", search=""):
+    owner, repo = _gh_repo_slug()
+    if not owner or not repo:
+        owner, repo = _origin_repo_slug()
+    if not owner or not repo:
+        return None
+    q_parts = [f"repo:{owner}/{repo}", "is:pr", _pr_state_query_clause(state)]
+    if (search or "").strip():
+        q_parts.append((search or "").strip())
+    query_str = " ".join(p for p in q_parts if p).strip()
+    gql = "query($q: String!) { search(query: $q, type: ISSUE) { issueCount } }"
+    out, _, rc = _run([
+        "gh", "api", "graphql",
+        "-f", "query=" + gql,
+        "-f", "q=" + query_str,
+    ])
+    if rc != 0:
+        return None
+    try:
+        data = json.loads(out or "{}")
+        return int((((data or {}).get("data") or {}).get("search") or {}).get("issueCount", 0))
+    except Exception:
+        return None
+
+
+def get_pull_requests(page=1, per_page=10, state="in_review", search=""):
+    """Return paginated pull requests from current repo via gh CLI."""
+    if state == "in_review":
+        gh_state = "open"
+        gh_search = ""
+    elif state == "closed":
+        gh_state = "closed"
+        gh_search = "is:closed -is:merged"
+    else:
+        gh_state = "merged"
+        gh_search = ""
+    if per_page == 0:
+        # "All" mode still needs a hard cap.
+        fetch_limit = 1000
+    else:
+        # Incremental fetch: only request enough for current pagination window,
+        # with a small buffer to keep UX smooth on next-page clicks.
+        needed = max(1, page) * max(1, per_page)
+        fetch_limit = min(1000, max(100, needed + 40))
+    user_search = (search or "").strip()
+    cli_search = " ".join(x for x in [gh_search, user_search] if x).strip()
+    cmd = [
+        "gh", "pr", "list",
+        "--state", gh_state,
+        "--limit", str(fetch_limit),
+        "--json", "number,title,author,updatedAt,createdAt,state,isDraft,url,headRefName,baseRefName,mergedAt,headRefOid",
+    ]
+    if cli_search:
+        cmd.extend(["--search", cli_search])
+    out, err, rc = _run(cmd)
+    if rc != 0:
+        return {
+            "pull_requests": [],
+            "total": 0,
+            "page": page,
+            "per_page": per_page,
+            "state": state,
+            "error": err or out or "Failed to load pull requests",
+        }
+
+    try:
+        rows = json.loads(out or "[]")
+    except json.JSONDecodeError:
+        rows = []
+
+    prs = []
+    for r in rows:
+        number = r.get("number")
+        title = r.get("title", "")
+        author = (r.get("author") or {}).get("login", "")
+        created = (r.get("createdAt") or "")[:16].replace("T", " ")
+        updated = (r.get("updatedAt") or "")[:16].replace("T", " ")
+        merged_at = (r.get("mergedAt") or "")[:16].replace("T", " ")
+        item = {
+            "number": number,
+            "title": title,
+            "author": author,
+            "created_at": created,
+            "updated_at": updated,
+            "merged_at": merged_at,
+            "state": r.get("state", "").lower(),
+            "is_draft": bool(r.get("isDraft")),
+            "url": r.get("url", ""),
+            "head_ref": r.get("headRefName", ""),
+            "base_ref": r.get("baseRefName", ""),
+            "head_sha": r.get("headRefOid", ""),
+        }
+        prs.append(item)
+
+    total_count = _pull_request_total_count(state, user_search)
+    if total_count is None:
+        total = len(prs)
+    else:
+        # Current PR list retrieval is capped at 1000 for responsiveness.
+        total = min(1000, total_count)
+    if per_page == 0:
+        page_items = prs
+    else:
+        skip = max(0, (page - 1) * per_page)
+        page_items = prs[skip:skip + per_page]
+    return {
+        "pull_requests": page_items,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "state": state,
+    }
+
+
+def _origin_repo_slug():
+    """Return (owner, repo) from origin URL, or ("","") if unavailable."""
+    out, _, rc = _run(["git", "remote", "get-url", "origin"])
+    if rc != 0 or not out.strip():
+        return "", ""
+    url = out.strip()
+    m = re.search(r"github\.com[:/]+([^/]+)/([^/]+?)(?:\.git)?$", url)
+    if not m:
+        return "", ""
+    return m.group(1), m.group(2)
+
+
+def _gh_repo_slug():
+    """Return (owner, repo) from gh repo context."""
+    out, _, rc = _run(["gh", "repo", "view", "--json", "nameWithOwner"])
+    if rc != 0:
+        return "", ""
+    try:
+        data = json.loads(out or "{}")
+        name = (data or {}).get("nameWithOwner", "")
+        if "/" in name:
+            owner, repo = name.split("/", 1)
+            return owner.strip(), repo.strip()
+    except Exception:
+        pass
+    return "", ""
+
+
+def pull_request_diff(pr_number):
+    """Return unified diff text for a pull request number."""
+    num = str(pr_number or "").strip()
+    if not num:
+        return "", "Pull request number is required", 1
+
+    # Prefer repo-context command; avoids parsing origin URL formats.
+    out, err, rc = _run(["gh", "pr", "diff", num])
+    if rc == 0 and (out or "").strip():
+        return out, "", 0
+
+    # Fallback to REST diff endpoint.
+    owner, repo = _origin_repo_slug()
+    if not owner or not repo:
+        return "", err or "Cannot resolve GitHub owner/repo from origin URL", 1
+    return _run([
+        "gh", "api",
+        "-H", "Accept: application/vnd.github.v3.diff",
+        f"repos/{owner}/{repo}/pulls/{num}",
+    ])
 
 
 def reset_to(hash, mode="soft"):
