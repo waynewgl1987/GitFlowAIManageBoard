@@ -3564,6 +3564,16 @@ function _stopAutoProgress(timer, rootId, doneLabel){
   _setProgressBar(rootId,100,doneLabel||'Done');
 }
 
+function _aiLangInstruction(){
+  return (L==='zh')
+    ? 'Respond in Simplified Chinese only.'
+    : 'Respond in English only.';
+}
+
+function _aiCmpText(zh, en){
+  return L==='zh' ? zh : en;
+}
+
 function openCommitAICompare(filePath, commitHash){
   var key=_commitDiffStoreKey(commitHash,filePath);
   var currentDiff=_commitFileDiffStore[key];
@@ -3594,7 +3604,9 @@ function _openCommitAIComparePanel(filePath, commitHash, currentDiff){
     historyTotal:0,
     historyLoading:false,
     historyDone:false,
-    historyItems:[]
+    historyItems:[],
+    chatHistory:[],
+    chatLoading:false
   };
 
   _setModalLayout({
@@ -3606,42 +3618,47 @@ function _openCommitAIComparePanel(filePath, commitHash, currentDiff){
   });
 
   var cInfo=_logCommitMap[commitHash]||{};
-  document.getElementById('modal-title').innerHTML='🤖 AI Compare Panel'
+  document.getElementById('modal-title').innerHTML='🤖 '+_aiCmpText('AI 对比面板','AI Compare Panel')
     +' <span style="font-size:12px;font-weight:500;color:#64748b">— '+escapeHtml(filePath)+'</span>';
   document.getElementById('modal-msg').innerHTML=
     '<div id="commit-ai-compare-root" style="height:76vh;display:flex;gap:10px;overflow:hidden">'
       +'<div style="width:31%;min-width:300px;border:1px solid #e5e7eb;border-radius:10px;display:flex;flex-direction:column;overflow:hidden;background:#fff">'
-        +'<div style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;font-weight:700;color:#0f172a">🕘 File History Commits</div>'
+        +'<div style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;font-weight:700;color:#0f172a">🕘 '+_aiCmpText('文件历史提交','File History Commits')+'</div>'
         +'<div id="commit-ai-history-progress" style="padding:8px 12px;border-bottom:1px solid #f1f5f9;background:#f8fafc;display:none">'
           +'<div style="height:6px;background:#e2e8f0;border-radius:999px;overflow:hidden"><div id="commit-ai-history-progress-bar" style="height:100%;width:0;background:linear-gradient(90deg,#60a5fa,#2563eb)"></div></div>'
-          +'<div id="commit-ai-history-progress-label" style="font-size:11px;color:#64748b;margin-top:4px">Loading...</div>'
+          +'<div id="commit-ai-history-progress-label" style="font-size:11px;color:#64748b;margin-top:4px">'+_aiCmpText('加载中...','Loading...')+'</div>'
         +'</div>'
         +'<div id="commit-ai-history-list" style="flex:1;overflow-y:auto;padding:0"></div>'
       +'</div>'
       +'<div style="width:34%;min-width:320px;border:1px solid #e5e7eb;border-radius:10px;display:flex;flex-direction:column;overflow:hidden;background:#fff">'
-        +'<div style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;font-weight:700;color:#0f172a">📄 Current Commit Diff</div>'
+        +'<div style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;font-weight:700;color:#0f172a">📄 '+_aiCmpText('当前提交 Diff','Current Commit Diff')+'</div>'
         +'<div style="padding:8px 12px;font-size:12px;color:#64748b;border-bottom:1px solid #f1f5f9">'
-          +'Current: <code>'+escapeHtml((cInfo.short_hash||commitHash.substring(0,7)||''))+'</code>'
+          +_aiCmpText('当前: ','Current: ')+'<code>'+escapeHtml((cInfo.short_hash||commitHash.substring(0,7)||''))+'</code>'
           +(cInfo.message?(' · '+escapeHtml(cInfo.message)):'')
-          +(cInfo.date?('<div style="margin-top:4px">Date: '+escapeHtml(cInfo.date)+'</div>'):'')
+          +(cInfo.date?('<div style="margin-top:4px">'+_aiCmpText('日期: ','Date: ')+escapeHtml(cInfo.date)+'</div>'):'')
         +'</div>'
         +'<div id="commit-ai-current-diff" style="flex:1;overflow-y:auto;padding:10px;background:#fafafa">'+highlightDiff(currentDiff||'')+'</div>'
         +'<div style="padding:8px 12px;border-top:1px solid #f1f5f9;background:#f8fafc">'
-          +'<button id="commit-ai-purpose-btn" class="btn btn-success" style="padding:5px 10px;font-size:12px" onclick="runCurrentCommitPurposeAnalysis()">🎯 Analyze purpose & reasonableness</button>'
+          +'<button id="commit-ai-purpose-btn" class="btn btn-success" style="padding:5px 10px;font-size:12px" onclick="runCurrentCommitPurposeAnalysis()">🎯 '+_aiCmpText('分析修改目的与合理性','Analyze purpose & reasonableness')+'</button>'
         +'</div>'
       +'</div>'
       +'<div style="width:35%;min-width:340px;border:1px solid #e5e7eb;border-radius:10px;display:flex;flex-direction:column;overflow:hidden;background:#fff">'
-        +'<div style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;font-weight:700;color:#0f172a">🤖 AI Analysis Result</div>'
+        +'<div style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;font-weight:700;color:#0f172a">🤖 '+_aiCmpText('AI 分析结果','AI Analysis Result')+'</div>'
         +'<div style="padding:8px 12px;border-bottom:1px solid #f1f5f9;background:#f8fafc;display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
-          +'<button id="commit-ai-run-btn" class="btn btn-primary" style="padding:5px 10px;font-size:12px" onclick="runCommitHistoryAICompare()" disabled>Analyze</button>'
-          +'<span id="commit-ai-selected-info" style="font-size:12px;color:#64748b">Select one historical commit from left</span>'
+          +'<button id="commit-ai-run-btn" class="btn btn-primary" style="padding:5px 10px;font-size:12px" onclick="runCommitHistoryAICompare()" disabled>'+_aiCmpText('分析','Analyze')+'</button>'
+          +'<span id="commit-ai-selected-info" style="font-size:12px;color:#64748b">'+_aiCmpText('请先在左侧选择一个历史提交','Select one historical commit from left')+'</span>'
         +'</div>'
         +'<div id="commit-ai-analyze-progress" style="padding:8px 12px;border-bottom:1px solid #f1f5f9;background:#f8fafc;display:none">'
           +'<div style="height:6px;background:#e2e8f0;border-radius:999px;overflow:hidden"><div id="commit-ai-analyze-progress-bar" style="height:100%;width:0;background:linear-gradient(90deg,#34d399,#059669)"></div></div>'
-          +'<div id="commit-ai-analyze-progress-label" style="font-size:11px;color:#64748b;margin-top:4px">Analyzing...</div>'
+          +'<div id="commit-ai-analyze-progress-label" style="font-size:11px;color:#64748b;margin-top:4px">'+_aiCmpText('分析中...','Analyzing...')+'</div>'
         +'</div>'
-        +'<div id="commit-ai-result" style="flex:1;overflow-y:auto;padding:12px;color:#0f172a;font-size:13px;line-height:1.7">'
-          +'<div style="color:#64748b">After selecting a history commit, click <b>Analyze</b> to compare it with the current commit file diff.</div>'
+        +'<div id="commit-ai-result" style="flex:1;overflow-y:auto;padding:12px;color:#0f172a;font-size:13px;line-height:1.7;background:#fff"></div>'
+        +'<div style="padding:8px 12px;border-top:1px solid #f1f5f9;background:#f8fafc">'
+          +'<div style="font-size:11px;color:#64748b;margin-bottom:6px">'+_aiCmpText('基于当前分析继续追问','Ask follow-up based on current analysis')+'</div>'
+          +'<div style="display:flex;gap:8px;align-items:flex-end">'
+            +'<textarea id="commit-ai-followup-input" rows="2" placeholder="'+escapeAttr(_aiCmpText('输入补充上下文或问题...','Type extra context or follow-up question...'))+'" style="flex:1;resize:vertical;min-height:54px;max-height:120px;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:12px;line-height:1.4;outline:none"></textarea>'
+            +'<button id="commit-ai-followup-btn" class="btn btn-primary" style="padding:6px 12px;font-size:12px" onclick="sendCommitAIFollowup()">'+_aiCmpText('发送','Send')+'</button>'
+          +'</div>'
         +'</div>'
       +'</div>'
     +'</div>';
@@ -3650,7 +3667,7 @@ function _openCommitAIComparePanel(filePath, commitHash, currentDiff){
   btnsDiv.innerHTML='';
   var closeBtn=document.createElement('button');
   closeBtn.className='btn btn-secondary';
-  closeBtn.textContent='Close';
+  closeBtn.textContent=_aiCmpText('关闭','Close');
   closeBtn.onclick=closeModal;
   btnsDiv.appendChild(closeBtn);
   document.getElementById('modal-bg').classList.add('show');
@@ -3664,7 +3681,40 @@ function _openCommitAIComparePanel(filePath, commitHash, currentDiff){
       }
     });
   }
+  _commitAIPanelState.chatHistory=[{
+    role:'assistant',
+    text:_aiCmpText('请选择左侧历史提交后点击“分析”，或点击中间底部按钮分析当前提交目的与合理性。分析完成后可在底部继续对话。','Select a historical commit on the left and click "Analyze", or use the middle-bottom button to analyze current commit purpose/reasonableness. After analysis, continue chatting below.')
+  }];
+  _renderCommitAIChat();
   _loadMoreCommitAIHistory();
+}
+
+function _renderCommitAIChat(){
+  var st=_commitAIPanelState;
+  var result=document.getElementById('commit-ai-result');
+  if(!st||!result)return;
+  var html='';
+  for(var i=0;i<st.chatHistory.length;i++){
+    var m=st.chatHistory[i];
+    var isUser=m.role==='user';
+    html+='<div style="margin-bottom:10px;display:flex;justify-content:'+(isUser?'flex-end':'flex-start')+'">'
+      +'<div style="max-width:92%;padding:8px 10px;border-radius:8px;border:1px solid '+(isUser?'#bfdbfe':'#e2e8f0')+';background:'+(isUser?'#eff6ff':'#f8fafc')+'">'
+      +'<div style="font-size:11px;color:#64748b;margin-bottom:4px">'+(isUser?_aiCmpText('你','You'):'AI')+'</div>'
+      +'<div style="white-space:pre-wrap;line-height:1.65">'+escapeHtml(m.text||'').replace(/\n/g,'<br>')+'</div>'
+      +'</div></div>';
+  }
+  if(st.chatLoading){
+    html+='<div style="font-size:12px;color:#64748b">'+_aiCmpText('AI 正在思考...','AI is thinking...')+'</div>';
+  }
+  result.innerHTML=html;
+  result.scrollTop=result.scrollHeight;
+}
+
+function _appendCommitAIChat(role,text){
+  var st=_commitAIPanelState;
+  if(!st)return;
+  st.chatHistory.push({role:role,text:text||''});
+  _renderCommitAIChat();
 }
 
 function _renderCommitAIHistoryList(){
@@ -3672,7 +3722,7 @@ function _renderCommitAIHistoryList(){
   var listEl=document.getElementById('commit-ai-history-list');
   if(!st||!listEl)return;
   if(!st.historyItems.length){
-    listEl.innerHTML='<div style="padding:14px;color:#64748b;font-size:12px">No history commits found for this file.</div>';
+    listEl.innerHTML='<div style="padding:14px;color:#64748b;font-size:12px">'+_aiCmpText('该文件没有历史提交记录。','No history commits found for this file.')+'</div>';
     return;
   }
   var html='';
@@ -3686,11 +3736,11 @@ function _renderCommitAIHistoryList(){
       +'</div>';
   });
   if(st.historyLoading){
-    html+='<div style="padding:10px 12px;font-size:12px;color:#64748b">Loading more…</div>';
+    html+='<div style="padding:10px 12px;font-size:12px;color:#64748b">'+_aiCmpText('加载更多中…','Loading more…')+'</div>';
   }else if(st.historyDone){
-    html+='<div style="padding:10px 12px;font-size:12px;color:#94a3b8">Loaded all '+st.historyItems.length+' commits.</div>';
+    html+='<div style="padding:10px 12px;font-size:12px;color:#94a3b8">'+_aiCmpText('已加载全部 ','Loaded all ')+st.historyItems.length+_aiCmpText(' 条提交。',' commits.')+'</div>';
   }else{
-    html+='<div style="padding:10px 12px;font-size:12px;color:#94a3b8">Scroll down to load 20 more.</div>';
+    html+='<div style="padding:10px 12px;font-size:12px;color:#94a3b8">'+_aiCmpText('向下滚动继续加载 20 条。','Scroll down to load 20 more.')+'</div>';
   }
   listEl.innerHTML=html;
 }
@@ -3702,10 +3752,10 @@ function _loadMoreCommitAIHistory(){
   st.historyPage+=1;
   var progressWrap=document.getElementById('commit-ai-history-progress');
   if(progressWrap) progressWrap.style.display='block';
-  var timer=_startAutoProgress('commit-ai-history-progress','Loading history commits');
+  var timer=_startAutoProgress('commit-ai-history-progress',_aiCmpText('加载历史提交','Loading history commits'));
 
   apiGet('/api/file-commits?file='+encodeURIComponent(st.filePath)+'&page='+st.historyPage+'&per_page='+st.historyPerPage,function(data){
-    _stopAutoProgress(timer,'commit-ai-history-progress','History loaded');
+    _stopAutoProgress(timer,'commit-ai-history-progress',_aiCmpText('历史提交加载完成','History loaded'));
     setTimeout(function(){ if(progressWrap) progressWrap.style.display='none'; },300);
     st.historyLoading=false;
     st.historyTotal=data.total||0;
@@ -3730,20 +3780,20 @@ function selectCommitAIHistory(hash){
   var runBtn=document.getElementById('commit-ai-run-btn');
   if(runBtn) runBtn.disabled=true;
   var info=document.getElementById('commit-ai-selected-info');
-  if(info) info.textContent='Loading selected commit diff: '+(item.short_hash||hash.substring(0,7));
+  if(info) info.textContent=_aiCmpText('正在加载选中提交 diff: ','Loading selected commit diff: ')+(item.short_hash||hash.substring(0,7));
   var result=document.getElementById('commit-ai-result');
-  if(result) result.innerHTML='<div style="color:#64748b">Loading selected historical commit diff...</div>';
+  if(result) result.innerHTML='<div style="color:#64748b">'+_aiCmpText('正在加载历史提交 diff...','Loading selected historical commit diff...')+'</div>';
 
   apiGet('/api/file-commit-diff?commit='+encodeURIComponent(hash)+'&file='+encodeURIComponent(st.filePath),function(data){
     st.selectedHistoryDiff=(data.diff||'').trim();
-    if(info) info.textContent='Selected: '+(item.short_hash||hash.substring(0,7))+' — '+(item.message||'');
+    if(info) info.textContent=_aiCmpText('已选: ','Selected: ')+(item.short_hash||hash.substring(0,7))+' — '+(item.message||'');
     if(runBtn) runBtn.disabled=!st.selectedHistoryDiff;
     if(result){
       if(!st.selectedHistoryDiff){
-        result.innerHTML='<div style="color:#64748b">No file diff found in selected commit. Please choose another commit.</div>';
+        result.innerHTML='<div style="color:#64748b">'+_aiCmpText('所选提交中没有该文件的 diff，请换一个提交。','No file diff found in selected commit. Please choose another commit.')+'</div>';
       }else{
         result.innerHTML='<div style="font-size:12px;color:#0f172a;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-bottom:10px">'
-          +'Historical commit <code>'+escapeHtml(item.short_hash||hash.substring(0,7))+'</code> loaded. Click <b>Analyze</b> to compare with current commit diff.'
+          +_aiCmpText('历史提交 <code>','Historical commit <code>')+escapeHtml(item.short_hash||hash.substring(0,7))+'</code>'+_aiCmpText(' 已加载。点击<b>分析</b>与当前提交 diff 对比。',' loaded. Click <b>Analyze</b> to compare with current commit diff.')
           +'</div>';
       }
     }
@@ -3755,19 +3805,17 @@ function runCommitHistoryAICompare(){
   if(!st||!st.selectedHistoryCommit||!st.selectedHistoryDiff)return;
   var cfg=(typeof getAIConfig==='function')?getAIConfig():null;
   if(!cfg||!cfg.provider){
-    addMsg('❌ Please configure AI provider first (AI panel).','error');
+    addMsg('❌ '+_aiCmpText('请先在 AI 面板配置 AI provider。','Please configure AI provider first (AI panel).'),'error');
     return;
   }
 
   var runBtn=document.getElementById('commit-ai-run-btn');
-  if(runBtn){ runBtn.disabled=true; runBtn.textContent='Analyzing...'; }
-  var result=document.getElementById('commit-ai-result');
-  if(result){
-    result.innerHTML='<div style="color:#64748b">AI is analyzing the difference between selected historical commit and current commit file changes...</div>';
-  }
+  if(runBtn){ runBtn.disabled=true; runBtn.textContent=_aiCmpText('分析中...','Analyzing...'); }
+  _commitAIPanelState.chatLoading=true;
+  _renderCommitAIChat();
   var progressWrap=document.getElementById('commit-ai-analyze-progress');
   if(progressWrap) progressWrap.style.display='block';
-  var timer=_startAutoProgress('commit-ai-analyze-progress','AI analyzing');
+  var timer=_startAutoProgress('commit-ai-analyze-progress',_aiCmpText('AI 分析中','AI analyzing'));
 
   var curMeta=_logCommitMap[st.currentCommitHash]||{};
   var oldMeta=st.selectedHistoryCommit||{};
@@ -3792,7 +3840,7 @@ function runCommitHistoryAICompare(){
     +'4. Improvement suggestions';
 
   var messages=[
-    {role:'system',content:'You are an expert code reviewer. Compare two commit diffs of the same file and produce concise, practical findings in markdown.'},
+    {role:'system',content:'You are an expert code reviewer. Compare two commit diffs of the same file and produce concise, practical findings in markdown. Include section summaries and risk estimates per section. '+_aiLangInstruction()},
     {role:'user',content:prompt}
   ];
 
@@ -3804,19 +3852,21 @@ function runCommitHistoryAICompare(){
   .then(function(r){return r.json();})
   .then(function(data){
     if(!data.ok){
-      _stopAutoProgress(timer,'commit-ai-analyze-progress','Failed');
+      _stopAutoProgress(timer,'commit-ai-analyze-progress',_aiCmpText('失败','Failed'));
       if(progressWrap) progressWrap.style.display='none';
-      if(runBtn){ runBtn.disabled=false; runBtn.textContent='Analyze'; }
-      if(result) result.innerHTML='<div style="color:#ef4444">❌ '+escapeHtml(data.error||'AI request failed')+'</div>';
+      if(runBtn){ runBtn.disabled=false; runBtn.textContent=_aiCmpText('分析','Analyze'); }
+      _commitAIPanelState.chatLoading=false;
+      _appendCommitAIChat('assistant','❌ '+(data.error||_aiCmpText('AI 请求失败','AI request failed')));
       return;
     }
-    _pollCommitAICompareResult(data.jobId,timer,runBtn,result,progressWrap);
+    _pollCommitAICompareResult(data.jobId,timer,runBtn,progressWrap);
   })
   .catch(function(e){
-    _stopAutoProgress(timer,'commit-ai-analyze-progress','Failed');
+    _stopAutoProgress(timer,'commit-ai-analyze-progress',_aiCmpText('失败','Failed'));
     if(progressWrap) progressWrap.style.display='none';
-    if(runBtn){ runBtn.disabled=false; runBtn.textContent='Analyze'; }
-    if(result) result.innerHTML='<div style="color:#ef4444">❌ '+escapeHtml(e.message||'Network error')+'</div>';
+    if(runBtn){ runBtn.disabled=false; runBtn.textContent=_aiCmpText('分析','Analyze'); }
+    _commitAIPanelState.chatLoading=false;
+    _appendCommitAIChat('assistant','❌ '+(e.message||_aiCmpText('网络错误','Network error')));
   });
 }
 
@@ -3825,19 +3875,17 @@ function runCurrentCommitPurposeAnalysis(){
   if(!st||!st.currentDiff)return;
   var cfg=(typeof getAIConfig==='function')?getAIConfig():null;
   if(!cfg||!cfg.provider){
-    addMsg('❌ Please configure AI provider first (AI panel).','error');
+    addMsg('❌ '+_aiCmpText('请先在 AI 面板配置 AI provider。','Please configure AI provider first (AI panel).'),'error');
     return;
   }
 
   var purposeBtn=document.getElementById('commit-ai-purpose-btn');
-  if(purposeBtn){ purposeBtn.disabled=true; purposeBtn.textContent='Analyzing...'; }
-  var result=document.getElementById('commit-ai-result');
-  if(result){
-    result.innerHTML='<div style="color:#64748b">AI is analyzing the intent and reasonableness of current commit changes...</div>';
-  }
+  if(purposeBtn){ purposeBtn.disabled=true; purposeBtn.textContent=_aiCmpText('分析中...','Analyzing...'); }
+  _commitAIPanelState.chatLoading=true;
+  _renderCommitAIChat();
   var progressWrap=document.getElementById('commit-ai-analyze-progress');
   if(progressWrap) progressWrap.style.display='block';
-  var timer=_startAutoProgress('commit-ai-analyze-progress','AI analyzing');
+  var timer=_startAutoProgress('commit-ai-analyze-progress',_aiCmpText('AI 分析中','AI analyzing'));
 
   var curMeta=_logCommitMap[st.currentCommitHash]||{};
   var prompt=
@@ -3849,13 +3897,19 @@ function runCurrentCommitPurposeAnalysis(){
     +'- message: '+(curMeta.message||'')+'\n\n'
     +'File diff:\n```diff\n'+st.currentDiff.slice(0,7000)+'\n```\n\n'
     +'Please provide:\n'
-    +'1. The likely business/technical intent of this change\n'
-    +'2. Whether the implementation is reasonable and why\n'
-    +'3. Possible side effects or risks\n'
-    +'4. Suggestions to improve robustness/readability';
+    +'1. Business logic impact scope (which product flow / user journey / module behavior may change)\n'
+    +'2. Impacted classes / methods / code blocks and their business logic intent\n'
+    +'3. Whether the implementation is reasonable and why\n'
+    +'4. Possible side effects or risks\n'
+    +'5. Suggestions to improve robustness/readability\n'
+    +'\nOutput format requirements:\n'
+    +'- Use markdown sections.\n'
+    +'- For each section, add a short summary line.\n'
+    +'- For each section, add a risk estimate (Low/Medium/High) with reason.\n'
+    +'- Explicitly mark impacted class names and relevant code blocks.';
 
   var messages=[
-    {role:'system',content:'You are an expert senior engineer. Analyze code-change intent and implementation reasonableness. Be concise, practical, and specific.'},
+    {role:'system',content:'You are an expert senior engineer. Analyze code-change intent and implementation reasonableness. Be concise, practical, and specific. Always include business impact scope and impacted classes/code blocks. '+_aiLangInstruction()},
     {role:'user',content:prompt}
   ];
 
@@ -3867,72 +3921,163 @@ function runCurrentCommitPurposeAnalysis(){
   .then(function(r){return r.json();})
   .then(function(data){
     if(!data.ok){
-      _stopAutoProgress(timer,'commit-ai-analyze-progress','Failed');
+      _stopAutoProgress(timer,'commit-ai-analyze-progress',_aiCmpText('失败','Failed'));
       if(progressWrap) progressWrap.style.display='none';
-      if(purposeBtn){ purposeBtn.disabled=false; purposeBtn.textContent='🎯 Analyze purpose & reasonableness'; }
-      if(result) result.innerHTML='<div style="color:#ef4444">❌ '+escapeHtml(data.error||'AI request failed')+'</div>';
+      if(purposeBtn){ purposeBtn.disabled=false; purposeBtn.textContent='🎯 '+_aiCmpText('分析修改目的与合理性','Analyze purpose & reasonableness'); }
+      _commitAIPanelState.chatLoading=false;
+      _appendCommitAIChat('assistant','❌ '+(data.error||_aiCmpText('AI 请求失败','AI request failed')));
       return;
     }
-    _pollCommitAIPurposeResult(data.jobId,timer,purposeBtn,result,progressWrap);
+    _pollCommitAIPurposeResult(data.jobId,timer,purposeBtn,progressWrap);
   })
   .catch(function(e){
-    _stopAutoProgress(timer,'commit-ai-analyze-progress','Failed');
+    _stopAutoProgress(timer,'commit-ai-analyze-progress',_aiCmpText('失败','Failed'));
     if(progressWrap) progressWrap.style.display='none';
-    if(purposeBtn){ purposeBtn.disabled=false; purposeBtn.textContent='🎯 Analyze purpose & reasonableness'; }
-    if(result) result.innerHTML='<div style="color:#ef4444">❌ '+escapeHtml(e.message||'Network error')+'</div>';
+    if(purposeBtn){ purposeBtn.disabled=false; purposeBtn.textContent='🎯 '+_aiCmpText('分析修改目的与合理性','Analyze purpose & reasonableness'); }
+    _commitAIPanelState.chatLoading=false;
+    _appendCommitAIChat('assistant','❌ '+(e.message||_aiCmpText('网络错误','Network error')));
   });
 }
 
-function _pollCommitAIPurposeResult(jobId,timer,purposeBtn,result,progressWrap){
+function _pollCommitAIPurposeResult(jobId,timer,purposeBtn,progressWrap){
   fetch('/api/ai/chat-status?jobId='+jobId)
     .then(function(r){return r.json();})
     .then(function(data){
       if(!data.done){
-        setTimeout(function(){_pollCommitAIPurposeResult(jobId,timer,purposeBtn,result,progressWrap);},800);
+        setTimeout(function(){_pollCommitAIPurposeResult(jobId,timer,purposeBtn,progressWrap);},800);
         return;
       }
-      _stopAutoProgress(timer,'commit-ai-analyze-progress','Completed');
+      _stopAutoProgress(timer,'commit-ai-analyze-progress',_aiCmpText('完成','Completed'));
       setTimeout(function(){ if(progressWrap) progressWrap.style.display='none'; },300);
-      if(purposeBtn){ purposeBtn.disabled=false; purposeBtn.textContent='🎯 Analyze purpose & reasonableness'; }
+      if(purposeBtn){ purposeBtn.disabled=false; purposeBtn.textContent='🎯 '+_aiCmpText('分析修改目的与合理性','Analyze purpose & reasonableness'); }
+      _commitAIPanelState.chatLoading=false;
       if(!data.ok){
-        if(result) result.innerHTML='<div style="color:#ef4444">❌ '+escapeHtml(data.error||'AI analysis failed')+'</div>';
+        _appendCommitAIChat('assistant','❌ '+(data.error||_aiCmpText('AI 分析失败','AI analysis failed')));
         return;
       }
-      if(result){
-        result.innerHTML='<div style="font-size:12px;color:#0f172a;background:#eafff2;border:1px solid #a7f3d0;border-radius:8px;padding:8px 10px;margin-bottom:10px">'
-          +'Current commit purpose/reasonableness analysis completed.'
-          +'</div>'
-          +'<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;white-space:pre-wrap;line-height:1.75">'
-          +escapeHtml(data.text||'').replace(/\n/g,'<br>')+'</div>';
-      }
+      _appendCommitAIChat('assistant',_aiCmpText('【当前提交目的/合理性分析】\n','[Current commit purpose/reasonableness analysis]\n')+(data.text||''));
     })
     .catch(function(){
-      setTimeout(function(){_pollCommitAIPurposeResult(jobId,timer,purposeBtn,result,progressWrap);},1200);
+      setTimeout(function(){_pollCommitAIPurposeResult(jobId,timer,purposeBtn,progressWrap);},1200);
     });
 }
 
-function _pollCommitAICompareResult(jobId,timer,runBtn,result,progressWrap){
+function _pollCommitAICompareResult(jobId,timer,runBtn,progressWrap){
   fetch('/api/ai/chat-status?jobId='+jobId)
     .then(function(r){return r.json();})
     .then(function(data){
       if(!data.done){
-        setTimeout(function(){_pollCommitAICompareResult(jobId,timer,runBtn,result,progressWrap);},800);
+        setTimeout(function(){_pollCommitAICompareResult(jobId,timer,runBtn,progressWrap);},800);
         return;
       }
-      _stopAutoProgress(timer,'commit-ai-analyze-progress','Completed');
+      _stopAutoProgress(timer,'commit-ai-analyze-progress',_aiCmpText('完成','Completed'));
       setTimeout(function(){ if(progressWrap) progressWrap.style.display='none'; },300);
-      if(runBtn){ runBtn.disabled=false; runBtn.textContent='Analyze'; }
+      if(runBtn){ runBtn.disabled=false; runBtn.textContent=_aiCmpText('分析','Analyze'); }
+      _commitAIPanelState.chatLoading=false;
       if(!data.ok){
-        if(result) result.innerHTML='<div style="color:#ef4444">❌ '+escapeHtml(data.error||'AI analysis failed')+'</div>';
+        _appendCommitAIChat('assistant','❌ '+(data.error||_aiCmpText('AI 分析失败','AI analysis failed')));
         return;
       }
-      if(result){
-        result.innerHTML='<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;white-space:pre-wrap;line-height:1.75">'
-          +escapeHtml(data.text||'').replace(/\n/g,'<br>')+'</div>';
-      }
+      _appendCommitAIChat('assistant',_aiCmpText('【历史提交对比分析】\n','[Historical commit comparison]\n')+(data.text||''));
     })
     .catch(function(){
-      setTimeout(function(){_pollCommitAICompareResult(jobId,timer,runBtn,result,progressWrap);},1200);
+      setTimeout(function(){_pollCommitAICompareResult(jobId,timer,runBtn,progressWrap);},1200);
+    });
+}
+
+function sendCommitAIFollowup(){
+  var st=_commitAIPanelState;
+  if(!st)return;
+  var input=document.getElementById('commit-ai-followup-input');
+  var btn=document.getElementById('commit-ai-followup-btn');
+  var text=((input&&input.value)||'').trim();
+  if(!text)return;
+  var cfg=(typeof getAIConfig==='function')?getAIConfig():null;
+  if(!cfg||!cfg.provider){
+    addMsg('❌ '+_aiCmpText('请先在 AI 面板配置 AI provider。','Please configure AI provider first (AI panel).'),'error');
+    return;
+  }
+  if(input) input.value='';
+  _appendCommitAIChat('user',text);
+  st.chatLoading=true;
+  _renderCommitAIChat();
+  if(btn){ btn.disabled=true; btn.textContent=_aiCmpText('发送中...','Sending...'); }
+  var progressWrap=document.getElementById('commit-ai-analyze-progress');
+  if(progressWrap) progressWrap.style.display='block';
+  var timer=_startAutoProgress('commit-ai-analyze-progress',_aiCmpText('AI 对话中','AI chatting'));
+
+  var curMeta=_logCommitMap[st.currentCommitHash]||{};
+  var oldMeta=st.selectedHistoryCommit||{};
+  var context='Context:\n'
+    +'- file: '+st.filePath+'\n'
+    +'- current commit: '+(curMeta.short_hash||st.currentCommitHash.substring(0,7))+' '+(curMeta.message||'')+'\n';
+  if(st.selectedHistoryCommit){
+    context+='- selected history commit: '+(oldMeta.short_hash||oldMeta.hash||'')+' '+(oldMeta.message||'')+'\n';
+  }
+  context+='\nCurrent commit diff:\n```diff\n'+(st.currentDiff||'').slice(0,4500)+'\n```\n';
+  if(st.selectedHistoryDiff){
+    context+='\nSelected history diff:\n```diff\n'+(st.selectedHistoryDiff||'').slice(0,4500)+'\n```\n';
+  }
+
+  var messages=[{
+    role:'system',
+    content:'You are continuing an in-context code analysis conversation. Keep continuity with prior analysis and user follow-up context. '+_aiLangInstruction()
+  }];
+  var turns=st.chatHistory.slice(-12);
+  for(var i=0;i<turns.length;i++){
+    var t=turns[i];
+    if(t.role==='user' || t.role==='assistant'){
+      messages.push({role:t.role,content:t.text||''});
+    }
+  }
+  messages.push({role:'user',content:context+'\nUser follow-up:\n'+text});
+
+  fetch('/api/ai/chat',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({provider:cfg.provider,api_key:cfg.api_key,base_url:cfg.base_url,model:cfg.model,messages:messages})
+  })
+  .then(function(r){return r.json();})
+  .then(function(data){
+    if(!data.ok){
+      _stopAutoProgress(timer,'commit-ai-analyze-progress',_aiCmpText('失败','Failed'));
+      if(progressWrap) progressWrap.style.display='none';
+      st.chatLoading=false;
+      _appendCommitAIChat('assistant','❌ '+(data.error||_aiCmpText('AI 请求失败','AI request failed')));
+      if(btn){ btn.disabled=false; btn.textContent=_aiCmpText('发送','Send'); }
+      return;
+    }
+    _pollCommitAIFollowupResult(data.jobId,timer,btn,progressWrap);
+  })
+  .catch(function(e){
+    _stopAutoProgress(timer,'commit-ai-analyze-progress',_aiCmpText('失败','Failed'));
+    if(progressWrap) progressWrap.style.display='none';
+    st.chatLoading=false;
+    _appendCommitAIChat('assistant','❌ '+(e.message||_aiCmpText('网络错误','Network error')));
+    if(btn){ btn.disabled=false; btn.textContent=_aiCmpText('发送','Send'); }
+  });
+}
+
+function _pollCommitAIFollowupResult(jobId,timer,btn,progressWrap){
+  fetch('/api/ai/chat-status?jobId='+jobId)
+    .then(function(r){return r.json();})
+    .then(function(data){
+      if(!data.done){
+        setTimeout(function(){_pollCommitAIFollowupResult(jobId,timer,btn,progressWrap);},800);
+        return;
+      }
+      _stopAutoProgress(timer,'commit-ai-analyze-progress',_aiCmpText('完成','Completed'));
+      setTimeout(function(){ if(progressWrap) progressWrap.style.display='none'; },300);
+      _commitAIPanelState.chatLoading=false;
+      if(btn){ btn.disabled=false; btn.textContent=_aiCmpText('发送','Send'); }
+      if(!data.ok){
+        _appendCommitAIChat('assistant','❌ '+(data.error||_aiCmpText('AI 分析失败','AI analysis failed')));
+        return;
+      }
+      _appendCommitAIChat('assistant',data.text||'');
+    })
+    .catch(function(){
+      setTimeout(function(){_pollCommitAIFollowupResult(jobId,timer,btn,progressWrap);},1200);
     });
 }
 
@@ -5608,7 +5753,7 @@ function aiAnalyzeGraph() {
   }
 
   var messages = [
-    { role: 'system', content: 'You are a Git expert. Analyze the branch graph summary and provide insights: active branches, merge status, potential issues (stale branches, divergence). Be concise (under 300 words). Use markdown. Answer in the same language as the branch/commit content (Chinese if mixed).' },
+    { role: 'system', content: 'You are a Git expert. Analyze the branch graph summary and provide insights: active branches, merge status, potential issues (stale branches, divergence). Be concise (under 300 words). Use markdown. ' + _aiLangInstruction() },
     { role: 'user', content: summary }
   ];
 

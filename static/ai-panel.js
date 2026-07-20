@@ -396,6 +396,13 @@ function _removeThinking() {
   if (el) el.remove();
 }
 
+function _uiLangInstruction() {
+  var uiLang = (typeof L !== 'undefined' && L) ? L : (localStorage.getItem('lang') || 'en');
+  return uiLang === 'zh'
+    ? 'Respond in Simplified Chinese only.'
+    : 'Respond in English only.';
+}
+
 // ── Send message ──────────────────────────────────────────────────────────
 function sendAIMessage() {
   var inp = document.getElementById('ai-chat-input');
@@ -494,7 +501,8 @@ function _buildSystemPrompt(freshCtx) {
   ctx += 'Remote: '  + remote      + '\n';
   ctx += 'Current branch: ' + branch + '\n';
   ctx += 'Current page: '   + activePage + '\n';
-  ctx += 'Respond concisely and in the same language the user writes in.\n';
+  ctx += _uiLangInstruction() + '\n';
+  ctx += 'If the user explicitly asks for another language, follow that request.\n';
   ctx += 'When showing code or git commands, use markdown code blocks.\n';
   ctx += 'Focus on practical, actionable advice.\n';
 
@@ -1523,7 +1531,7 @@ function toggleDiffTheme() {
 function _diffAIRequest(prompt, onResult) {
   var cfg = getAIConfig();
   var messages = [
-    { role: 'system', content: 'You are an expert code reviewer. Analyze the provided git diff and give concise, actionable insights. Highlight important changes, potential bugs, security issues, and improvement suggestions. Use markdown formatting.' },
+    { role: 'system', content: 'You are an expert code reviewer. Analyze the provided git diff and give concise, actionable insights. Highlight important changes, potential bugs, security issues, and improvement suggestions. Use markdown formatting. ' + _uiLangInstruction() },
     { role: 'user', content: prompt }
   ];
 
