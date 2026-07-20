@@ -1288,6 +1288,20 @@ def _pull_request_total_count(state="in_review", search=""):
         return None
 
 
+_PR_AUTHOR_NAME_CACHE = {}
+def _author_name_from_commit(head_sha):
+    sha = (head_sha or "").strip()
+    if not sha:
+        return ""
+    cached = _PR_AUTHOR_NAME_CACHE.get(sha)
+    if cached is not None:
+        return cached
+    out, _, rc = _run(["git", "show", "-s", "--format=%an", sha])
+    name = out.strip() if rc == 0 and out.strip() else ""
+    _PR_AUTHOR_NAME_CACHE[sha] = name
+    return name
+
+
 def get_pull_requests(page=1, per_page=10, state="in_review", search=""):
     """Return paginated pull requests from current repo via gh CLI."""
     if state == "in_review":
@@ -1337,7 +1351,17 @@ def get_pull_requests(page=1, per_page=10, state="in_review", search=""):
     for r in rows:
         number = r.get("number")
         title = r.get("title", "")
-        author = (r.get("author") or {}).get("login", "")
+        author_obj = r.get("author") or {}
+        author_login = (author_obj.get("login") or "").strip()
+        author_name = (author_obj.get("name") or "").strip()
+        head_sha = (r.get("headRefOid") or "").strip()
+        if not author_name:
+            author_name = _author_name_from_commit(head_sha)
+        author = author_login
+        if author_name and author_login and author_name.lower() != author_login.lower():
+            author_display = f"{author_name} (@{author_login})"
+        else:
+            author_display = author_name or author_login
         created = (r.get("createdAt") or "")[:16].replace("T", " ")
         updated = (r.get("updatedAt") or "")[:16].replace("T", " ")
         merged_at = (r.get("mergedAt") or "")[:16].replace("T", " ")
@@ -1345,6 +1369,9 @@ def get_pull_requests(page=1, per_page=10, state="in_review", search=""):
             "number": number,
             "title": title,
             "author": author,
+            "author_name": author_name,
+            "author_login": author_login,
+            "author_display": author_display,
             "created_at": created,
             "updated_at": updated,
             "merged_at": merged_at,
@@ -1353,16 +1380,11 @@ def get_pull_requests(page=1, per_page=10, state="in_review", search=""):
             "url": r.get("url", ""),
             "head_ref": r.get("headRefName", ""),
             "base_ref": r.get("baseRefName", ""),
-            "head_sha": r.get("headRefOid", ""),
+            "head_sha": head_sha,
         }
         prs.append(item)
 
-    total_count = _pull_request_total_count(state, user_search)
-    if total_count is None:
-        total = len(prs)
-    else:
-        # Current PR list retrieval is capped at 1000 for responsiveness.
-        total = min(1000, total_count)
+    total = len(prs)
     if per_page == 0:
         page_items = prs
     else:

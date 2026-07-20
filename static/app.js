@@ -3466,7 +3466,7 @@ function renderPullRequests(data){
     if(pr.head_sha){
       _logCommitMap[pr.head_sha]={
         hash:pr.head_sha, short_hash:(pr.head_sha||'').substring(0,7),
-        author:pr.author||'', date:(pr.updated_at||pr.created_at||''),
+        author:(pr.author_display||pr.author_name||pr.author_login||pr.author||''), date:(pr.updated_at||pr.created_at||''),
         message:pr.title||''
       };
     }
@@ -3486,7 +3486,17 @@ function renderPullRequests(data){
       +'</span>';
     html+='<tr style="cursor:pointer" onclick="togglePRDiff('+Number(pr.number||0)+','+idx+',\''+escapeAttr(pr.head_sha||'')+'\')">';
     html+='<td><span class="log-hash">#'+escapeHtml(String(pr.number||''))+'</span></td>';
-    html+='<td class="log-author">'+escapeHtml(pr.author||'')+'</td>';
+    var authorMain=(pr.author_name||pr.author_display||pr.author_login||pr.author||'');
+    var authorId=(pr.author_login||pr.author||'').trim();
+    var authorSub='';
+    if(authorId){
+      var mainLower=String(authorMain||'').toLowerCase();
+      var idLower=authorId.toLowerCase();
+      if(mainLower.indexOf(idLower)===-1){
+        authorSub='<div style="margin-top:2px;font-size:11px;color:#64748b">@'+escapeHtml(authorId)+'</div>';
+      }
+    }
+    html+='<td class="log-author"><div>'+escapeHtml(authorMain)+'</div>'+authorSub+'</td>';
     html+='<td class="log-date">'+escapeHtml(date||'')+'</td>';
     html+='<td class="log-msg"><div class="commit-msg-box"><div>'+escapeHtml(pr.title||'')+'</div><div style="margin-top:4px;font-size:11px;color:#64748b">'+escapeHtml((pr.head_ref||'')+' → '+(pr.base_ref||''))+'</div></div></td>';
     html+='<td class="log-status">'+statusCell+'</td>';
