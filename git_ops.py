@@ -1149,6 +1149,47 @@ def _get_unpushed_hashes(branch: str) -> set:
     return set(h.strip() for h in out.splitlines() if h.strip())
 
 
+def _release_refs_for_commit(commit_hash: str) -> list:
+    """Return release-like refs containing the commit (local/remote branches or tags)."""
+    if not commit_hash:
+        return []
+    out, _, rc = _run([
+        "git", "for-each-ref",
+        "--format=%(refname:short)",
+        "--contains", commit_hash,
+        "refs/heads", "refs/remotes/origin", "refs/tags",
+    ])
+    if rc != 0 or not out.strip():
+        return []
+    seen = set()
+    labels = []
+    for raw in out.splitlines():
+        name = (raw or "").strip()
+        if not name:
+            continue
+        low = name.lower()
+        if low == "origin/head" or low.endswith("/head"):
+            continue
+        if "release" not in low:
+            continue
+        if name.startswith("origin/"):
+            name = name[7:]
+        if name not in seen:
+            seen.add(name)
+            labels.append(name)
+        if len(labels) >= 6:
+            break
+    return labels
+
+
+def _attach_release_refs(commits: list) -> list:
+    """Attach release refs for each commit row."""
+    for c in commits:
+        h = c.get("hash", "")
+        c["release_refs"] = _release_refs_for_commit(h)
+    return commits
+
+
 def get_commit_log(page=1, per_page=10, search="", order="desc"):
     """Return paginated commit log with optional search.
 
@@ -1186,7 +1227,7 @@ def get_commit_log(page=1, per_page=10, search="", order="desc"):
         total = int(count_out.strip()) if count_out.strip().isdigit() else 0
         out, _, _ = _run(["git", "log", branch, date_fmt, fmt,
                           "--skip", str(skip), "-n", str(per_page)] + rev_order)
-        commits = _parse(out.splitlines())
+        commits = _attach_release_refs(_parse(out.splitlines()))
         return {"commits": commits, "total": total, "page": page, "per_page": per_page, "order": order}
 
     # Full-text search on ALL commits reachable from current branch (no 50/500 cap).
@@ -1210,6 +1251,7 @@ def get_commit_log(page=1, per_page=10, search="", order="desc"):
     total = len(all_lines)
     commits = _parse(all_lines)
     page_commits = commits[skip:skip + per_page] if per_page > 0 else commits
+    page_commits = _attach_release_refs(page_commits)
     return {"commits": page_commits, "total": total, "page": page, "per_page": per_page, "order": order}
 
 
