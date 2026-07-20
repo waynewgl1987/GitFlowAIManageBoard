@@ -298,6 +298,19 @@ input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:var(--
 .log-table td{padding:10px 14px;font-size:13px;border-bottom:1px solid #f3f4f6}
 .log-table tr:hover td{background:#f9fafb}
 .log-hash{font-family:monospace;color:var(--color-primary);font-weight:600;font-size:12px}
+.log-hash-cell{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.log-copy-btn{
+  font-size:10px;
+  line-height:1;
+  padding:3px 8px;
+  border-radius:12px;
+  border:1px solid #d1d5db;
+  background:#f3f4f6;
+  color:#374151;
+  font-weight:600;
+  cursor:pointer;
+}
+.log-copy-btn:hover{background:#e5e7eb}
 .log-date{color:var(--color-text-muted);font-size:12px;white-space:nowrap}
 .log-author{font-size:12px;color:#374151}
 .log-msg{max-width:320px;vertical-align:top}
@@ -332,12 +345,23 @@ input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:var(--
 .commit-msg-toggle:hover{text-decoration:underline}
 .log-release-info{
   margin-top:6px;
-  font-size:11px;
-  color:#374151;
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px;
   max-width:260px;
-  white-space:normal;
-  word-break:break-word;
-  line-height:1.35;
+}
+.log-release-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  font-size:11px;
+  font-weight:600;
+  background:#d1fae5;
+  color:#065f46;
+  border:1px solid #6ee7b7;
+  border-radius:20px;
+  padding:3px 10px;
+  white-space:nowrap;
 }
 .log-actions{white-space:nowrap}
 .log-actions button{margin-right:4px}

@@ -3381,11 +3381,7 @@ function renderLog(data){
         +'style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;'
         +'background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;border-radius:20px;'
         +'padding:3px 10px;white-space:nowrap;cursor:default">'
-        +'☁️ Pushed</span> '
-        +'<button class="btn btn-sm" onclick="event.stopPropagation();copyToClipboard(\''+c.hash+'\')" '
-        +'title="Copy full commit hash" '
-        +'style="font-size:10px;padding:2px 7px;background:#ecfdf5;color:#065f46;border:1px solid #6ee7b7;'
-        +'border-radius:12px;margin-left:2px">📋 Copy</button>';
+        +'☁️ Pushed</span>';
     } else {
       statusCell=
         '<span title="This commit has NOT been pushed to remote yet" '
@@ -3404,7 +3400,7 @@ function renderLog(data){
     }
 
     html+='<tr style="cursor:pointer" onclick="toggleCommitDiff(\''+c.hash+'\','+idx+')"><td><input type="checkbox" class="squash-cb" data-hash="'+c.hash+'"'+checked+cbDisabled+' onclick="event.stopPropagation();toggleSquashSelect(this)"></td>';
-    html+='<td><span class="log-hash" data-full="'+c.hash+'" onclick="event.stopPropagation();toggleHash(this)" title="Click to toggle full hash">'+c.short_hash+'</span></td>';
+    html+='<td>'+_renderLogHashCell(c)+'</td>';
     html+='<td class="log-author">'+escapeHtml(c.author)+'</td>';
     html+='<td class="log-date">'+c.date+'</td>';
     html+='<td class="log-msg">'+_renderCommitMessageCell(c.message,'log-msg-'+idx,rootBadge)+'</td>';
@@ -3435,6 +3431,14 @@ function _renderCommitMessageCell(message,id,badgeHtml){
   return html;
 }
 
+function _renderLogHashCell(commit){
+  var c=commit||{};
+  return '<div class="log-hash-cell">'
+    +'<span class="log-hash" data-full="'+escapeAttr(c.hash||'')+'" onclick="event.stopPropagation();toggleHash(this)" title="Click to toggle full hash">'+escapeHtml(c.short_hash||'')+'</span>'
+    +'<button class="log-copy-btn" onclick="event.stopPropagation();copyToClipboard(\''+escapeAttr(c.hash||'')+'\')" title="'+escapeAttr(_aiCmpText('复制完整 commit hash','Copy full commit hash'))+'">'+_aiCmpText('📋 复制','📋 Copy')+'</button>'
+    +'</div>';
+}
+
 function toggleCommitMessageExpand(id,btn){
   var box=document.getElementById(id);
   if(!box||!btn)return;
@@ -3454,11 +3458,14 @@ function _renderCommitReleaseInfo(releaseRefs){
   if(!releaseRefs||!releaseRefs.length)return'';
   var shown=releaseRefs.slice(0,2);
   var more=releaseRefs.length-shown.length;
-  var text=t('release_in')+' '+shown.map(function(r){return escapeHtml(r);}).join(', ');
-  if(more>0){
-    text+=' <span style="color:#6b7280">('+tf('release_more',L,{n:more})+')</span>';
+  var html='';
+  for(var i=0;i<shown.length;i++){
+    html+='<span class="log-release-pill" title="'+escapeAttr(_aiCmpText('包含此提交的发布分支','Release ref containing this commit'))+'">🏷 '+escapeHtml(t('release_in'))+' '+escapeHtml(shown[i])+'</span>';
   }
-  return text;
+  if(more>0){
+    html+='<span class="log-release-pill">'+escapeHtml(tf('release_more',L,{n:more}))+'</span>';
+  }
+  return html;
 }
 
 /** Push from commit log row — same confirm flow as the top Push button. */
