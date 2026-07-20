@@ -593,6 +593,13 @@ def commit_diff(commit_hash):
     return out
 
 
+def commit_files(commit_hash):
+    """List changed file paths for a specific commit."""
+    out, _, _ = _run(["git", "show", "--name-only", "--pretty=format:", commit_hash])
+    files = [l.strip() for l in out.splitlines() if l.strip()]
+    return files
+
+
 def search_diff_code(pattern, max_count=200):
     """Search commits whose diffs contain lines matching pattern (regex, case-insensitive)."""
     if not pattern:
@@ -1182,41 +1189,25 @@ def get_commit_log(page=1, per_page=10, search="", order="desc"):
         commits = _parse(out.splitlines())
         return {"commits": commits, "total": total, "page": page, "per_page": per_page, "order": order}
 
-    base_args = ["git", "log", branch, date_fmt, fmt, "-n", "500"]
-    hash_set = set()
+    # Full-text search on ALL commits reachable from current branch (no 50/500 cap).
+    # This is intentionally exhaustive for reliable hash lookup.
+    out, _, _ = _run(["git", "log", branch, date_fmt, fmt])
+    q = search.lower()
     all_lines = []
-
-    out_m, _, _ = _run(base_args + [f"--grep={search}", "-i", "-E"])
-    for l in out_m.splitlines():
+    for l in out.splitlines():
         l = l.strip()
-        if l:
-            h = l.split("||", 1)[0]
-            if h and h not in hash_set:
-                hash_set.add(h); all_lines.append(l)
+        if not l:
+            continue
+        parts = l.split("||", 3)
+        if len(parts) != 4:
+            continue
+        h, author, _, msg = parts
+        if q in h.lower() or q in (author or "").lower() or q in (msg or "").lower():
+            all_lines.append(l)
 
-    out_a, _, _ = _run(base_args + [f"--author={search}"])
-    for l in out_a.splitlines():
-        l = l.strip()
-        if l:
-            h = l.split("||", 1)[0]
-            if h and h not in hash_set:
-                hash_set.add(h); all_lines.append(l)
-
-    if all(c in "0123456789abcdefABCDEF" for c in search):
-        out_rev, _, _ = _run(["git", "rev-list", "--all", "--max-count", "50"])
-        for rev in out_rev.splitlines():
-            rev = rev.strip()
-            if rev and (search.lower() in rev.lower()) and rev not in hash_set:
-                out_show, _, _ = _run(["git", "show", "--no-patch",
-                    "--pretty=format:%H||%an||%ad||%s",
-                    "--date=format:%Y-%m-%d %H:%M", rev])
-                for l in out_show.splitlines():
-                    l = l.strip()
-                    if l:
-                        hash_set.add(rev); all_lines.append(l)
-
+    if order == "asc":
+        all_lines = list(reversed(all_lines))
     total = len(all_lines)
-    all_lines.sort(reverse=(order == "desc"))
     commits = _parse(all_lines)
     page_commits = commits[skip:skip + per_page] if per_page > 0 else commits
     return {"commits": page_commits, "total": total, "page": page, "per_page": per_page, "order": order}

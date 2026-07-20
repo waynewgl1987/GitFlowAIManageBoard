@@ -20,7 +20,7 @@ from git_ops import (
     check_unsigned_commits, resign_branch_commits, resign_branch_commits_with_autostash,
     _ref_exists, _resolve_ref_for_compare,
     get_branches, has_uncommitted, stash_changes,
-    stash_list, stash_diff, commit_diff, search_diff_code,
+    stash_list, stash_diff, commit_diff, commit_files, search_diff_code,
     stash_pop, stash_drop, file_commit_diff,
     checkout_branch, create_branch,
     delete_branch_local, delete_branch_remote, rename_branch,
@@ -130,6 +130,11 @@ def handle_get(path, params, send_json, send_stream=None):
     elif path == "/api/commit-diff":
         commit = params.get("commit", [""])[0]
         send_json({"diff": commit_diff(commit)})
+        return True
+
+    elif path == "/api/commit-files":
+        commit = params.get("commit", [""])[0]
+        send_json({"files": commit_files(commit)})
         return True
 
     elif path == "/api/file-commit-diff":

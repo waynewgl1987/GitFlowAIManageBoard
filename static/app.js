@@ -701,7 +701,35 @@ function showModal(title, msg, confirmLabel, cb) {
   document.getElementById('modal-bg').classList.add('show');
 }
 
+var _modalRestoreFn = null;
+function _setModalLayout(stylePatch){
+  var bg=document.getElementById('modal-bg');
+  var box=bg?bg.querySelector('.modal-box'):null;
+  if(!box)return;
+  var prev={
+    maxWidth: box.style.maxWidth||'',
+    width: box.style.width||'',
+    maxHeight: box.style.maxHeight||'',
+    overflowY: box.style.overflowY||'',
+    padding: box.style.padding||''
+  };
+  if(stylePatch.maxWidth!=null) box.style.maxWidth=stylePatch.maxWidth;
+  if(stylePatch.width!=null) box.style.width=stylePatch.width;
+  if(stylePatch.maxHeight!=null) box.style.maxHeight=stylePatch.maxHeight;
+  if(stylePatch.overflowY!=null) box.style.overflowY=stylePatch.overflowY;
+  if(stylePatch.padding!=null) box.style.padding=stylePatch.padding;
+  _modalRestoreFn=function(){
+    box.style.maxWidth=prev.maxWidth;
+    box.style.width=prev.width;
+    box.style.maxHeight=prev.maxHeight;
+    box.style.overflowY=prev.overflowY;
+    box.style.padding=prev.padding;
+    _modalRestoreFn=null;
+  };
+}
+
 function closeModal() {
+  if(_modalRestoreFn)_modalRestoreFn();
   document.getElementById('modal-bg').classList.remove('show');
   modalCallback=null;
 }
@@ -1115,7 +1143,7 @@ function toggleWorktreeHelp(){
 
 function _loadWorktreeList(){
   var listEl = document.getElementById('wtp-list');
-  listEl.innerHTML = '<div style="font-size:12px;color:#9ca3af;text-align:center;padding:20px 0"><span class="spinner" style="width:16px;height:16px;border-width:2px;margin-right:8px;display:inline-block;vertical-align:middle"></span> ' + t('wtp_loading') + '</div>';
+  listEl.innerHTML = '<div class="loading-bar"><span class="spinner"></span>' + t('wtp_loading') + '</div>';
   apiGet('/api/worktrees', function(d){
     if (!d || !d.ok) {
       listEl.innerHTML = '<div class="wtp-empty">' + t('wtp_load_fail') + '</div>';
@@ -3272,13 +3300,29 @@ function showStashDialog(paths, onSuccess) {
 // ═══════════ Log page ═══════════
 var logDebounceTimer=null;
 var logSortOrder='desc'; // 'desc' = newest first, 'asc' = oldest first
+var _logCommitMap={}; // full-hash -> commit row data
+var _commitFileDiffStore={}; // key: "<commit>::<file>" -> file diff text for that commit
+var _commitAIPanelState=null;
 function onLogSearchInput(){
   var val=document.getElementById('log-search').value;
   document.getElementById('log-search-btn').style.display=val?'inline-block':'none';
+  // Prevent stale diff-search timeout from overriding normal commit search rendering.
+  clearTimeout(_diffSearchTimer);
+  if(!val.trim() && !((document.getElementById('log-code-search')||{value:''}).value||'').trim()){
+    _inDiffSearchMode=false;
+  }
   clearTimeout(logDebounceTimer);
   logDebounceTimer=setTimeout(function(){loadLog(1)},300);
 }
-function clearLogSearch(){document.getElementById('log-search').value='';document.getElementById('log-search-btn').style.display='none';loadLog(1)}
+function clearLogSearch(){
+  document.getElementById('log-search').value='';
+  document.getElementById('log-search-btn').style.display='none';
+  clearTimeout(_diffSearchTimer);
+  if(!((document.getElementById('log-code-search')||{value:''}).value||'').trim()){
+    _inDiffSearchMode=false;
+  }
+  loadLog(1);
+}
 
 function toggleLogSort(){
   logSortOrder=logSortOrder==='desc'?'asc':'desc';
@@ -3295,6 +3339,9 @@ function loadLog(page){
   var url='/api/commits?page='+page+'&per_page='+perPage+'&order='+logSortOrder;
   if(search)url+='&search='+encodeURIComponent(search);
   apiGet(url,function(data){
+    if(!search.trim() && !((document.getElementById('log-code-search')||{value:''}).value||'').trim()){
+      _inDiffSearchMode=false;
+    }
     currentLogData=data;
     renderLog(data);
     renderPagination(data);
@@ -3305,6 +3352,7 @@ function loadLog(page){
 function renderLog(data){
   var container=document.getElementById('log-content');
   if(!data.commits||!data.commits.length){container.innerHTML='<div class="empty">'+t('no_match')+'</div>';return}
+  _logCommitMap={};
   var sortIcon=logSortOrder==='desc'?' ↓':' ↑';
   var sortTip=logSortOrder==='desc'?'Newest first — click for oldest first':'Oldest first — click for newest first';
   var html='<table class="log-table"><thead><tr>';
@@ -3314,6 +3362,7 @@ function renderLog(data){
   html+='<th>Message</th><th>Status</th><th>Actions</th><th style="width:20px"></th>';
   html+='</tr></thead><tbody>';
   data.commits.forEach(function(c,idx){
+    _logCommitMap[c.hash]=c;
     var checked=squashSelected[c.hash]?' checked':'';
     var isRoot=c.is_root?true:false;
     var cbDisabled=isRoot?' disabled title="'+(L==='zh'?'初始 commit 不可参与 Squash':'Initial commit cannot be squashed')+'"':'';
@@ -3426,16 +3475,23 @@ function highlightDiffFiles(text, commitHash){
   if(currentSection) sections.push(currentSection);
   
   if(!sections.length){
-    // No structured diff, show raw
-    var h='';
+    // No structured diff (common on merge commits) — show raw + lazy file list entry points.
+    var fallbackId='commit-ai-fallback-files-'+commitHash.substr(0,7)+'-'+Date.now();
+    var h='<div style="padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;background:#f8fafc;margin-bottom:10px">'
+      +'<div style="font-size:12px;color:#475569;margin-bottom:6px">No per-file patch blocks in this commit view. Loading changed-file list…</div>'
+      +'<div id="'+fallbackId+'" style="font-size:12px;color:#64748b">Loading files…</div>'
+      +'</div>';
     for(var j=0;j<lines.length;j++)
       h+=diffLine(lines[j]);
+    setTimeout(function(){ _loadCommitAIEntryFiles(commitHash,fallbackId); },0);
     return h;
   }
   
   var html='';
   sections.forEach(function(sec, si){
     var fileId='diff-file-'+si+'-'+commitHash.substr(0,7);
+    var fileDiffText=(sec.lines||[]).join('\n');
+    _commitFileDiffStore[_commitDiffStoreKey(commitHash, sec.file)] = fileDiffText;
     html+='<div style="border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;overflow:hidden">';
     html+='<div style="display:flex;align-items:center;padding:8px 14px;background:#f9fafb;cursor:pointer" onclick="toggleDiffFile(\''+fileId+'\',this)">';
     html+='<span class="file-toggle" id="'+fileId+'-toggle">▶</span>';
@@ -3448,6 +3504,7 @@ function highlightDiffFiles(text, commitHash){
     html+='</div>';
     html+='<div style="padding:4px 14px;border-top:1px solid #e5e7eb;background:#fafafa">';
     html+='<button class="btn btn-sm btn-secondary restore-file-btn" title="Restore this file to a specific commit — choose from commit history" data-file="'+escapeAttr(sec.file)+'" onclick="event.stopPropagation();openRestorePage(this.getAttribute(\'data-file\'))">📂 Restore to commit...</button>';
+    html+=' <button class="btn btn-sm btn-primary" title="Open AI compare panel for this file" onclick="event.stopPropagation();openCommitAICompare(\''+escapeAttr(sec.file)+'\',\''+escapeAttr(commitHash)+'\')">🤖 AI Compare</button>';
     html+='</div></div>';
   });
   return html;
@@ -3460,6 +3517,328 @@ function highlightDiffFiles(text, commitHash){
     s+='">'+escapeHtml(line)+'</div>';
     return s;
   }
+}
+
+function _loadCommitAIEntryFiles(commitHash,targetId){
+  var el=document.getElementById(targetId);
+  if(!el)return;
+  apiGet('/api/commit-files?commit='+encodeURIComponent(commitHash),function(data){
+    var files=(data&&data.files)||[];
+    if(!files.length){
+      el.innerHTML='<span style="color:#94a3b8">No changed files found.</span>';
+      return;
+    }
+    var html='';
+    for(var i=0;i<files.length;i++){
+      var fp=files[i];
+      html+='<button class="btn btn-sm btn-primary" style="margin:0 6px 6px 0"'
+        +' onclick="event.stopPropagation();openCommitAICompare(\''+escapeAttr(fp)+'\',\''+escapeAttr(commitHash)+'\')">'
+        +'🤖 AI Compare '+escapeHtml(fp.split('/').pop())+'</button>';
+    }
+    el.innerHTML=html;
+  });
+}
+
+function _commitDiffStoreKey(commitHash, filePath){
+  return (commitHash||'')+'::'+(filePath||'');
+}
+
+function _setProgressBar(rootId, percent, label){
+  var bar=document.getElementById(rootId+'-bar');
+  var txt=document.getElementById(rootId+'-label');
+  if(bar) bar.style.width=Math.max(0,Math.min(100,percent))+'%';
+  if(txt && label!=null) txt.textContent=label;
+}
+
+function _startAutoProgress(rootId, baseLabel){
+  var p=8;
+  _setProgressBar(rootId,p,baseLabel+' ('+p+'%)');
+  return setInterval(function(){
+    p=Math.min(92,p+Math.floor(Math.random()*8)+2);
+    _setProgressBar(rootId,p,baseLabel+' ('+p+'%)');
+  },220);
+}
+
+function _stopAutoProgress(timer, rootId, doneLabel){
+  if(timer) clearInterval(timer);
+  _setProgressBar(rootId,100,doneLabel||'Done');
+}
+
+function openCommitAICompare(filePath, commitHash){
+  var key=_commitDiffStoreKey(commitHash,filePath);
+  var currentDiff=_commitFileDiffStore[key];
+  if(!currentDiff){
+    apiGet('/api/file-commit-diff?commit='+encodeURIComponent(commitHash)+'&file='+encodeURIComponent(filePath),function(d){
+      var fetched=(d&&d.diff)||'';
+      if(!fetched.trim()){
+        addMsg('❌ Cannot load file diff for this commit/file.','error');
+        return;
+      }
+      _commitFileDiffStore[key]=fetched;
+      _openCommitAIComparePanel(filePath,commitHash,fetched);
+    });
+    return;
+  }
+  _openCommitAIComparePanel(filePath,commitHash,currentDiff);
+}
+
+function _openCommitAIComparePanel(filePath, commitHash, currentDiff){
+  _commitAIPanelState={
+    filePath:filePath,
+    currentCommitHash:commitHash,
+    currentDiff:currentDiff,
+    selectedHistoryCommit:null,
+    selectedHistoryDiff:'',
+    historyPage:0,
+    historyPerPage:20,
+    historyTotal:0,
+    historyLoading:false,
+    historyDone:false,
+    historyItems:[]
+  };
+
+  _setModalLayout({
+    maxWidth:'96vw',
+    width:'96vw',
+    maxHeight:'92vh',
+    overflowY:'hidden',
+    padding:'16px 18px'
+  });
+
+  var cInfo=_logCommitMap[commitHash]||{};
+  document.getElementById('modal-title').innerHTML='🤖 AI Compare Panel'
+    +' <span style="font-size:12px;font-weight:500;color:#64748b">— '+escapeHtml(filePath)+'</span>';
+  document.getElementById('modal-msg').innerHTML=
+    '<div id="commit-ai-compare-root" style="height:76vh;display:flex;gap:10px;overflow:hidden">'
+      +'<div style="width:31%;min-width:300px;border:1px solid #e5e7eb;border-radius:10px;display:flex;flex-direction:column;overflow:hidden;background:#fff">'
+        +'<div style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;font-weight:700;color:#0f172a">🕘 File History Commits</div>'
+        +'<div id="commit-ai-history-progress" style="padding:8px 12px;border-bottom:1px solid #f1f5f9;background:#f8fafc;display:none">'
+          +'<div style="height:6px;background:#e2e8f0;border-radius:999px;overflow:hidden"><div id="commit-ai-history-progress-bar" style="height:100%;width:0;background:linear-gradient(90deg,#60a5fa,#2563eb)"></div></div>'
+          +'<div id="commit-ai-history-progress-label" style="font-size:11px;color:#64748b;margin-top:4px">Loading...</div>'
+        +'</div>'
+        +'<div id="commit-ai-history-list" style="flex:1;overflow-y:auto;padding:0"></div>'
+      +'</div>'
+      +'<div style="width:34%;min-width:320px;border:1px solid #e5e7eb;border-radius:10px;display:flex;flex-direction:column;overflow:hidden;background:#fff">'
+        +'<div style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;font-weight:700;color:#0f172a">📄 Current Commit Diff</div>'
+        +'<div style="padding:8px 12px;font-size:12px;color:#64748b;border-bottom:1px solid #f1f5f9">'
+          +'Current: <code>'+escapeHtml((cInfo.short_hash||commitHash.substring(0,7)||''))+'</code>'
+          +(cInfo.message?(' · '+escapeHtml(cInfo.message)):'')
+        +'</div>'
+        +'<div id="commit-ai-current-diff" style="flex:1;overflow-y:auto;padding:10px;background:#fafafa">'+highlightDiff(currentDiff||'')+'</div>'
+      +'</div>'
+      +'<div style="width:35%;min-width:340px;border:1px solid #e5e7eb;border-radius:10px;display:flex;flex-direction:column;overflow:hidden;background:#fff">'
+        +'<div style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;font-weight:700;color:#0f172a">🤖 AI Analysis Result</div>'
+        +'<div style="padding:8px 12px;border-bottom:1px solid #f1f5f9;background:#f8fafc;display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+          +'<button id="commit-ai-run-btn" class="btn btn-primary" style="padding:5px 10px;font-size:12px" onclick="runCommitHistoryAICompare()" disabled>Analyze</button>'
+          +'<span id="commit-ai-selected-info" style="font-size:12px;color:#64748b">Select one historical commit from left</span>'
+        +'</div>'
+        +'<div id="commit-ai-analyze-progress" style="padding:8px 12px;border-bottom:1px solid #f1f5f9;background:#f8fafc;display:none">'
+          +'<div style="height:6px;background:#e2e8f0;border-radius:999px;overflow:hidden"><div id="commit-ai-analyze-progress-bar" style="height:100%;width:0;background:linear-gradient(90deg,#34d399,#059669)"></div></div>'
+          +'<div id="commit-ai-analyze-progress-label" style="font-size:11px;color:#64748b;margin-top:4px">Analyzing...</div>'
+        +'</div>'
+        +'<div id="commit-ai-result" style="flex:1;overflow-y:auto;padding:12px;color:#0f172a;font-size:13px;line-height:1.7">'
+          +'<div style="color:#64748b">After selecting a history commit, click <b>Analyze</b> to compare it with the current commit file diff.</div>'
+        +'</div>'
+      +'</div>'
+    +'</div>';
+
+  var btnsDiv=document.getElementById('modal-btns');
+  btnsDiv.innerHTML='';
+  var closeBtn=document.createElement('button');
+  closeBtn.className='btn btn-secondary';
+  closeBtn.textContent='Close';
+  closeBtn.onclick=closeModal;
+  btnsDiv.appendChild(closeBtn);
+  document.getElementById('modal-bg').classList.add('show');
+
+  var listEl=document.getElementById('commit-ai-history-list');
+  if(listEl){
+    listEl.addEventListener('scroll',function(){
+      if(!_commitAIPanelState || _commitAIPanelState.historyLoading || _commitAIPanelState.historyDone) return;
+      if(listEl.scrollTop+listEl.clientHeight >= listEl.scrollHeight-40){
+        _loadMoreCommitAIHistory();
+      }
+    });
+  }
+  _loadMoreCommitAIHistory();
+}
+
+function _renderCommitAIHistoryList(){
+  var st=_commitAIPanelState;
+  var listEl=document.getElementById('commit-ai-history-list');
+  if(!st||!listEl)return;
+  if(!st.historyItems.length){
+    listEl.innerHTML='<div style="padding:14px;color:#64748b;font-size:12px">No history commits found for this file.</div>';
+    return;
+  }
+  var html='';
+  st.historyItems.forEach(function(c){
+    var active=st.selectedHistoryCommit&&st.selectedHistoryCommit.hash===c.hash;
+    html+='<div onclick="selectCommitAIHistory(\''+escapeAttr(c.hash)+'\')"'
+      +' style="padding:10px 12px;border-bottom:1px solid #f1f5f9;cursor:pointer;background:'+(active?'#eff6ff':'#fff')+'">'
+      +'<div style="font-family:monospace;font-size:12px;color:#1d4ed8;font-weight:700">'+escapeHtml(c.short_hash||c.hash.substring(0,7))+'</div>'
+      +'<div style="font-size:11px;color:#64748b;margin-top:2px">'+escapeHtml((c.author||'')+' · '+(c.date||''))+'</div>'
+      +'<div style="font-size:12px;color:#0f172a;margin-top:4px;line-height:1.45">'+escapeHtml(c.message||'')+'</div>'
+      +'</div>';
+  });
+  if(st.historyLoading){
+    html+='<div style="padding:10px 12px;font-size:12px;color:#64748b">Loading more…</div>';
+  }else if(st.historyDone){
+    html+='<div style="padding:10px 12px;font-size:12px;color:#94a3b8">Loaded all '+st.historyItems.length+' commits.</div>';
+  }else{
+    html+='<div style="padding:10px 12px;font-size:12px;color:#94a3b8">Scroll down to load 20 more.</div>';
+  }
+  listEl.innerHTML=html;
+}
+
+function _loadMoreCommitAIHistory(){
+  var st=_commitAIPanelState;
+  if(!st||st.historyLoading||st.historyDone)return;
+  st.historyLoading=true;
+  st.historyPage+=1;
+  var progressWrap=document.getElementById('commit-ai-history-progress');
+  if(progressWrap) progressWrap.style.display='block';
+  var timer=_startAutoProgress('commit-ai-history-progress','Loading history commits');
+
+  apiGet('/api/file-commits?file='+encodeURIComponent(st.filePath)+'&page='+st.historyPage+'&per_page='+st.historyPerPage,function(data){
+    _stopAutoProgress(timer,'commit-ai-history-progress','History loaded');
+    setTimeout(function(){ if(progressWrap) progressWrap.style.display='none'; },300);
+    st.historyLoading=false;
+    st.historyTotal=data.total||0;
+    var items=data.commits||[];
+    for(var i=0;i<items.length;i++) st.historyItems.push(items[i]);
+    if(!items.length || st.historyItems.length>=st.historyTotal) st.historyDone=true;
+    _renderCommitAIHistoryList();
+  });
+}
+
+function selectCommitAIHistory(hash){
+  var st=_commitAIPanelState;
+  if(!st)return;
+  var item=null;
+  for(var i=0;i<st.historyItems.length;i++){
+    if(st.historyItems[i].hash===hash){ item=st.historyItems[i]; break; }
+  }
+  if(!item)return;
+  st.selectedHistoryCommit=item;
+  st.selectedHistoryDiff='';
+  _renderCommitAIHistoryList();
+  var runBtn=document.getElementById('commit-ai-run-btn');
+  if(runBtn) runBtn.disabled=true;
+  var info=document.getElementById('commit-ai-selected-info');
+  if(info) info.textContent='Loading selected commit diff: '+(item.short_hash||hash.substring(0,7));
+  var result=document.getElementById('commit-ai-result');
+  if(result) result.innerHTML='<div style="color:#64748b">Loading selected historical commit diff...</div>';
+
+  apiGet('/api/file-commit-diff?commit='+encodeURIComponent(hash)+'&file='+encodeURIComponent(st.filePath),function(data){
+    st.selectedHistoryDiff=(data.diff||'').trim();
+    if(info) info.textContent='Selected: '+(item.short_hash||hash.substring(0,7))+' — '+(item.message||'');
+    if(runBtn) runBtn.disabled=!st.selectedHistoryDiff;
+    if(result){
+      if(!st.selectedHistoryDiff){
+        result.innerHTML='<div style="color:#64748b">No file diff found in selected commit. Please choose another commit.</div>';
+      }else{
+        result.innerHTML='<div style="font-size:12px;color:#0f172a;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-bottom:10px">'
+          +'Historical commit <code>'+escapeHtml(item.short_hash||hash.substring(0,7))+'</code> loaded. Click <b>Analyze</b> to compare with current commit diff.'
+          +'</div>';
+      }
+    }
+  });
+}
+
+function runCommitHistoryAICompare(){
+  var st=_commitAIPanelState;
+  if(!st||!st.selectedHistoryCommit||!st.selectedHistoryDiff)return;
+  var cfg=(typeof getAIConfig==='function')?getAIConfig():null;
+  if(!cfg||!cfg.provider){
+    addMsg('❌ Please configure AI provider first (AI panel).','error');
+    return;
+  }
+
+  var runBtn=document.getElementById('commit-ai-run-btn');
+  if(runBtn){ runBtn.disabled=true; runBtn.textContent='Analyzing...'; }
+  var result=document.getElementById('commit-ai-result');
+  if(result){
+    result.innerHTML='<div style="color:#64748b">AI is analyzing the difference between selected historical commit and current commit file changes...</div>';
+  }
+  var progressWrap=document.getElementById('commit-ai-analyze-progress');
+  if(progressWrap) progressWrap.style.display='block';
+  var timer=_startAutoProgress('commit-ai-analyze-progress','AI analyzing');
+
+  var curMeta=_logCommitMap[st.currentCommitHash]||{};
+  var oldMeta=st.selectedHistoryCommit||{};
+  var prompt=
+    'Compare these two file-level commit diffs for file "'+st.filePath+'".\n\n'
+    +'Current commit:\n'
+    +'- hash: '+(curMeta.short_hash||st.currentCommitHash.substring(0,7))+'\n'
+    +'- author: '+(curMeta.author||'')+'\n'
+    +'- date: '+(curMeta.date||'')+'\n'
+    +'- message: '+(curMeta.message||'')+'\n\n'
+    +'Historical commit:\n'
+    +'- hash: '+(oldMeta.short_hash||oldMeta.hash||'')+'\n'
+    +'- author: '+(oldMeta.author||'')+'\n'
+    +'- date: '+(oldMeta.date||'')+'\n'
+    +'- message: '+(oldMeta.message||'')+'\n\n'
+    +'Current commit file diff:\n```diff\n'+st.currentDiff.slice(0,6000)+'\n```\n\n'
+    +'Historical commit file diff:\n```diff\n'+st.selectedHistoryDiff.slice(0,6000)+'\n```\n\n'
+    +'Please provide:\n'
+    +'1. What changed from historical to current approach\n'
+    +'2. Risk/bug differences\n'
+    +'3. Regression concerns\n'
+    +'4. Improvement suggestions';
+
+  var messages=[
+    {role:'system',content:'You are an expert code reviewer. Compare two commit diffs of the same file and produce concise, practical findings in markdown.'},
+    {role:'user',content:prompt}
+  ];
+
+  fetch('/api/ai/chat',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({provider:cfg.provider,api_key:cfg.api_key,base_url:cfg.base_url,model:cfg.model,messages:messages})
+  })
+  .then(function(r){return r.json();})
+  .then(function(data){
+    if(!data.ok){
+      _stopAutoProgress(timer,'commit-ai-analyze-progress','Failed');
+      if(progressWrap) progressWrap.style.display='none';
+      if(runBtn){ runBtn.disabled=false; runBtn.textContent='Analyze'; }
+      if(result) result.innerHTML='<div style="color:#ef4444">❌ '+escapeHtml(data.error||'AI request failed')+'</div>';
+      return;
+    }
+    _pollCommitAICompareResult(data.jobId,timer,runBtn,result,progressWrap);
+  })
+  .catch(function(e){
+    _stopAutoProgress(timer,'commit-ai-analyze-progress','Failed');
+    if(progressWrap) progressWrap.style.display='none';
+    if(runBtn){ runBtn.disabled=false; runBtn.textContent='Analyze'; }
+    if(result) result.innerHTML='<div style="color:#ef4444">❌ '+escapeHtml(e.message||'Network error')+'</div>';
+  });
+}
+
+function _pollCommitAICompareResult(jobId,timer,runBtn,result,progressWrap){
+  fetch('/api/ai/chat-status?jobId='+jobId)
+    .then(function(r){return r.json();})
+    .then(function(data){
+      if(!data.done){
+        setTimeout(function(){_pollCommitAICompareResult(jobId,timer,runBtn,result,progressWrap);},800);
+        return;
+      }
+      _stopAutoProgress(timer,'commit-ai-analyze-progress','Completed');
+      setTimeout(function(){ if(progressWrap) progressWrap.style.display='none'; },300);
+      if(runBtn){ runBtn.disabled=false; runBtn.textContent='Analyze'; }
+      if(!data.ok){
+        if(result) result.innerHTML='<div style="color:#ef4444">❌ '+escapeHtml(data.error||'AI analysis failed')+'</div>';
+        return;
+      }
+      if(result){
+        result.innerHTML='<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;white-space:pre-wrap;line-height:1.75">'
+          +escapeHtml(data.text||'').replace(/\n/g,'<br>')+'</div>';
+      }
+    })
+    .catch(function(){
+      setTimeout(function(){_pollCommitAICompareResult(jobId,timer,runBtn,result,progressWrap);},1200);
+    });
 }
 
 function toggleDiffFile(id, header){
