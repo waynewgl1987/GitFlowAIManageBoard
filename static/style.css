@@ -40,6 +40,9 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",sans-s
 .top-bar h1{font-size:22px;margin-right:0}
 .top-bar-row{display:flex;align-items:center;gap:10px;}
 .top-bar-row--branch{padding:12px 20px;background:#fafafa;border-bottom:1px solid #f0f0f0;}
+.current-branch-stack{display:flex;flex-direction:column;align-items:flex-start;min-width:0;flex:1;gap:4px;}
+.current-branch-mainline{display:flex;align-items:center;gap:10px;width:100%;min-width:0;}
+.top-bar-lang-wrap{flex-shrink:0;margin-left:12px;}
 .top-bar-row--tabs{flex-wrap:wrap;padding:8px 16px 10px;justify-content:center;gap:4px;}
 .project-banner{display:flex;align-items:center;gap:12px;padding:10px 20px;margin-bottom:10px;border-radius:12px;background:linear-gradient(135deg,#1e3a8a 0%,#1d4ed8 50%,#7c3aed 100%);box-shadow:0 4px 16px rgba(30,58,138,.35);overflow:visible;position:relative;}
 .project-banner::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(45deg,transparent,transparent 18px,rgba(255,255,255,.03) 18px,rgba(255,255,255,.03) 36px);border-radius:12px;}
@@ -432,7 +435,7 @@ input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:var(--
 .branch-tag.release{border-color:var(--color-success);color:#065f46;background:#ecfdf5}
 mark{background:#fef3c7;border-radius:2px;padding:0 1px}
 #branch-name{
-  display:inline-block;
+  display:block;
   background:linear-gradient(135deg,#1d4ed8,#7c3aed);
   color:#fff;
   font-size:15px;
@@ -444,6 +447,11 @@ mark{background:#fef3c7;border-radius:2px;padding:0 1px}
   letter-spacing:.3px;
   box-shadow:0 0 0 3px rgba(99,102,241,.25),0 4px 12px rgba(29,78,216,.4);
   animation:branch-pulse 2.5s ease-in-out infinite;
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  min-width:0;
 }
 @keyframes branch-pulse{
   0%,100%{box-shadow:0 0 0 3px rgba(99,102,241,.25),0 4px 12px rgba(29,78,216,.4)}

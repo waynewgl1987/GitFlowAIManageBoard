@@ -57,10 +57,10 @@
 <div class="top-bar">
   <!-- Row 1: current branch (left) + language selector (right) -->
   <div class="top-bar-row top-bar-row--branch">
-    <div style="display:flex;flex-direction:column;align-items:flex-start;min-width:0;flex:1;gap:4px;">
+    <div class="current-branch-stack">
       <span class="branch-label" data-i18n="current_branch_label">🌿 Current Branch</span>
-      <div style="display:flex;align-items:center;gap:10px;width:100%;">
-        <span class="branch-tag" id="branch-name" title="Current Branch" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;">...</span>
+      <div class="current-branch-mainline">
+        <span class="branch-tag" id="branch-name" title="Current Branch">...</span>
         <label class="gpg-toggle" title="GPG Sign Commits (-S)">
           <input type="checkbox" id="gpg-sign-toggle" onchange="toggleGpgSign(this.checked)">
           <span class="gpg-toggle-slider"></span>
@@ -68,7 +68,7 @@
         </label>
       </div>
     </div>
-    <div style="flex-shrink:0;margin-left:12px;">
+    <div class="top-bar-lang-wrap">
       <select class="lang-sel" id="lang-sel" onchange="switchLang(this.value)">
         <option value="en">EN</option>
         <option value="zh">中文</option>
