@@ -440,17 +440,24 @@ mark{background:#fef3c7;border-radius:2px;padding:0 1px}
   color:#fff;
   font-size:15px;
   font-weight:800;
-  padding:6px 20px;
+  padding:6px 16px;
   border-radius:99px;
   border:none;
   cursor:default;
   letter-spacing:.3px;
   box-shadow:0 0 0 3px rgba(99,102,241,.25),0 4px 12px rgba(29,78,216,.4);
   animation:branch-pulse 2.5s ease-in-out infinite;
-  max-width:100%;
+  width:min(420px,100%);
   overflow:hidden;
   text-overflow:ellipsis;
-  white-space:nowrap;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  line-height:1.1;
+  min-height:2.2em;
+  max-height:2.2em;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
   min-width:0;
 }
 @keyframes branch-pulse{
