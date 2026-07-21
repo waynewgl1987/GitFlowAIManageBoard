@@ -1,6 +1,7 @@
 // ═══════════ i18n ═══════════
 var L = (localStorage.getItem('git_tool_lang') || 'en');
 var T = {
+  app_tab_title: {en:'Git Manage AI Board', zh:'Git 管理 AI 看板'},
   select_all: {en:'Select / Deselect All', zh:'全选 / 取消全选'},
   confirm_commit: {en:'Confirm Commit', zh:'确认 Commit'},
   deselect_all: {en:'Deselect All', zh:'全部取消'},
@@ -515,6 +516,7 @@ function switchLang(lang) {
 }
 
 function applyI18n() {
+  document.title = t('app_tab_title');
   var els = document.querySelectorAll('[data-i18n]');
   for (var i=0; i<els.length; i++) {
     var el = els[i];
