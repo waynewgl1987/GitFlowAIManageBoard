@@ -435,7 +435,7 @@ input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:var(--
 .branch-tag.release{border-color:var(--color-success);color:#065f46;background:#ecfdf5}
 mark{background:#fef3c7;border-radius:2px;padding:0 1px}
 #branch-name{
-  display:block;
+  display:inline-block;
   background:linear-gradient(135deg,#1d4ed8,#7c3aed);
   color:#fff;
   font-size:15px;
@@ -447,17 +447,12 @@ mark{background:#fef3c7;border-radius:2px;padding:0 1px}
   letter-spacing:.3px;
   box-shadow:0 0 0 3px rgba(99,102,241,.25),0 4px 12px rgba(29,78,216,.4);
   animation:branch-pulse 2.5s ease-in-out infinite;
-  width:min(420px,100%);
+  width:auto;
+  max-width:min(420px,70vw);
   overflow:hidden;
   text-overflow:ellipsis;
-  white-space:normal;
-  overflow-wrap:anywhere;
-  line-height:1.1;
-  min-height:2.2em;
-  max-height:2.2em;
-  display:-webkit-box;
-  -webkit-line-clamp:2;
-  -webkit-box-orient:vertical;
+  white-space:nowrap;
+  line-height:1.2;
   min-width:0;
 }
 @keyframes branch-pulse{
