@@ -5,7 +5,8 @@ api_handlers.py — API endpoint handlers for Git Manage Board.
 Dispatches GET and POST API requests to git_ops functions.
 """
 
-import os, json, re, threading, uuid, time, shlex
+import os, json, re, threading, time, shlex
+from uuid import uuid4 as _uuid4
 from ai_module.ai_provider import (
     test_provider as ai_test_provider,
     start_chat_job, get_job_status,
@@ -768,7 +769,7 @@ def handle_post(path, data, send_json):
     elif path == "/api/gitop-start":
         op = data.get("op", "fetch")
         mode = data.get("mode", "merge")
-        job_id = str(uuid.uuid4())[:8]
+        job_id = str(_uuid4())[:8]
         with _PUSH_JOBS_LOCK:
             _PUSH_JOBS[job_id] = {'lines': [], 'done': False, 'ok': False,
                                   'error': '', 'authRequired': False}
@@ -801,7 +802,7 @@ def handle_post(path, data, send_json):
         remote_branch = data.get("remote_branch", "").strip() or None
         remote_url, _, _ = _run(["git", "remote", "get-url", "origin"])
         is_ssh = remote_url.startswith("git@") or remote_url.startswith("ssh://")
-        job_id = str(uuid.uuid4())[:8]
+        job_id = str(_uuid4())[:8]
         with _PUSH_JOBS_LOCK:
             _PUSH_JOBS[job_id] = {'lines': [], 'done': False, 'ok': False,
                                   'error': '', 'authRequired': False}
@@ -1095,7 +1096,7 @@ def handle_post(path, data, send_json):
         if not model:
             send_json({"ok": False, "error": "model is required"}, 400)
             return True
-        job_id = str(uuid.uuid4())[:8]
+        job_id = str(_uuid4())[:8]
         _set_autofix_job(job_id, {
             "jobId": job_id,
             "created_at": int(time.time()),
