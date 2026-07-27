@@ -147,8 +147,8 @@ def resign_branch_commits(base="develop"):
         return True, "All commits are already signed"
     # Do the rebase with GPG signing
     stdout, stderr, rc = _run(
-        ["git", "rebase", "--exec", "git commit --amend --no-edit -S", base],
-        timeout=120
+        ["git", "rebase", "--exec", "git commit --amend --no-edit -S --allow-empty", base],
+        timeout=180
     )
     if rc != 0:
         # Try to abort failed rebase
