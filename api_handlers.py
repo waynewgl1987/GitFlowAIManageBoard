@@ -176,10 +176,36 @@ def _build_lock_ref_fallback_plan(err_text):
     })
     summary = (
         "Detected stale/locked remote-tracking refs. "
-        "This fallback will prune stale refs, delete problematic tracking refs, then fetch again."
+        "This fallback will clean lock files, prune stale refs, delete problematic tracking refs, then fetch again."
     )
     post_check = "Fetch should complete without cannot lock ref / expected OID mismatch errors."
-    return {"summary": summary, "post_check": post_check, "commands": commands}
+    return {"summary": summary, "post_check": post_check, "commands": commands, "lock_refs": refs}
+
+
+def _cleanup_remote_ref_lock_files(refs):
+    """Remove .git/refs/remotes/... lock files for the extracted refs."""
+    project = get_project_path()
+    git_dir = os.path.abspath(os.path.join(project, ".git"))
+    deleted = []
+    not_found = []
+    failed = []
+    for ref in refs or []:
+        if not isinstance(ref, str) or not ref.startswith("refs/remotes/"):
+            continue
+        rel_lock = ref + ".lock"
+        lock_path = os.path.abspath(os.path.join(git_dir, rel_lock))
+        if not lock_path.startswith(git_dir + os.sep):
+            failed.append(f"{ref}: invalid path")
+            continue
+        try:
+            if os.path.exists(lock_path):
+                os.remove(lock_path)
+                deleted.append(lock_path)
+            else:
+                not_found.append(lock_path)
+        except Exception as e:
+            failed.append(f"{lock_path}: {e}")
+    return deleted, not_found, failed
 
 
 def _autofix_analyze_job(job_id, provider, api_key, base_url, model, op_name, err_text, ui_lang):
@@ -227,6 +253,7 @@ def _autofix_analyze_job(job_id, provider, api_key, base_url, model, op_name, er
                         "post_check": fallback.get("post_check", ""),
                         "commands": [{"cmd": c["cmd"], "reason": c["reason"]} for c in commands],
                         "_command_parts": [c["parts"] for c in commands],
+                        "_lock_refs": fallback.get("lock_refs", []),
                         "context": ctx,
                         "message": "Fallback lock-ref plan ready",
                         "raw": text[:1200],
@@ -275,6 +302,35 @@ def _autofix_apply_job(job_id):
         "apply_logs": [],
     })
     logs = []
+    lock_refs = job.get("_lock_refs") or []
+    if lock_refs:
+        deleted, not_found, failed = _cleanup_remote_ref_lock_files(lock_refs)
+        lock_msg = {
+            "cmd": "[internal] cleanup ref lock files",
+            "ok": len(failed) == 0,
+            "stdout": (
+                f"deleted={len(deleted)}, missing={len(not_found)}"
+                + (f"\n{chr(10).join(deleted[:10])}" if deleted else "")
+            ),
+            "stderr": "\n".join(failed[:10]) if failed else "",
+        }
+        logs.append(lock_msg)
+        _set_autofix_job(job_id, {
+            "progress": 20,
+            "apply_logs": logs,
+            "message": "Cleaned lock files",
+        })
+        if failed:
+            _set_autofix_job(job_id, {
+                "done": True,
+                "ok": False,
+                "phase": "failed",
+                "progress": 100,
+                "error": "Failed to clean one or more lock files",
+                "apply_logs": logs,
+            })
+            return True, ""
+
     total = len(parts_list)
     for i, parts in enumerate(parts_list):
         cmd_str = " ".join(parts)
@@ -540,6 +596,7 @@ def handle_get(path, params, send_json, send_stream=None):
             send_json({"ok": False, "error": "Job not found"}, 404)
         else:
             status.pop("_command_parts", None)
+            status.pop("_lock_refs", None)
             send_json({"ok": True, "job": status})
         return True
 
