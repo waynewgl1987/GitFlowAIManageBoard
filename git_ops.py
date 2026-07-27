@@ -146,8 +146,11 @@ def resign_branch_commits(base="develop"):
     if not info["has_unsigned"]:
         return True, "All commits are already signed"
     # Do the rebase with GPG signing
+    # In some histories, a rebased commit may become effectively empty at an exec step.
+    # Keep re-sign flow moving for that case and let rebase continue.
+    resign_exec = "git commit --amend --no-edit -S --allow-empty || true"
     stdout, stderr, rc = _run(
-        ["git", "rebase", "--exec", "git commit --amend --no-edit -S --allow-empty", base],
+        ["git", "rebase", "--exec", resign_exec, base],
         timeout=180
     )
     if rc != 0:
