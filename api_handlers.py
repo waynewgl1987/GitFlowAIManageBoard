@@ -766,7 +766,6 @@ def handle_post(path, data, send_json):
         return True
 
     elif path == "/api/gitop-start":
-        import uuid, threading
         op = data.get("op", "fetch")
         mode = data.get("mode", "merge")
         job_id = str(uuid.uuid4())[:8]
@@ -794,7 +793,7 @@ def handle_post(path, data, send_json):
         return True
 
     elif path == "/api/push":
-        import uuid, threading, tempfile, stat as _stat
+        import tempfile, stat as _stat
         branch = current_branch()
         username = data.get("username", "").strip()
         password = data.get("password", "").strip()
