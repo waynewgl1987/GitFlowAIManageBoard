@@ -425,11 +425,17 @@ def _run_gitop_streaming(job_id, op, mode=None):
                 _append_raw('')
                 _append('🔧 Detected stale ref lock — running gc & prune, then retrying...')
                 _append_raw('$ git gc --prune=now')
-                subprocess.run(["git", "gc", "--prune=now"], cwd=PROJECT_PATH, env=run_env,
-                             capture_output=True, text=True, timeout=60)
+                try:
+                    subprocess.run(["git", "gc", "--prune=now"], cwd=PROJECT_PATH, env=run_env,
+                                 capture_output=True, text=True, timeout=60)
+                except subprocess.TimeoutExpired:
+                    _append('⚠️ git gc timed out — skipping')
                 _append_raw('$ git remote prune origin')
-                subprocess.run(["git", "remote", "prune", "origin"], cwd=PROJECT_PATH, env=run_env,
-                             capture_output=True, text=True, timeout=30)
+                try:
+                    subprocess.run(["git", "remote", "prune", "origin"], cwd=PROJECT_PATH, env=run_env,
+                                 capture_output=True, text=True, timeout=30)
+                except subprocess.TimeoutExpired:
+                    _append('⚠️ git remote prune timed out — skipping')
                 _append_raw('$ ' + ' '.join(cmd))
                 rc = _exec_cmd(cmd)
 

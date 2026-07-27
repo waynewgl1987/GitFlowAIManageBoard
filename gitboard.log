@@ -1,0 +1,899 @@
+
+[2026-08-17 10:49:57] [resign-commits]
+branch=develop  base=origin/develop  rc=1
+unsigned=1/1
+ERROR: Rebasing (1/2)error: could not apply 088d1bb... fix rebase issue
+hint: Resolve all conflicts manually, mark them as resolved with
+hint: "git add/rm <conflicted_files>", then run "git rebase --continue".
+hint: You can instead skip this commit: run "git rebase --skip".
+hint: To abort and get back to the state before "git rebase", run "git rebase --abort".
+hint: Disable this message with "git config set advice.mergeConflict false"
+Could not apply 088d1bb... fix rebase issue
+────────────────────────────────────────────────────────────
+
+[2026-08-17 10:53:01] [resign-commits]
+branch=develop  merge_base=ce4ef4edf782541b76e64730de335a2426d7181a  rc=0
+re-signed 1 of 1 commit(s)
+[detached HEAD 319eb0e] fix rebase issue
+ Date: Mon Aug 17 10:52:57 2026 +0800
+ 4 files changed, 464 insertions(+), 98 deletions(-)
+────────────────────────────────────────────────────────────
+
+[2026-08-17 10:53:38] [rebase-onto]
+branch=MOBILE-30261-Progress-message-hidden-in-Con-AI-iOS18  onto=origin/develop  rc=0
+Current branch MOBILE-30261-Progress-message-hidden-in-Con-AI-iOS18 is up to date.
+
+────────────────────────────────────────────────────────────
+
+[2026-08-17 11:08:12] [resign-commits]
+branch=develop  merge_base=319eb0e1a089e19f94475de6823c7cea79cdec6f  rc=0
+re-signed 2 of 2 commit(s)
+[detached HEAD 1ae7101] fix: prevent pull-after-rebase confusion; guard pull against unmerged state
+ Date: Mon Aug 17 11:01:43 2026 +0800
+ 3 files changed, 86 insertions(+), 7 deletions(-)
+[detached HEAD 50815e5] fix: remove extra }) that caused JS syntax error (app stuck on Loading)
+ Date: Mon Aug 17 11:06:13 2026 +0800
+ 1 file changed, 1 deletion(-)
+────────────────────────────────────────────────────────────
+
+[2026-08-17 11:08:38] [rebase-onto]
+branch=MOBILE-30261-Progress-message-hidden-in-Con-AI-iOS18  onto=origin/develop  rc=0
+Current branch MOBILE-30261-Progress-message-hidden-in-Con-AI-iOS18 is up to date.
+
+────────────────────────────────────────────────────────────
+
+[2026-08-17 11:18:38] [resign-commits]
+branch=develop  merge_base=ce4ef4edf782541b76e64730de335a2426d7181a  rc=0
+re-signed 1 of 1 commit(s)
+[detached HEAD fd3c81f] fix rebase issue
+ Date: Mon Aug 17 11:18:33 2026 +0800
+ 4 files changed, 649 insertions(+), 109 deletions(-)
+────────────────────────────────────────────────────────────
+
+[2026-08-17 11:19:02] [rebase-onto]
+branch=MOBILE-30261-Progress-message-hidden-in-Con-AI-iOS18  onto=origin/develop  rc=0
+Current branch MOBILE-30261-Progress-message-hidden-in-Con-AI-iOS18 is up to date.
+
+────────────────────────────────────────────────────────────
+
+[2026-08-17 12:27:53] [squash-selected]
+branch=MOBILE-30261-Progress-message-hidden-in-Con-AI-iOS18  rc=1  hashes=2
+ERROR: error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 8: pick c04eba0bd8453dd49a3d84a4fe6f5845e22a0ccb
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 14: pick 50fdbe7916b5ac9aea10217d9f76de70c2888b92
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 20: pick 311f3ad966c20d19b75ca4fb58dc426a43c0ee50
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 21: pick 4e296cdcf0f6cdd2a535ba4d6fcb2f03f9ba9d4d
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 25: pick 390e461690fbf0cad6b8f29718ff952fc240b9e8
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 26: pick b1271ab21479486af8e5313bf10f612e87bb79de
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 28: pick 90d4050e1a86979b9cc8a907bd4c8f67cf349820
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 31: pick 452131032520ed09c6d7a414c13603b720b1d1e3
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 32: pick 3ac534c34f63afbabd974aec34b0968ec288badd
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 34: pick 56b5ba80e1dbb193b4b7fdd590ded80c67a88c55
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 36: pick d6c46b98fb9b042592503fdb5a694207277048d5
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 37: pick b762449095fc920493a2baa82c4f5f97385a7cf1
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 41: pick c3651ad18d322b8007b0e3ea46da3f684c954f03
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 44: pick ee3a05176cef22aa88f715c72e72afad24f3ac2d
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 46: pick 795c17488e8ff32dd66e7925f227fa18b3b88894
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 48: pick 7e14e2b1301f893e38c695b03f162b59663f5395
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 50: pick d252fd296a17673aa191e5031413795e9c25e8d4
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 52: pick 0b8d7837a9f02a1d7f4e7cd45f88a2d404cff3b5
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 55: pick ffc575b4f74a87be1ba50eeb22fd3d1c4eea62c5
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 59: pick 0cfb4bdecbacb6ac4fbdb8efd0901de3d4fb3973
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 62: pick 62587ccfcb4fb48a86205fe2190faa039d8a6062
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 66: pick 1921a261e1db5c48ca4abf03ade75e60fc6fd947
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 67: pick 0729ca8dce8b12b25e758fbcb004a0960872ab9f
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 68: pick 069569213d478d575a0271076ff1ac9c54b614a1
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 69: pick 6139d069a90a1f06f334bb40b6adb02c6672e107
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 71: pick 66a0f4edf0c31602e097f52d0bcb0b00abf02853
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 72: pick 62cba0e57a3dc898222abcea855eb9423634200a
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 76: pick ad28c865366da7d91b9c27ea79172d69401caf95
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 77: pick 453df23af6107e8e86f20c855a0cb4c9be4b0b90
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 79: pick 7c003eaa26573950176c7aa8b0a0df40f2b5ac9d
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 81: pick 8ba5bec2f5b32b8f93c9e853dbb2ddf001a14f01
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 82: pick 02921145b9e706cb3fe505d44b1bd4b55950e40d
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 84: pick 5ac29f0505de08f5dcd84e487eca2daa6296896a
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 85: pick 48c0363666549e417a739da2e6f48abdedbeb2cd
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 86: pick 88790fec5eb2e014de76b71fecfbbc65f9db25c6
+error: 'pick' does not accept merge commits
+hint: 'pick' does not take a merge commit. If you wanted to
+hint: replay the merge, use 'merge -C' on the commit.
+hint: Disable this message with "git config set advice.rebaseTodoError false"
+error: invalid line 87: pick 67430dc6fa967933cd9a09b2085f2b218de912ea
+You can fix this with 'git rebase --edit-todo' and then run 'git rebase --continue'.
+Or you can abort the rebase with 'git rebase --abort'.
+────────────────────────────────────────────────────────────
+
+[2026-08-17 12:30:40] [squash-selected]
+branch=MOBILE-30261-Progress-message-hidden-in-Con-AI-iOS18  rc=1  hashes=2
+ERROR: Rebasing (2/87)error: could not apply 7706102679... Fixes iOS 18 UIScrollView bug where safeAreaInset re-settle after keyboard dismissal shifts contentOffset up by the inset delta.
+hint: Resolve all conflicts manually, mark them as resolved with
+hint: "git add/rm <conflicted_files>", then run "git rebase --continue".
+hint: You can instead skip this commit: run "git rebase --skip".
+hint: To abort and get back to the state before "git rebase", run "git rebase --abort".
+hint: Disable this message with "git config set advice.mergeConflict false"
+Could not apply 7706102679...
+────────────────────────────────────────────────────────────
+
+[2026-08-17 12:34:22] [squash-selected]
+branch=MOBILE-30261-Progress-message-hidden-in-Con-AI-iOS18  rc=1  selected=2
+ERROR: error: cannot rebase: You have unstaged changes.
+error: Please commit or stash them.
+────────────────────────────────────────────────────────────
+
+[2026-08-17 13:10:35] [squash-selected]
+branch=MOBILE-30261-Progress-message-hidden-in-Con-AI-iOS18  rc=1  selected=2
+ERROR: Rebasing (1/89)Rebasing (2/89)Rebasing (3/89)Rebasing (4/89)Rebasing (5/89)Rebasing (6/89)error: nothing to merge: ''
+hint: Could not execute the todo command
+hint:
+hint:     merge -C c04eba0bd8453dd49a3d84a4fe6f5845e22a0ccb
+hint:
+hint: It has been rescheduled; To edit the command before continuing, please
+hint: edit the todo list first:
+hint:
+hint:     git rebase --edit-todo
+hint:     git rebase --continue
+────────────────────────────────────────────────────────────
+
+[2026-08-17 13:14:19] [squash-selected]
+branch=MOBILE-30261-Progress-message-hidden-in-Con-AI-iOS18  adjacent=False  squashed=2
+
+────────────────────────────────────────────────────────────
+
+[2026-08-17 13:20:54] [rebase-onto]
+branch=MOBILE-30261-Progress-message-hidden-in-Con-AI-iOS18  onto=origin/develop  rc=0
+Current branch MOBILE-30261-Progress-message-hidden-in-Con-AI-iOS18 is up to date.
+
+────────────────────────────────────────────────────────────
+
+[2026-08-17 13:23:06] [squash-selected]
+branch=MOBILE-30261-Progress-message-hidden-in-Con-AI-iOS18  adjacent=False  squashed=2
+
+────────────────────────────────────────────────────────────
+
+[2026-08-17 13:29:38] [squash-selected]
+branch=MOBILE-30261-Progress-message-hidden-in-Con-AI-iOS18  rc=128  selected=2
+ERROR: fatal: It seems that there is already a rebase-merge directory, and
+I wonder if you are in the middle of another rebase.  If that is the
+case, please try
+	git rebase (--continue | --abort | --skip)
+If that is not the case, please
+	rm -fr ".git/rebase-merge"
+and run me again.  I am stopping in case you still have something
+valuable there.
+────────────────────────────────────────────────────────────
+
+[2026-08-17 13:30:59] [squash-selected]
+branch=MOBILE-30261-Progress-message-hidden-in-Con-AI-iOS18  adjacent=False  squashed=2
+
+────────────────────────────────────────────────────────────
+
+[2026-08-17 13:35:57] [squash-selected]
+branch=MOBILE-30261-Progress-message-hidden-in-Con-AI-iOS18  rc=128  selected=2
+ERROR: fatal: It seems that there is already a rebase-merge directory, and
+I wonder if you are in the middle of another rebase.  If that is the
+case, please try
+	git rebase (--continue | --abort | --skip)
+If that is not the case, please
+	rm -fr ".git/rebase-merge"
+and run me again.  I am stopping in case you still have something
+valuable there.
+────────────────────────────────────────────────────────────
+
+[2026-08-17 13:36:56] [squash-selected]
+branch=MOBILE-30261-Progress-message-hidden-in-Con-AI-iOS18  adjacent=False  squashed=2
+
+────────────────────────────────────────────────────────────
+
+[2026-08-17 13:51:58] [squash-selected]
+branch=MOBILE-30261-Progress-message-hidden-in-Con-AI-iOS18  rc=1  selected=2
+ERROR: Rebasing (1/53)Rebasing (2/53)Rebasing (3/53)Rebasing (4/53)Rebasing (5/53)Rebasing (6/53)Rebasing (7/53)Rebasing (8/53)Rebasing (9/53)Rebasing (10/53)Rebasing (11/53)Rebasing (12/53)Rebasing (13/53)Rebasing (14/53)Rebasing (15/53)Rebasing (16/53)Rebasing (17/53)Rebasing (18/53)Rebasing (19/53)Rebasing (20/53)Rebasing (21/53)Rebasing (22/53)Rebasing (23/53)Rebasing (24/53)error: could not apply 61e477e3cb... feat(MOBILE-29470): implement Italy Cancellation/No-Show Consent
+hint: Resolve all conflicts manually, mark them as resolved with
+hint: "git add/rm <conflicted_files>", then run "git rebase --continue".
+hint: You can instead skip this commit: run "git rebase --skip".
+hint: To abort and get back to the state before "git rebase", run "git rebase --abort".
+hint: Disable this message with "git config set advice.mergeConflict false"
+Could not apply 61e477e3cb... feat(MOBILE-29470): implement Italy Cancellation/No-Show Consent
+────────────────────────────────────────────────────────────
+
+[2026-08-18 11:14:53] [resign-commits]
+branch=master  merge_base=ce4ef4edf782541b76e64730de335a2426d7181a  rc=0
+re-signed 1 of 2 commit(s)
+[detached HEAD 4846a4f] fix rebase issue
+ Date: Mon Aug 10 17:47:37 2026 +0800
+ 3 files changed, 348 insertions(+), 76 deletions(-)
+[detached HEAD f4d1323] Merge branch 'develop' into master
+ Date: Tue Aug 18 11:14:49 2026 +0800
+ 6 files changed, 1157 insertions(+), 117 deletions(-)
+────────────────────────────────────────────────────────────
+
+[2026-08-18 11:15:36] [resign-commits]
+branch=release/v1.0.1  merge_base=ce4ef4edf782541b76e64730de335a2426d7181a  rc=0
+re-signed 1 of 2 commit(s)
+[detached HEAD a17932c] fix rebase issue
+ Date: Mon Aug 10 17:47:37 2026 +0800
+ 3 files changed, 348 insertions(+), 76 deletions(-)
+[detached HEAD eef11c5] Merge branch 'master' into release/v1.0.1
+ Date: Tue Aug 18 11:15:30 2026 +0800
+ 6 files changed, 1157 insertions(+), 117 deletions(-)
+────────────────────────────────────────────────────────────
+
+[2026-08-18 14:10:41] [resign-commits]
+branch=ImmersiveReadingMode  merge_base=d4aa9eab472d8b4f25b6ae6aec59861d229c485a  rc=0
+re-signed 1 of 2 commit(s)
+[detached HEAD bef0b2a] Add immersive reader page
+ Author: waynewgl <waynewgl@gmail.com>
+ Date: Mon Aug 17 00:52:26 2026 +0800
+ 15 files changed, 1921 insertions(+), 73 deletions(-)
+ create mode 100644 Features/ImmersiveReader/ImmersiveReaderAnswerSheet.swift
+ create mode 100644 Features/ImmersiveReader/ImmersiveReaderCardView.swift
+ create mode 100644 Features/ImmersiveReader/ImmersiveReaderContentBuilder.swift
+ create mode 100644 Features/ImmersiveReader/ImmersiveReaderDeckView.swift
+ create mode 100644 Features/ImmersiveReader/ImmersiveReaderModels.swift
+ create mode 100644 Features/ImmersiveReader/ImmersiveReaderView.swift
+[detached HEAD 44c3a87] Fix immersive reader layout issue
+ Date: Tue Aug 18 14:10:37 2026 +0800
+ 12 files changed, 331 insertions(+), 54 deletions(-)
+────────────────────────────────────────────────────────────
+
+[2026-08-18 14:11:09] [resign-commits]
+branch=develop  merge_base=d4aa9eab472d8b4f25b6ae6aec59861d229c485a  rc=1
+unsigned=1/1
+ERROR: error: cannot rebase: You have unstaged changes.
+error: Please commit or stash them.
+────────────────────────────────────────────────────────────
+
+[2026-08-18 14:11:11] [resign-commits]
+branch=develop  merge_base=d4aa9eab472d8b4f25b6ae6aec59861d229c485a  rc=0
+re-signed 1 of 1 commit(s)
+[detached HEAD 4807b8c] Merge branch 'ImmersiveReadingMode' into develop
+ Date: Tue Aug 18 14:11:05 2026 +0800
+ 21 files changed, 2212 insertions(+), 87 deletions(-)
+ create mode 100644 Features/ImmersiveReader/ImmersiveReaderAnswerSheet.swift
+ create mode 100644 Features/ImmersiveReader/ImmersiveReaderCardView.swift
+ create mode 100644 Features/ImmersiveReader/ImmersiveReaderContentBuilder.swift
+ create mode 100644 Features/ImmersiveReader/ImmersiveReaderDeckView.swift
+ create mode 100644 Features/ImmersiveReader/ImmersiveReaderModels.swift
+ create mode 100644 Features/ImmersiveReader/ImmersiveReaderView.swift
+────────────────────────────────────────────────────────────
+
+[2026-08-19 14:39:02] [squash-selected]
+branch=develop  adjacent=False  squashed=2
+
+────────────────────────────────────────────────────────────
+
+[2026-08-19 14:39:43] [squash-selected]
+branch=develop  rc=128  selected=2
+ERROR: fatal: It seems that there is already a rebase-merge directory, and
+I wonder if you are in the middle of another rebase.  If that is the
+case, please try
+	git rebase (--continue | --abort | --skip)
+If that is not the case, please
+	rm -fr ".git/rebase-merge"
+and run me again.  I am stopping in case you still have something
+valuable there.
+────────────────────────────────────────────────────────────
+
+[2026-08-19 14:40:55] [squash-selected]
+branch=develop  adjacent=False  squashed=2
+
+────────────────────────────────────────────────────────────
+
+[2026-08-19 14:43:53] [squash-selected]
+branch=develop  rc=128  selected=2
+ERROR: fatal: It seems that there is already a rebase-merge directory, and
+I wonder if you are in the middle of another rebase.  If that is the
+case, please try
+	git rebase (--continue | --abort | --skip)
+If that is not the case, please
+	rm -fr ".git/rebase-merge"
+and run me again.  I am stopping in case you still have something
+valuable there.
+────────────────────────────────────────────────────────────
+
+[2026-08-19 14:44:25] [squash-selected]
+branch=develop  adjacent=False  squashed=2
+
+────────────────────────────────────────────────────────────
+
+[2026-08-19 14:44:50] [squash-selected]
+branch=develop  rc=128  selected=2
+ERROR: fatal: It seems that there is already a rebase-merge directory, and
+I wonder if you are in the middle of another rebase.  If that is the
+case, please try
+	git rebase (--continue | --abort | --skip)
+If that is not the case, please
+	rm -fr ".git/rebase-merge"
+and run me again.  I am stopping in case you still have something
+valuable there.
+────────────────────────────────────────────────────────────
+
+[2026-08-19 14:48:40] [squash-selected]
+branch=develop  rc=1  selected=2
+ERROR: error: cannot rebase: You have unstaged changes.
+error: Please commit or stash them.
+────────────────────────────────────────────────────────────
+
+[2026-08-19 14:49:11] [squash-selected]
+branch=develop  adjacent=False  squashed=2
+
+────────────────────────────────────────────────────────────
+
+[2026-08-19 14:57:00] [rebase-continue]
+rc=1
+Auto-merging git_ops.py
+CONFLICT (content): Merge conflict in git_ops.py
+git_ops.py: needs merge
+ERROR: Rebasing (2/12)Executing: git cherry-pick --no-commit e61bdbd66052b36a249ed266e27b438a96b13bf7
+error: could not apply e61bdbd... fix: catch TimeoutExpired from gc/prune cleanup during stale ref auto-fix
+hint: after resolving the conflicts, mark the corrected paths
+hint: with 'git add <paths>' or 'git rm <paths>'
+hint: Disable this message with "git config set advice.mergeConflict false"
+error: cannot rebase: You have unstaged changes.
+error: additionally, your index contains uncommitted changes.
+warning: execution failed: git cherry-pick --no-commit e61bdbd66052b36a249ed266e27b438a96b13bf7
+and made changes to the index and/or the working tree.
+You can fix the problem, and then run
+
+  git rebase --continue
+────────────────────────────────────────────────────────────
+
+[2026-08-19 15:04:34] [squash-selected]
+branch=develop  adjacent=False  squashed=2
+
+────────────────────────────────────────────────────────────
+
+[2026-08-19 15:09:34] [rebase-continue]
+rc=1
+Auto-merging git_ops.py
+CONFLICT (content): Merge conflict in git_ops.py
+git_ops.py: needs merge
+ERROR: Rebasing (2/12)Executing: git cherry-pick --no-commit e61bdbd66052b36a249ed266e27b438a96b13bf7
+error: could not apply e61bdbd... fix: catch TimeoutExpired from gc/prune cleanup during stale ref auto-fix
+hint: after resolving the conflicts, mark the corrected paths
+hint: with 'git add <paths>' or 'git rm <paths>'
+hint: Disable this message with "git config set advice.mergeConflict false"
+error: cannot rebase: You have unstaged changes.
+error: additionally, your index contains uncommitted changes.
+warning: execution failed: git cherry-pick --no-commit e61bdbd66052b36a249ed266e27b438a96b13bf7
+and made changes to the index and/or the working tree.
+You can fix the problem, and then run
+
+  git rebase --continue
+────────────────────────────────────────────────────────────
+
+[2026-08-19 15:26:13] [squash-selected]
+branch=develop  mode=adjacent-tip  squashed=5
+pre_head=b4e61977b2c1  new_head=208f4db2c999  rebase_base=885f3518b214
+────────────────────────────────────────────────────────────
+
+[2026-08-19 15:34:23] [squash-selected]
+branch=develop  mode=adjacent-tip  squashed=5
+pre_head=e7c09d358898  new_head=a27d0dcc97b1  rebase_base=ee2b15402aa8
+────────────────────────────────────────────────────────────
+
+[2026-08-19 15:40:04] [squash-selected]
+branch=develop  mode=adjacent-tip  squashed=6
+pre_head=592a63991614  new_head=92089a6f13de  rebase_base=ee2b15402aa8
+────────────────────────────────────────────────────────────
+
+[2026-08-19 15:56:37] [squash-selected:start]
+branch=develop  pre_HEAD=110231b94454bb0f254c269c1396db654019349d
+pre_origin/develop=110231b94454bb0f254c269c1396db654019349d
+gpg_sign=True
+count=8
+hashes=110231b94454,2362b8ba31da,592a63991614,e7c09d358898,b4e61977b2c1,b3592b86a6d7,176bd36725c8,d0d1aaa24369
+message=Fix stale squash result visibility
+────────────────────────────────────────────────────────────
+
+[2026-08-19 15:56:38] [squash-selected]
+branch=develop  mode=adjacent-tip  squashed=8
+pre_head=110231b94454  new_head=3afd1f171d2e  rebase_base=ee2b15402aa8
+────────────────────────────────────────────────────────────
+
+[2026-08-19 15:56:38] [squash-selected:end]
+branch=develop  ok=True  squash_hash=3afd1f171d2e5f89a729750d811816a410d5dbd6
+pre_HEAD=110231b94454bb0f254c269c1396db654019349d  post_HEAD=3afd1f171d2e5f89a729750d811816a410d5dbd6
+moved=True
+result_msg=Squashed 8 adjacent commit(s) into 1
+────────────────────────────────────────────────────────────
+
+[2026-08-19 15:56:44] [push:start]
+branch=develop  target=origin/develop  force=False  ssh=True
+pre_push_HEAD=3afd1f171d2e5f89a729750d811816a410d5dbd6
+pre_push_origin/develop=110231b94454bb0f254c269c1396db654019349d
+────────────────────────────────────────────────────────────
+
+[2026-08-19 15:57:00] [push:start]
+branch=develop  target=origin/develop  force=True  ssh=True
+pre_push_HEAD=3afd1f171d2e5f89a729750d811816a410d5dbd6
+pre_push_origin/develop=110231b94454bb0f254c269c1396db654019349d
+────────────────────────────────────────────────────────────
+
+[2026-08-19 15:57:25] [squash-selected:start]
+branch=develop  pre_HEAD=3afd1f171d2e5f89a729750d811816a410d5dbd6
+pre_origin/develop=3afd1f171d2e5f89a729750d811816a410d5dbd6
+gpg_sign=True
+count=2
+hashes=3afd1f171d2e,ee2b15402aa8
+message=Fix stale squash result visibility
+────────────────────────────────────────────────────────────
+
+[2026-08-19 15:57:26] [squash-selected]
+branch=develop  mode=adjacent-tip  squashed=2
+pre_head=3afd1f171d2e  new_head=5ac30a1a955c  rebase_base=885f3518b214
+────────────────────────────────────────────────────────────
+
+[2026-08-19 15:57:26] [squash-selected:end]
+branch=develop  ok=True  squash_hash=5ac30a1a955ca92ba52954d12a2ddf65bbeba4b8
+pre_HEAD=3afd1f171d2e5f89a729750d811816a410d5dbd6  post_HEAD=5ac30a1a955ca92ba52954d12a2ddf65bbeba4b8
+moved=True
+result_msg=Squashed 2 adjacent commit(s) into 1
+────────────────────────────────────────────────────────────
+
+[2026-08-19 15:57:33] [push:start]
+branch=develop  target=origin/develop  force=True  ssh=True
+pre_push_HEAD=5ac30a1a955ca92ba52954d12a2ddf65bbeba4b8
+pre_push_origin/develop=3afd1f171d2e5f89a729750d811816a410d5dbd6
+────────────────────────────────────────────────────────────
+
+[2026-08-19 15:58:01] [squash-selected:start]
+branch=develop  pre_HEAD=5ac30a1a955ca92ba52954d12a2ddf65bbeba4b8
+pre_origin/develop=5ac30a1a955ca92ba52954d12a2ddf65bbeba4b8
+gpg_sign=True
+count=2
+hashes=e61bdbd66052,15b11838cfe9
+message=fix: auto-clean ref lock files before fallback fetch
+────────────────────────────────────────────────────────────
+
+[2026-08-19 15:58:03] [squash-selected]
+branch=develop  mode=non-adjacent  squashed=2
+pre_head=5ac30a1a955c  post_head=5ac30a1a955c
+
+────────────────────────────────────────────────────────────
+
+[2026-08-19 15:58:03] [squash-selected:end]
+branch=develop  ok=False  squash_hash=
+pre_HEAD=5ac30a1a955ca92ba52954d12a2ddf65bbeba4b8  post_HEAD=5ac30a1a955ca92ba52954d12a2ddf65bbeba4b8
+moved=False
+result_msg=Squash failed: HEAD did not move after `git rebase -i`.
+details: branch=develop, mode=non-adjacent, base=5d88028d6fab
+pre_head=5ac30a1a955c  post_head=5ac30a1a955c
+merge_commits_in_range=0
+reason=rebase produced no history rewrite; the sequence editor may have failed to match commits, or merge commits shielded the selection from `drop`.
+hint=check gitboard.log for the squash-selected entry; consid
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:00:20] [push:start]
+branch=master  target=origin/master  force=False  ssh=True
+pre_push_HEAD=03b2a09f5bb71eed05f13187be90efdffaa81dba
+pre_push_origin/master=4ec08029f384b3ac2c4038d2883cfbd546977cca
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:00:45] [squash-selected:start]
+branch=master  pre_HEAD=03b2a09f5bb71eed05f13187be90efdffaa81dba
+pre_origin/master=03b2a09f5bb71eed05f13187be90efdffaa81dba
+gpg_sign=True
+count=2
+hashes=03b2a09f5bb7,4ec08029f384
+message=Merge branch 'develop' into master - squash logic fix
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:00:46] [squash-selected]
+branch=master  mode=adjacent-tip  squashed=2
+pre_head=03b2a09f5bb7  new_head=5cfc3e3d3751  rebase_base=4846a4f55b49
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:00:46] [squash-selected:end]
+branch=master  ok=True  squash_hash=5cfc3e3d3751391de877211ebfae5b57061775ef
+pre_HEAD=03b2a09f5bb71eed05f13187be90efdffaa81dba  post_HEAD=5cfc3e3d3751391de877211ebfae5b57061775ef
+moved=True
+result_msg=Squashed 2 adjacent commit(s) into 1
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:00:50] [push:start]
+branch=master  target=origin/master  force=True  ssh=True
+pre_push_HEAD=5cfc3e3d3751391de877211ebfae5b57061775ef
+pre_push_origin/master=03b2a09f5bb71eed05f13187be90efdffaa81dba
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:01:58] [push:start]
+branch=release/v1.0.1  target=origin/release/v1.0.1  force=False  ssh=True
+pre_push_HEAD=1d80767c5dd38fe32c2d484f8647b374c74f4fac
+pre_push_origin/release/v1.0.1=8efd65ebf94847fc2455cf76281ebb85a56aec23
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:02:31] [squash-selected:start]
+branch=develop  pre_HEAD=5ac30a1a955ca92ba52954d12a2ddf65bbeba4b8
+pre_origin/develop=5ac30a1a955ca92ba52954d12a2ddf65bbeba4b8
+gpg_sign=True
+count=2
+hashes=e61bdbd66052,15b11838cfe9
+message=fix: catch TimeoutExpired from gc/prune cleanup during stale ref auto-fix
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:02:34] [squash-selected]
+branch=develop  mode=non-adjacent  squashed=2
+pre_head=5ac30a1a955c  post_head=5ac30a1a955c
+
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:02:35] [squash-selected:end]
+branch=develop  ok=False  squash_hash=
+pre_HEAD=5ac30a1a955ca92ba52954d12a2ddf65bbeba4b8  post_HEAD=5ac30a1a955ca92ba52954d12a2ddf65bbeba4b8
+moved=False
+result_msg=Squash failed: HEAD did not move after `git rebase -i`.
+details: branch=develop, mode=non-adjacent, base=5d88028d6fab
+pre_head=5ac30a1a955c  post_head=5ac30a1a955c
+merge_commits_in_range=0
+reason=rebase produced no history rewrite; the sequence editor may have failed to match commits, or merge commits shielded the selection from `drop`.
+hint=check gitboard.log for the squash-selected entry; consid
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:03:14] [squash-selected:start]
+branch=develop  pre_HEAD=5ac30a1a955ca92ba52954d12a2ddf65bbeba4b8
+pre_origin/develop=5ac30a1a955ca92ba52954d12a2ddf65bbeba4b8
+gpg_sign=True
+count=2
+hashes=e55bc2abb282,ce4ef4edf782
+message=Optimize squash logic
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:03:16] [squash-selected]
+branch=develop  mode=non-adjacent  squashed=2
+pre_head=5ac30a1a955c  post_head=5ac30a1a955c
+
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:03:17] [squash-selected:end]
+branch=develop  ok=False  squash_hash=
+pre_HEAD=5ac30a1a955ca92ba52954d12a2ddf65bbeba4b8  post_HEAD=5ac30a1a955ca92ba52954d12a2ddf65bbeba4b8
+moved=False
+result_msg=Squash failed: HEAD did not move after `git rebase -i`.
+details: branch=develop, mode=non-adjacent, base=e61bdbd66052
+pre_head=5ac30a1a955c  post_head=5ac30a1a955c
+merge_commits_in_range=0
+reason=rebase produced no history rewrite; the sequence editor may have failed to match commits, or merge commits shielded the selection from `drop`.
+hint=check gitboard.log for the squash-selected entry; consid
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:09:39] [push:start]
+branch=develop  target=origin/develop  force=False  ssh=True
+pre_push_HEAD=b2ff0eedd0a6c142f76fe5c62695785cf688d332
+pre_push_origin/develop=5ac30a1a955ca92ba52954d12a2ddf65bbeba4b8
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:09:58] [rebase-continue]
+rc=1
+Auto-merging api_handlers.py
+CONFLICT (content): Merge conflict in api_handlers.py
+Auto-merging git_ops.py
+CONFLICT (content): Merge conflict in git_ops.py
+Auto-merging static/app.js
+CONFLICT (content): Merge conflict in static/app.js
+Auto-merging static/index.html
+Auto-merging static/style.css
+CONFLICT (content): Merge conflict in static/style.css
+api_handlers.py: needs merge
+git_ops.py: needs merge
+static/app.js: needs merge
+static/style.css: needs merge
+ERROR: Rebasing (2/8)Executing: git cherry-pick --no-commit e55bc2abb28275ec3d3d3b8a5fcfb018c6561697
+error: could not apply e55bc2a... Optimize squash logic
+hint: after resolving the conflicts, mark the corrected paths
+hint: with 'git add <paths>' or 'git rm <paths>'
+hint: Disable this message with "git config set advice.mergeConflict false"
+error: cannot rebase: You have unstaged changes.
+error: additionally, your index contains uncommitted changes.
+warning: execution failed: git cherry-pick --no-commit e55bc2abb28275ec3d3d3b8a5fcfb018c6561697
+and made changes to the index and/or the working tree.
+You can fix the problem, and then run
+
+  git rebase --continue
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:10:33] [squash-selected:start]
+branch=develop  pre_HEAD=b2ff0eedd0a6c142f76fe5c62695785cf688d332
+pre_origin/develop=b2ff0eedd0a6c142f76fe5c62695785cf688d332
+gpg_sign=True
+count=3
+hashes=b2ff0eedd0a6,5ac30a1a955c,885f3518b214
+message=Fix stale squash result visibility
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:10:34] [squash-selected]
+branch=develop  mode=adjacent-tip  squashed=3
+pre_head=b2ff0eedd0a6  new_head=e73b8293199a  rebase_base=d86fe6f3f9eb
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:10:34] [squash-selected:end]
+branch=develop  ok=True  squash_hash=e73b8293199a49f0541d0cac48e16cea3deccddd
+pre_HEAD=b2ff0eedd0a6c142f76fe5c62695785cf688d332  post_HEAD=e73b8293199a49f0541d0cac48e16cea3deccddd
+moved=True
+result_msg=Squashed 3 adjacent commit(s) into 1
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:10:42] [push:start]
+branch=develop  target=origin/develop  force=True  ssh=True
+pre_push_HEAD=e73b8293199a49f0541d0cac48e16cea3deccddd
+pre_push_origin/develop=b2ff0eedd0a6c142f76fe5c62695785cf688d332
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:11:05] [squash-selected:start]
+branch=develop  pre_HEAD=e73b8293199a49f0541d0cac48e16cea3deccddd
+pre_origin/develop=e73b8293199a49f0541d0cac48e16cea3deccddd
+gpg_sign=True
+count=2
+hashes=e61bdbd66052,15b11838cfe9
+message=fix: catch TimeoutExpired from gc/prune cleanup during stale ref auto-fix
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:11:07] [squash-selected]
+branch=develop  mode=non-adjacent  rc=1  selected=2
+pre_head=e73b8293199a
+ERROR: Rebasing (2/11)Executing: git cherry-pick --no-commit e61bdbd66052b36a249ed266e27b438a96b13bf7
+error: cannot rebase: Your index contains uncommitted changes.
+warning: execution succeeded: git cherry-pick --no-commit e61bdbd66052b36a249ed266e27b438a96b13bf7
+but left changes to the index and/or the working tree.
+Commit or stash your changes, and then run
+
+  git rebase --continue
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:11:07] [squash-selected:end]
+branch=develop  ok=False  squash_hash=
+pre_HEAD=e73b8293199a49f0541d0cac48e16cea3deccddd  post_HEAD=e73b8293199a49f0541d0cac48e16cea3deccddd
+moved=False
+result_msg=Rebasing (2/11)Executing: git cherry-pick --no-commit e61bdbd66052b36a249ed266e27b438a96b13bf7
+error: cannot rebase: Your index contains uncommitted changes.
+warning: execution succeeded: git cherry-pick --no-commit e61bdbd66052b36a249ed266e27b438a96b13bf7
+but left changes to the index and/or the working tree.
+Commit or stash your changes, and then run
+
+  git rebase --continue
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:13:24] [push:start]
+branch=develop  target=origin/develop  force=False  ssh=True
+pre_push_HEAD=31dfc4f66bd689fa2ff901f38f28c3cdde723ab6
+pre_push_origin/develop=e73b8293199a49f0541d0cac48e16cea3deccddd
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:13:58] [squash-selected:start]
+branch=develop  pre_HEAD=31dfc4f66bd689fa2ff901f38f28c3cdde723ab6
+pre_origin/develop=31dfc4f66bd689fa2ff901f38f28c3cdde723ab6
+gpg_sign=True
+count=3
+hashes=31dfc4f66bd6,e73b8293199a,d86fe6f3f9eb
+message=Fix stale squash result visibility
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:13:59] [squash-selected]
+branch=develop  mode=adjacent-tip  squashed=3
+pre_head=31dfc4f66bd6  new_head=2e5a1f7e107b  rebase_base=e55bc2abb282
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:13:59] [squash-selected:end]
+branch=develop  ok=True  squash_hash=2e5a1f7e107b59b001ee3c00d29dd2740d4a8ca3
+pre_HEAD=31dfc4f66bd689fa2ff901f38f28c3cdde723ab6  post_HEAD=2e5a1f7e107b59b001ee3c00d29dd2740d4a8ca3
+moved=True
+result_msg=Squashed 3 adjacent commit(s) into 1
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:14:06] [push:start]
+branch=develop  target=origin/develop  force=True  ssh=True
+pre_push_HEAD=2e5a1f7e107b59b001ee3c00d29dd2740d4a8ca3
+pre_push_origin/develop=31dfc4f66bd689fa2ff901f38f28c3cdde723ab6
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:14:35] [squash-selected:start]
+branch=develop  pre_HEAD=2e5a1f7e107b59b001ee3c00d29dd2740d4a8ca3
+pre_origin/develop=2e5a1f7e107b59b001ee3c00d29dd2740d4a8ca3
+gpg_sign=True
+count=2
+hashes=e61bdbd66052,15b11838cfe9
+message=fix: catch TimeoutExpired from gc/prune cleanup during stale ref auto-fix
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:14:39] [squash-selected]
+branch=develop  mode=non-adjacent  rc=1  selected=2
+pre_head=2e5a1f7e107b
+ERROR: Rebasing (2/9)Executing: git cherry-pick --no-commit e61bdbd66052b36a249ed266e27b438a96b13bf7 && git commit --amend -S --allow-empty -m 'fix: catch TimeoutExpired from gc/prune cleanup during stale ref auto-fix'
+Rebasing (3/9)Rebasing (4/9)Rebasing (5/9)Rebasing (6/9)Rebasing (7/9)Rebasing (8/9)error: Your local changes to the following files would be overwritten by merge:
+	api_handlers.py
+Please commit your changes or stash them before you merge.
+Aborting
+hint: Could not execute the todo command
+hint:
+hint:     pick e55bc2abb28275ec3d3d3b8a5fcfb018c6561697 Optimize squash logic
+hint:
+hint: It has been rescheduled; To edit the command before continuing, please
+hint: edit the todo list first:
+hint:
+hint:     git rebase --edit-todo
+hint:     git rebase --continue
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:14:39] [squash-selected:end]
+branch=develop  ok=False  squash_hash=
+pre_HEAD=2e5a1f7e107b59b001ee3c00d29dd2740d4a8ca3  post_HEAD=2e5a1f7e107b59b001ee3c00d29dd2740d4a8ca3
+moved=False
+result_msg=Rebasing (2/9)Executing: git cherry-pick --no-commit e61bdbd66052b36a249ed266e27b438a96b13bf7 && git commit --amend -S --allow-empty -m 'fix: catch TimeoutExpired from gc/prune cleanup during stale ref auto-fix'
+Rebasing (3/9)Rebasing (4/9)Rebasing (5/9)Rebasing (6/9)Rebasing (7/9)Rebasing (8/9)error: Your local changes to the following files would be overwritten by merge:
+	api_handlers.py
+
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:18:17] [squash-selected:start]
+branch=develop  pre_HEAD=b3864714250443f7dee300624cf79b087cd646d3
+pre_origin/develop=b3864714250443f7dee300624cf79b087cd646d3
+gpg_sign=True
+count=3
+hashes=b38647142504,2e5a1f7e107b,e55bc2abb282
+message=Fix stale squash result visibility
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:18:18] [squash-selected]
+branch=develop  mode=adjacent-tip  squashed=3
+pre_head=b38647142504  new_head=0b943c06c8bc  rebase_base=fd3c81f70956
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:18:18] [squash-selected:end]
+branch=develop  ok=True  squash_hash=0b943c06c8bc5c97065397a08b29df9b9f794816
+pre_HEAD=b3864714250443f7dee300624cf79b087cd646d3  post_HEAD=0b943c06c8bc5c97065397a08b29df9b9f794816
+moved=True
+result_msg=Squashed 3 adjacent commit(s) into 1
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:18:25] [push:start]
+branch=develop  target=origin/develop  force=True  ssh=True
+pre_push_HEAD=0b943c06c8bc5c97065397a08b29df9b9f794816
+pre_push_origin/develop=b3864714250443f7dee300624cf79b087cd646d3
+────────────────────────────────────────────────────────────
+
+[2026-08-19 16:18:45] [squash-selected:start]
+branch=develop  pre_HEAD=0b943c06c8bc5c97065397a08b29df9b9f794816
+pre_origin/develop=0b943c06c8bc5c97065397a08b29df9b9f794816
+gpg_sign=True
+count=2
+hashes=e61bdbd66052,15b11838cfe9
+message=fix: catch TimeoutExpired from gc/prune cleanup during stale ref auto-fix
+────────────────────────────────────────────────────────────
