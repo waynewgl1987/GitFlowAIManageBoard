@@ -105,9 +105,16 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",sans-s
 .msg-item.error{background:#fee2e2;color:#991b1b;border:1px solid #fecaca}
 .msg-item.success{background:#d1fae5;color:#065f46;border:1px solid #a7f3d0}
 .msg-item.info{background:#dbeafe;color:var(--color-primary-dark);border:1px solid #bfdbfe}
+.msg-item{display:flex;flex-direction:column;align-items:stretch}
+.msg-item .msg-main{display:flex;align-items:flex-start;gap:10px;width:100%}
 .msg-item .msg-text{flex:1;word-break:break-all;line-height:1.5}
 .msg-item .msg-close{cursor:pointer;font-size:16px;line-height:1;opacity:.6;padding:0 4px;font-weight:bold}
 .msg-item .msg-close:hover{opacity:1}
+.msg-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.msg-ai-fix-progress{margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,.65);border:1px solid rgba(239,68,68,.18)}
+.msg-ai-fix-meta{display:flex;align-items:center;justify-content:space-between;font-size:12px;margin-bottom:6px;color:#7f1d1d}
+.msg-ai-fix-bar{height:8px;background:#fecaca;border-radius:999px;overflow:hidden}
+.msg-ai-fix-fill{height:100%;width:0;background:linear-gradient(90deg,#f97316,#ef4444);transition:width .3s ease}
 @keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
 
 /* file cards */

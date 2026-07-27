@@ -5,10 +5,11 @@ api_handlers.py — API endpoint handlers for Git Manage Board.
 Dispatches GET and POST API requests to git_ops functions.
 """
 
-import os, json, re
+import os, json, re, threading, uuid, time, shlex
 from ai_module.ai_provider import (
     test_provider as ai_test_provider,
     start_chat_job, get_job_status,
+    call_llm,
 )
 from git_ops import (
     PORT, set_project_path, _MSGLOG, _MSGLOG_LOCK, _PUSH_JOBS, _PUSH_JOBS_LOCK,
@@ -37,6 +38,217 @@ from git_ops import (
     worktree_list, worktree_add, worktree_remove, worktree_prune,
     get_git_graph,
 )
+
+_AI_AUTOFIX_JOBS = {}
+_AI_AUTOFIX_LOCK = threading.Lock()
+_AI_AUTOFIX_TIMEOUT = 180
+_ALLOWED_GIT_SUBCOMMANDS = {
+    "fetch", "pull", "push", "rebase", "merge", "checkout", "switch",
+    "branch", "reset", "restore", "clean", "stash", "remote", "config",
+    "add", "commit", "cherry-pick", "revert"
+}
+
+
+def _set_autofix_job(job_id, patch):
+    with _AI_AUTOFIX_LOCK:
+        cur = dict(_AI_AUTOFIX_JOBS.get(job_id, {}))
+        cur.update(patch)
+        _AI_AUTOFIX_JOBS[job_id] = cur
+        return dict(cur)
+
+
+def _get_autofix_job(job_id):
+    with _AI_AUTOFIX_LOCK:
+        d = _AI_AUTOFIX_JOBS.get(job_id)
+        return dict(d) if d else None
+
+
+def _extract_json_object(text):
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    if "```" in raw:
+        raw = re.sub(r"^```[a-zA-Z0-9_-]*\n?", "", raw)
+        raw = re.sub(r"\n?```$", "", raw)
+    try:
+        return json.loads(raw)
+    except Exception:
+        pass
+    m = re.search(r"\{[\s\S]*\}", raw)
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(0))
+    except Exception:
+        return None
+
+
+def _sanitize_ai_commands(cmds):
+    safe = []
+    for item in cmds or []:
+        cmd_str = (item.get("cmd") if isinstance(item, dict) else item) or ""
+        reason = item.get("reason", "") if isinstance(item, dict) else ""
+        cmd_str = str(cmd_str).strip()
+        if not cmd_str:
+            continue
+        # Never run shell-composed commands
+        if any(x in cmd_str for x in ["&&", "||", ";", "|", "$(", "`", ">", "<"]):
+            continue
+        try:
+            parts = shlex.split(cmd_str)
+        except Exception:
+            continue
+        if len(parts) < 2:
+            continue
+        if parts[0] != "git":
+            continue
+        if parts[1] not in _ALLOWED_GIT_SUBCOMMANDS:
+            continue
+        safe.append({
+            "cmd": cmd_str,
+            "parts": parts,
+            "reason": str(reason or "").strip()
+        })
+    return safe
+
+
+def _collect_autofix_context(op_name, err_text):
+    status_out, status_err, _ = _run(["git", "status", "--short", "--branch"])
+    branch_out, _, _ = _run(["git", "branch", "--show-current"])
+    remote_out, _, _ = _run(["git", "remote", "-v"])
+    rebase_out, _, _ = _run(["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+    return {
+        "operation": op_name or "",
+        "error": err_text or "",
+        "branch": branch_out.strip(),
+        "status": status_out.strip() or status_err.strip(),
+        "remote": remote_out.strip(),
+        "upstream": rebase_out.strip(),
+        "project_path": get_project_path(),
+    }
+
+
+def _build_autofix_prompt(ctx, ui_lang):
+    lang = "Simplified Chinese" if ui_lang == "zh" else "English"
+    return (
+        "You are an expert Git fixer. Analyze the failure and propose SAFE git-only fix commands.\n"
+        "Rules:\n"
+        "1) Output JSON only.\n"
+        "2) Commands must be executable one-by-one and start with `git`.\n"
+        "3) Never output shell chaining, redirection, or non-git commands.\n"
+        "4) Prefer minimal-risk recovery first.\n"
+        "5) Keep summary in " + lang + ".\n"
+        "JSON schema:\n"
+        "{\n"
+        '  "summary": "short explanation",\n'
+        '  "commands": [{"cmd":"git ...","reason":"why"}],\n'
+        '  "post_check": "what should be true after fix"\n'
+        "}\n"
+        "Context:\n"
+        + json.dumps(ctx, ensure_ascii=False, indent=2)
+    )
+
+
+def _autofix_analyze_job(job_id, provider, api_key, base_url, model, op_name, err_text, ui_lang):
+    _set_autofix_job(job_id, {"phase": "analyzing", "progress": 20, "message": "Collecting context..."})
+    ctx = _collect_autofix_context(op_name, err_text)
+    prompt = _build_autofix_prompt(ctx, ui_lang)
+    _set_autofix_job(job_id, {"progress": 45, "message": "Asking AI for a fix plan..."})
+    ok, text = call_llm(
+        provider,
+        api_key,
+        base_url,
+        model,
+        [
+            {"role": "system", "content": "You output strict JSON only."},
+            {"role": "user", "content": prompt},
+        ],
+    )
+    if not ok:
+        _set_autofix_job(job_id, {
+            "done": True, "ok": False, "phase": "failed", "progress": 100,
+            "error": text or "AI planning failed",
+        })
+        return
+    payload = _extract_json_object(text)
+    if not payload:
+        _set_autofix_job(job_id, {
+            "done": True, "ok": False, "phase": "failed", "progress": 100,
+            "error": "AI response is not valid JSON",
+            "raw": text[:1200],
+        })
+        return
+    commands = _sanitize_ai_commands(payload.get("commands", []))
+    if not commands:
+        _set_autofix_job(job_id, {
+            "done": True, "ok": False, "phase": "failed", "progress": 100,
+            "error": "No safe git commands found in AI plan",
+            "summary": payload.get("summary", ""),
+            "raw": text[:1200],
+        })
+        return
+    _set_autofix_job(job_id, {
+        "done": True,
+        "ok": True,
+        "phase": "await_confirm",
+        "progress": 100,
+        "summary": payload.get("summary", ""),
+        "post_check": payload.get("post_check", ""),
+        "commands": [{"cmd": c["cmd"], "reason": c["reason"]} for c in commands],
+        "_command_parts": [c["parts"] for c in commands],
+        "context": ctx,
+        "message": "AI plan ready",
+    })
+
+
+def _autofix_apply_job(job_id):
+    job = _get_autofix_job(job_id)
+    if not job:
+        return False, "Job not found"
+    parts_list = job.get("_command_parts") or []
+    if not parts_list:
+        return False, "No commands to apply"
+    _set_autofix_job(job_id, {
+        "done": False, "ok": False, "phase": "applying", "progress": 10,
+        "message": "Applying AI fix...",
+        "apply_logs": [],
+    })
+    logs = []
+    total = len(parts_list)
+    for i, parts in enumerate(parts_list):
+        cmd_str = " ".join(parts)
+        out, err, rc = _run(parts, timeout=_AI_AUTOFIX_TIMEOUT)
+        logs.append({
+            "cmd": cmd_str,
+            "ok": rc == 0,
+            "stdout": out[:2000],
+            "stderr": err[:2000],
+        })
+        progress = min(95, int(((i + 1) / total) * 100))
+        _set_autofix_job(job_id, {
+            "progress": progress,
+            "apply_logs": logs,
+            "message": f"Applying step {i + 1}/{total}",
+        })
+        if rc != 0:
+            _set_autofix_job(job_id, {
+                "done": True,
+                "ok": False,
+                "phase": "failed",
+                "progress": 100,
+                "error": err or out or f"Command failed: {cmd_str}",
+                "apply_logs": logs,
+            })
+            return True, ""
+    _set_autofix_job(job_id, {
+        "done": True,
+        "ok": True,
+        "phase": "applied",
+        "progress": 100,
+        "message": "AI fix applied",
+        "apply_logs": logs,
+    })
+    return True, ""
 
 
 def json_result(rc, stdout="", stderr="", extra=None):
@@ -258,6 +470,16 @@ def handle_get(path, params, send_json, send_stream=None):
             send_json({"ok": False, "error": "Job not found"}, 404)
         else:
             send_json(status)
+        return True
+
+    elif path == "/api/ai/git-autofix-status":
+        job_id = params.get("jobId", [""])[0]
+        status = _get_autofix_job(job_id)
+        if not status:
+            send_json({"ok": False, "error": "Job not found"}, 404)
+        else:
+            status.pop("_command_parts", None)
+            send_json({"ok": True, **status})
         return True
 
     elif path == "/api/latest-commit-diff":
@@ -857,6 +1079,56 @@ def handle_post(path, data, send_json):
             send_json({"ok": False, "error": "messages required"}, 400)
             return True
         job_id = start_chat_job(provider, api_key, base_url, model, messages)
+        send_json({"ok": True, "jobId": job_id})
+        return True
+
+    elif path == "/api/ai/git-autofix-start":
+        provider = data.get("provider", "openai")
+        api_key = data.get("api_key", "")
+        base_url = data.get("base_url", "")
+        model = data.get("model", "")
+        err_text = (data.get("error") or "").strip()
+        op_name = (data.get("operation") or "").strip()
+        ui_lang = (data.get("lang") or "en").strip().lower()
+        if not err_text:
+            send_json({"ok": False, "error": "error is required"}, 400)
+            return True
+        if not model:
+            send_json({"ok": False, "error": "model is required"}, 400)
+            return True
+        job_id = str(uuid.uuid4())[:8]
+        _set_autofix_job(job_id, {
+            "jobId": job_id,
+            "created_at": int(time.time()),
+            "done": False,
+            "ok": False,
+            "phase": "queued",
+            "progress": 0,
+            "message": "Queued",
+            "error": "",
+            "operation": op_name,
+        })
+        threading.Thread(
+            target=_autofix_analyze_job,
+            args=(job_id, provider, api_key, base_url, model, op_name, err_text, ui_lang),
+            daemon=True
+        ).start()
+        send_json({"ok": True, "jobId": job_id})
+        return True
+
+    elif path == "/api/ai/git-autofix-apply":
+        job_id = (data.get("jobId") or "").strip()
+        if not job_id:
+            send_json({"ok": False, "error": "jobId required"}, 400)
+            return True
+        job = _get_autofix_job(job_id)
+        if not job:
+            send_json({"ok": False, "error": "Job not found"}, 404)
+            return True
+        if job.get("phase") == "applying":
+            send_json({"ok": False, "error": "Job is already applying"}, 400)
+            return True
+        threading.Thread(target=_autofix_apply_job, args=(job_id,), daemon=True).start()
         send_json({"ok": True, "jobId": job_id})
         return True
 

@@ -408,6 +408,22 @@ var T = {
   rebase_continue_ok: {en:'✅ Rebase continuing — check Conflicts tab if new conflicts appear', zh:'✅ Rebase 继续中 — 如有新冲突请检查 Conflicts 标签页'},
   rebase_continue_fail: {en:'Continue failed: ', zh:'继续失败: '},
   rebase_confirm_btn: {en:'Confirm', zh:'确认'},
+  ai_fix_btn: {en:'🤖 AI Fix', zh:'🤖 AI 修复'},
+  ai_fix_starting: {en:'Starting AI fix...', zh:'正在启动 AI 修复...'},
+  ai_fix_progress: {en:'AI is fixing git error...', zh:'AI 正在修复 Git 错误...'},
+  ai_fix_plan_title: {en:'🤖 AI Fix Plan', zh:'🤖 AI 修复方案'},
+  ai_fix_plan_desc: {en:'AI generated the following fix commands. Apply now?', zh:'AI 已生成以下修复命令，是否现在执行？'},
+  ai_fix_apply_confirm: {en:'Apply Fix', zh:'执行修复'},
+  ai_fix_apply_cancel: {en:'Cancel', zh:'取消'},
+  ai_fix_failed: {en:'AI fix failed: ', zh:'AI 修复失败: '},
+  ai_fix_done: {en:'AI fix completed.', zh:'AI 修复完成。'},
+  ai_fix_canceled: {en:'AI fix canceled.', zh:'AI 修复已取消。'},
+  ai_fix_retry_title: {en:'Retry original git operation?', zh:'是否重试原 Git 操作？'},
+  ai_fix_retry_desc: {en:'Fix is applied. Continue the previous git operation now?', zh:'修复已执行，是否继续刚才的 Git 操作？'},
+  ai_fix_retry_confirm: {en:'Retry Operation', zh:'重试操作'},
+  ai_fix_retry_cancel: {en:'Later', zh:'稍后'},
+  ai_fix_no_config: {en:'AI provider/model is not configured.', zh:'AI 服务商或模型未配置。'},
+  ai_fix_no_retry: {en:'No retry action found for this operation.', zh:'当前操作未记录可重试动作。'},
 };
 
 function t(key, lang) {
@@ -590,6 +606,19 @@ var modalCallback = null;
 var resolvedConflicts = {};
 var squashSelected = {};
 var currentLogData = null;
+var _lastGitOpCtx = null;
+var _aiFixActive = false;
+
+function _rememberGitOp(name, retryFn){
+  _lastGitOpCtx = {name:name||'', retry:typeof retryFn==='function'?retryFn:null, ts:Date.now()};
+}
+
+function _getAICfgSafe(){
+  try{
+    if(typeof getAIConfig==='function') return getAIConfig() || null;
+  }catch(e){}
+  return null;
+}
 
 // ═══════════ Utils ═══════════
 var _spinnerCount=0;
@@ -639,12 +668,35 @@ function addMsg(msg, cls, opts) {
   div.id=id;
   var lines = msg.split('\n');
   var needScroll = maxLines > 0 && lines.length > maxLines;
+  var extraActions = Array.isArray(opts.actions) ? opts.actions.slice() : [];
+  if (cls === 'error' && !opts.disableAiFix && !_aiFixActive) {
+    extraActions.push({
+      label: t('ai_fix_btn'),
+      className: 'btn-primary',
+      onClick: function(){ _startAIFixFlow(msg, opts.gitOp || _lastGitOpCtx || null); }
+    });
+  }
+  var actionsHtml = '';
+  if (extraActions.length) {
+    actionsHtml = '<div class="msg-actions"></div>';
+  }
   if (needScroll) {
-    div.innerHTML='<span class="msg-text msg-text-scroll" style="display:block;max-height:'+(maxLines*1.6)+'em;overflow-y:auto;white-space:pre-wrap;font-family:monospace;font-size:12px;line-height:1.6">'+escapeHtml(msg)+'</span><span class="msg-close" onclick="dismissMsg(\''+id+'\')">✕</span>';
+    div.innerHTML='<div class="msg-main"><span class="msg-text msg-text-scroll" style="display:block;max-height:'+(maxLines*1.6)+'em;overflow-y:auto;white-space:pre-wrap;font-family:monospace;font-size:12px;line-height:1.6">'+escapeHtml(msg)+'</span><span class="msg-close" onclick="dismissMsg(\''+id+'\')">✕</span></div>'+actionsHtml;
   } else {
-    div.innerHTML='<span class="msg-text">'+escapeHtml(msg)+'</span><span class="msg-close" onclick="dismissMsg(\''+id+'\')">✕</span>';
+    div.innerHTML='<div class="msg-main"><span class="msg-text">'+escapeHtml(msg)+'</span><span class="msg-close" onclick="dismissMsg(\''+id+'\')">✕</span></div>'+actionsHtml;
+  }
+  if (extraActions.length) {
+    var actionWrap = div.querySelector('.msg-actions');
+    extraActions.forEach(function(a){
+      var b = document.createElement('button');
+      b.className = 'btn btn-sm ' + (a.className || 'btn-secondary');
+      b.textContent = a.label || 'Action';
+      b.onclick = function(){ if(typeof a.onClick==='function') a.onClick(); };
+      actionWrap.appendChild(b);
+    });
   }
   area.appendChild(div);
+  return id;
 }
 
 function addMsgWithAction(msg, cls, actions) {
@@ -658,11 +710,22 @@ function addMsgWithAction(msg, cls, actions) {
   var div=document.createElement('div');
   div.className='msg-item '+cls;
   div.id=id;
-  var btnHtml='';
-  actions.forEach(function(a){
-    btnHtml+=' <button class="btn btn-sm btn-primary" onclick="dismissMsg(\''+id+'\');('+a.onClick.toString()+')()" style="margin-left:6px">'+escapeHtml(a.label)+'</button>';
+  div.innerHTML='<div class="msg-main"><span class="msg-text">'+escapeHtml(msg)+'</span><span class="msg-close" onclick="dismissMsg(\''+id+'\')">✕</span></div><div class="msg-actions"></div>';
+  var actionWrap = div.querySelector('.msg-actions');
+  (actions||[]).forEach(function(a){
+    var b=document.createElement('button');
+    b.className='btn btn-sm btn-primary';
+    b.textContent=a.label;
+    b.onclick=function(){dismissMsg(id);if(typeof a.onClick==='function')a.onClick();};
+    actionWrap.appendChild(b);
   });
-  div.innerHTML='<span class="msg-text">'+escapeHtml(msg)+'</span>'+btnHtml+'<span class="msg-close" onclick="dismissMsg(\''+id+'\')">✕</span>';
+  if (cls === 'error' && !_aiFixActive) {
+    var aiBtn=document.createElement('button');
+    aiBtn.className='btn btn-sm btn-primary';
+    aiBtn.textContent=t('ai_fix_btn');
+    aiBtn.onclick=function(){_startAIFixFlow(msg,_lastGitOpCtx||null);};
+    actionWrap.appendChild(aiBtn);
+  }
   area.appendChild(div);
 }
 
@@ -726,6 +789,32 @@ function clearMsgLog() {
   });
 }
 
+function showConfirmDialog(opts){
+  opts=opts||{};
+  var title=opts.title||'';
+  var msg=opts.message||'';
+  var confirmText=opts.confirmText||'OK';
+  var cancelText=opts.cancelText||'Cancel';
+  var confirmClass=opts.confirmClass||'btn-warning';
+  var onConfirm=opts.onConfirm;
+  var onCancel=opts.onCancel;
+  document.getElementById('modal-title').innerHTML=title;
+  document.getElementById('modal-msg').innerHTML=msg;
+  var btnsDiv=document.getElementById('modal-btns');
+  btnsDiv.innerHTML='';
+  var cancelBtn=document.createElement('button');
+  cancelBtn.className='btn btn-secondary';
+  cancelBtn.textContent=cancelText;
+  cancelBtn.onclick=function(){closeModal();if(typeof onCancel==='function')onCancel();};
+  var confirmBtn=document.createElement('button');
+  confirmBtn.className='btn '+confirmClass;
+  confirmBtn.textContent=confirmText;
+  confirmBtn.onclick=function(){closeModal();if(typeof onConfirm==='function')onConfirm();};
+  btnsDiv.appendChild(cancelBtn);
+  btnsDiv.appendChild(confirmBtn);
+  document.getElementById('modal-bg').classList.add('show');
+}
+
 function showModal(title, msg, confirmLabel, cb) {
   document.getElementById('modal-title').innerHTML=title;
   document.getElementById('modal-msg').innerHTML=msg;
@@ -777,6 +866,168 @@ function closeModal() {
   if(_modalRestoreFn)_modalRestoreFn();
   document.getElementById('modal-bg').classList.remove('show');
   modalCallback=null;
+}
+
+function _ensureAIFixProgressUI(msgId){
+  var host=document.getElementById(msgId);
+  if(!host) return null;
+  var box=host.querySelector('.msg-ai-fix-progress');
+  if(!box){
+    box=document.createElement('div');
+    box.className='msg-ai-fix-progress';
+    box.innerHTML=
+      '<div class="msg-ai-fix-meta"><span class="msg-ai-fix-text"></span><span class="msg-ai-fix-percent">0%</span></div>'
+      +'<div class="msg-ai-fix-bar"><div class="msg-ai-fix-fill"></div></div>';
+    host.appendChild(box);
+  }
+  return box;
+}
+
+function _updateAIFixProgress(msgId, percent, text){
+  var box=_ensureAIFixProgressUI(msgId);
+  if(!box) return;
+  var p=Math.max(0,Math.min(100,parseInt(percent||0)));
+  var fill=box.querySelector('.msg-ai-fix-fill');
+  var txt=box.querySelector('.msg-ai-fix-text');
+  var pe=box.querySelector('.msg-ai-fix-percent');
+  if(fill) fill.style.width=p+'%';
+  if(txt) txt.textContent=text||t('ai_fix_progress');
+  if(pe) pe.textContent=p+'%';
+}
+
+function _renderAIFixPlanHtml(status){
+  var commands=status.commands||[];
+  var html='<div style="font-size:13px;line-height:1.7">';
+  html+='<div style="margin-bottom:8px">'+escapeHtml(t('ai_fix_plan_desc'))+'</div>';
+  if(status.summary){
+    html+='<div style="margin-bottom:8px;padding:8px 10px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0">'
+      +escapeHtml(status.summary)+'</div>';
+  }
+  html+='<div style="max-height:260px;overflow:auto;border:1px solid #e5e7eb;border-radius:8px;background:#0f172a;color:#e2e8f0;padding:10px;font-family:monospace;font-size:12px">';
+  for(var i=0;i<commands.length;i++){
+    var c=commands[i]||{};
+    html+='<div style="margin-bottom:9px"><div style="color:#67e8f9">$ '+escapeHtml(c.cmd||'')+'</div>';
+    if(c.reason) html+='<div style="color:#94a3b8"># '+escapeHtml(c.reason)+'</div>';
+    html+='</div>';
+  }
+  html+='</div></div>';
+  return html;
+}
+
+function _finalizeAIFixWithRetry(gitOpCtx){
+  showConfirmDialog({
+    title:t('ai_fix_retry_title'),
+    message:'<div style="font-size:14px;line-height:1.7">'+escapeHtml(t('ai_fix_retry_desc'))+'</div>',
+    confirmText:t('ai_fix_retry_confirm'),
+    cancelText:t('ai_fix_retry_cancel'),
+    confirmClass:'btn-primary',
+    onConfirm:function(){
+      if(gitOpCtx&&typeof gitOpCtx.retry==='function'){
+        gitOpCtx.retry();
+      }else{
+        addMsg(t('ai_fix_no_retry'),'info',{disableAiFix:true});
+      }
+    }
+  });
+}
+
+function _pollAIFixStatus(jobId, msgId, gitOpCtx, state){
+  state=state||{};
+  fetch('/api/ai/git-autofix-status?jobId='+encodeURIComponent(jobId))
+    .then(function(r){return r.json();})
+    .then(function(data){
+      if(!data.ok){
+        _aiFixActive=false;
+        addMsg(t('ai_fix_failed')+(data.error||''),'error',{disableAiFix:true,maxLines:10});
+        return;
+      }
+      _updateAIFixProgress(msgId, data.progress||0, data.message||t('ai_fix_progress'));
+      if(!data.done){
+        setTimeout(function(){_pollAIFixStatus(jobId,msgId,gitOpCtx,state);},700);
+        return;
+      }
+      if(data.phase==='await_confirm'&&data.ok){
+        if(state.planShown) return;
+        state.planShown=true;
+        _aiFixActive=false;
+        showConfirmDialog({
+          title:t('ai_fix_plan_title'),
+          message:_renderAIFixPlanHtml(data),
+          confirmText:t('ai_fix_apply_confirm'),
+          cancelText:t('ai_fix_apply_cancel'),
+          confirmClass:'btn-warning',
+          onConfirm:function(){
+            _aiFixActive=true;
+            _updateAIFixProgress(msgId, 8, t('ai_fix_progress'));
+            fetch('/api/ai/git-autofix-apply',{
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({jobId:jobId})
+            }).then(function(r){return r.json();}).then(function(d){
+              if(!d.ok){
+                _aiFixActive=false;
+                addMsg(t('ai_fix_failed')+(d.error||''),'error',{disableAiFix:true,maxLines:10});
+                return;
+              }
+              setTimeout(function(){_pollAIFixStatus(jobId,msgId,gitOpCtx,state);},500);
+            }).catch(function(e){
+              _aiFixActive=false;
+              addMsg(t('network_err')+e.message,'error',{disableAiFix:true});
+            });
+          },
+          onCancel:function(){ addMsg(t('ai_fix_canceled'),'info',{disableAiFix:true}); }
+        });
+        return;
+      }
+      _aiFixActive=false;
+      if(data.ok && data.phase==='applied'){
+        _updateAIFixProgress(msgId, 100, t('ai_fix_done'));
+        addMsg(t('ai_fix_done'),'success',{disableAiFix:true});
+        _finalizeAIFixWithRetry(gitOpCtx);
+      }else{
+        addMsg(t('ai_fix_failed')+(data.error||''),'error',{disableAiFix:true,maxLines:10});
+      }
+    })
+    .catch(function(e){
+      _aiFixActive=false;
+      addMsg(t('network_err')+e.message,'error',{disableAiFix:true});
+    });
+}
+
+function _startAIFixFlow(errorText, gitOpCtx){
+  if(_aiFixActive) return;
+  var cfg=_getAICfgSafe();
+  if(!cfg||!cfg.provider||!cfg.model){
+    addMsg(t('ai_fix_no_config'),'error',{disableAiFix:true});
+    return;
+  }
+  _aiFixActive=true;
+  var opName=(gitOpCtx&&gitOpCtx.name)||'git-operation';
+  var msgId=addMsg('🤖 '+t('ai_fix_starting'),'info',{disableAiFix:true});
+  _updateAIFixProgress(msgId, 3, t('ai_fix_starting'));
+  fetch('/api/ai/git-autofix-start',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      provider:cfg.provider,
+      api_key:cfg.api_key||'',
+      base_url:cfg.base_url||'',
+      model:cfg.model||'',
+      lang:L||'en',
+      operation:opName,
+      error:errorText||''
+    })
+  }).then(function(r){return r.json();}).then(function(data){
+    if(!data.ok||!data.jobId){
+      _aiFixActive=false;
+      addMsg(t('ai_fix_failed')+((data&&data.error)||''),'error',{disableAiFix:true,maxLines:10});
+      return;
+    }
+    _pollAIFixStatus(data.jobId,msgId,gitOpCtx||null,{planShown:false});
+  }).catch(function(e){
+    _aiFixActive=false;
+    addMsg(t('network_err')+e.message,'error',{disableAiFix:true});
+  });
 }
 
 function toggleHelp(id) {
@@ -1366,6 +1617,7 @@ function checkConflicts(){
 
 // ═══════════ Pull + Fetch ═══════════
 function doPush(credentials, force, remoteBranch){
+  _rememberGitOp('push', function(){ doPush(null, !!force, remoteBranch); });
   var gpgToggle = document.getElementById('gpg-sign-toggle');
   var gpgEnabled = gpgToggle && gpgToggle.checked;
 
@@ -1813,6 +2065,7 @@ function _executePull(mode, onDone){
 }
 
 function doPull() {
+  _rememberGitOp('pull', function(){ doPull(); });
   addMsg(t('pulling'),'info');
   apiGet('/api/has-uncommitted',function(hasData){
     if(hasData&&hasData.hasChanges){
@@ -1867,6 +2120,7 @@ function doPull() {
 }
 
 function doFetch() {
+  _rememberGitOp('fetch', function(){ doFetch(); });
   addMsg(t('fetching'),'info');
   _startGitopStream('fetch', null, function(ok){
     if(ok){ loadFiles(); }
@@ -5658,6 +5912,7 @@ document.getElementById('commit-btn').addEventListener('click',function(){
   for(var i=0;i<cbs.length;i++)paths.push(cbs[i].dataset.path);
   if(!paths.length){addMsg(t('select_at_least_one'),'error');return}
   _warnProtectedThenDo('protected_branch_commit', function(){
+    _rememberGitOp('commit', function(){ document.getElementById('commit-btn').click(); });
     showModal(t('confirm_commit_title'),
       'Commit message: <b>'+escapeHtml(msg)+'</b><br><br>Files:<br>'+paths.map(escapeHtml).join('<br>'),
       'Confirm Commit',
