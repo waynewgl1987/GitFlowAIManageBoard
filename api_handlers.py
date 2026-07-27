@@ -151,55 +151,61 @@ def _build_autofix_prompt(ctx, ui_lang):
 
 
 def _autofix_analyze_job(job_id, provider, api_key, base_url, model, op_name, err_text, ui_lang):
-    _set_autofix_job(job_id, {"phase": "analyzing", "progress": 20, "message": "Collecting context..."})
-    ctx = _collect_autofix_context(op_name, err_text)
-    prompt = _build_autofix_prompt(ctx, ui_lang)
-    _set_autofix_job(job_id, {"progress": 45, "message": "Asking AI for a fix plan..."})
-    ok, text = call_llm(
-        provider,
-        api_key,
-        base_url,
-        model,
-        [
-            {"role": "system", "content": "You output strict JSON only."},
-            {"role": "user", "content": prompt},
-        ],
-    )
-    if not ok:
+    try:
+        _set_autofix_job(job_id, {"phase": "analyzing", "progress": 20, "message": "Collecting context..."})
+        ctx = _collect_autofix_context(op_name, err_text)
+        prompt = _build_autofix_prompt(ctx, ui_lang)
+        _set_autofix_job(job_id, {"progress": 45, "message": "Asking AI for a fix plan..."})
+        ok, text = call_llm(
+            provider,
+            api_key,
+            base_url,
+            model,
+            [
+                {"role": "system", "content": "You output strict JSON only."},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        if not ok:
+            _set_autofix_job(job_id, {
+                "done": True, "ok": False, "phase": "failed", "progress": 100,
+                "error": text or "AI planning failed",
+            })
+            return
+        payload = _extract_json_object(text)
+        if not payload:
+            _set_autofix_job(job_id, {
+                "done": True, "ok": False, "phase": "failed", "progress": 100,
+                "error": "AI response is not valid JSON",
+                "raw": text[:1200],
+            })
+            return
+        commands = _sanitize_ai_commands(payload.get("commands", []))
+        if not commands:
+            _set_autofix_job(job_id, {
+                "done": True, "ok": False, "phase": "failed", "progress": 100,
+                "error": "No safe git commands found in AI plan",
+                "summary": payload.get("summary", ""),
+                "raw": text[:1200],
+            })
+            return
         _set_autofix_job(job_id, {
-            "done": True, "ok": False, "phase": "failed", "progress": 100,
-            "error": text or "AI planning failed",
-        })
-        return
-    payload = _extract_json_object(text)
-    if not payload:
-        _set_autofix_job(job_id, {
-            "done": True, "ok": False, "phase": "failed", "progress": 100,
-            "error": "AI response is not valid JSON",
-            "raw": text[:1200],
-        })
-        return
-    commands = _sanitize_ai_commands(payload.get("commands", []))
-    if not commands:
-        _set_autofix_job(job_id, {
-            "done": True, "ok": False, "phase": "failed", "progress": 100,
-            "error": "No safe git commands found in AI plan",
+            "done": True,
+            "ok": True,
+            "phase": "await_confirm",
+            "progress": 100,
             "summary": payload.get("summary", ""),
-            "raw": text[:1200],
+            "post_check": payload.get("post_check", ""),
+            "commands": [{"cmd": c["cmd"], "reason": c["reason"]} for c in commands],
+            "_command_parts": [c["parts"] for c in commands],
+            "context": ctx,
+            "message": "AI plan ready",
         })
-        return
-    _set_autofix_job(job_id, {
-        "done": True,
-        "ok": True,
-        "phase": "await_confirm",
-        "progress": 100,
-        "summary": payload.get("summary", ""),
-        "post_check": payload.get("post_check", ""),
-        "commands": [{"cmd": c["cmd"], "reason": c["reason"]} for c in commands],
-        "_command_parts": [c["parts"] for c in commands],
-        "context": ctx,
-        "message": "AI plan ready",
-    })
+    except Exception as e:
+        _set_autofix_job(job_id, {
+            "done": True, "ok": False, "phase": "failed", "progress": 100,
+            "error": f"Internal autofix analyze error: {e}",
+        })
 
 
 def _autofix_apply_job(job_id):
@@ -208,6 +214,10 @@ def _autofix_apply_job(job_id):
         return False, "Job not found"
     parts_list = job.get("_command_parts") or []
     if not parts_list:
+        _set_autofix_job(job_id, {
+            "done": True, "ok": False, "phase": "failed", "progress": 100,
+            "error": "No commands to apply",
+        })
         return False, "No commands to apply"
     _set_autofix_job(job_id, {
         "done": False, "ok": False, "phase": "applying", "progress": 10,
@@ -1095,6 +1105,12 @@ def handle_post(path, data, send_json):
             return True
         if not model:
             send_json({"ok": False, "error": "model is required"}, 400)
+            return True
+        if provider != "ollama" and not str(api_key or "").strip():
+            send_json({"ok": False, "error": f"API key required for provider: {provider}"}, 400)
+            return True
+        if provider == "custom" and not str(base_url or "").strip():
+            send_json({"ok": False, "error": "base_url is required for custom provider"}, 400)
             return True
         job_id = str(_uuid4())[:8]
         _set_autofix_job(job_id, {

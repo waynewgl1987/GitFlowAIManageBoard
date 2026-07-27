@@ -423,6 +423,9 @@ var T = {
   ai_fix_retry_confirm: {en:'Retry Operation', zh:'重试操作'},
   ai_fix_retry_cancel: {en:'Later', zh:'稍后'},
   ai_fix_no_config: {en:'AI provider/model is not configured.', zh:'AI 服务商或模型未配置。'},
+  ai_fix_need_api_key: {en:'AI API key is required for current provider.', zh:'当前 AI 服务商需要 API Key。'},
+  ai_fix_need_base_url: {en:'Base URL is required for custom AI provider.', zh:'自定义 AI 服务商需要 Base URL。'},
+  ai_fix_error_detail_fallback: {en:'Unknown failure. Please check AI settings and server logs.', zh:'未知失败，请检查 AI 配置和服务端日志。'},
   ai_fix_no_retry: {en:'No retry action found for this operation.', zh:'当前操作未记录可重试动作。'},
 };
 
@@ -618,6 +621,46 @@ function _getAICfgSafe(){
     if(typeof getAIConfig==='function') return getAIConfig() || null;
   }catch(e){}
   return null;
+}
+
+function _getAIProviderDefSafe(provider){
+  try{
+    if(typeof AI_PROVIDERS==='object' && AI_PROVIDERS && AI_PROVIDERS[provider]) return AI_PROVIDERS[provider];
+  }catch(e){}
+  return null;
+}
+
+function _validateAIFixConfig(cfg){
+  if(!cfg||!cfg.provider||!cfg.model) return t('ai_fix_no_config');
+  var p=_getAIProviderDefSafe(cfg.provider);
+  if(p && p.needsKey && !String(cfg.api_key||'').trim()) return t('ai_fix_need_api_key');
+  if(cfg.provider==='custom' && !String(cfg.base_url||'').trim()) return t('ai_fix_need_base_url');
+  return '';
+}
+
+function _formatAIFixError(data, fallback){
+  var parts=[];
+  if(data){
+    if(data.error) parts.push(String(data.error).trim());
+    if(!parts.length && data.message) parts.push(String(data.message).trim());
+    if(data.phase) parts.push('phase='+data.phase);
+    if(data.raw) parts.push('raw='+String(data.raw).slice(0,400));
+    if(Array.isArray(data.apply_logs) && data.apply_logs.length){
+      for(var i=data.apply_logs.length-1;i>=0;i--){
+        var it=data.apply_logs[i]||{};
+        if(it.ok===false){
+          var seg=['cmd='+(it.cmd||'')];
+          if(it.stderr) seg.push('stderr='+(it.stderr||'').slice(0,400));
+          else if(it.stdout) seg.push('stdout='+(it.stdout||'').slice(0,400));
+          parts.push(seg.join(' | '));
+          break;
+        }
+      }
+    }
+  }
+  var detail=parts.filter(function(x){return !!x;}).join('\n');
+  if(!detail) detail=fallback||t('ai_fix_error_detail_fallback');
+  return detail;
 }
 
 // ═══════════ Utils ═══════════
@@ -938,7 +981,7 @@ function _pollAIFixStatus(jobId, msgId, gitOpCtx, state){
     .then(function(data){
       if(!data.ok){
         _aiFixActive=false;
-        addMsg(t('ai_fix_failed')+(data.error||''),'error',{disableAiFix:true,maxLines:10});
+        addMsg(t('ai_fix_failed')+_formatAIFixError(data),'error',{disableAiFix:true,maxLines:14});
         return;
       }
       _updateAIFixProgress(msgId, data.progress||0, data.message||t('ai_fix_progress'));
@@ -966,7 +1009,7 @@ function _pollAIFixStatus(jobId, msgId, gitOpCtx, state){
             }).then(function(r){return r.json();}).then(function(d){
               if(!d.ok){
                 _aiFixActive=false;
-                addMsg(t('ai_fix_failed')+(d.error||''),'error',{disableAiFix:true,maxLines:10});
+                addMsg(t('ai_fix_failed')+_formatAIFixError(d),'error',{disableAiFix:true,maxLines:14});
                 return;
               }
               setTimeout(function(){_pollAIFixStatus(jobId,msgId,gitOpCtx,state);},500);
@@ -985,7 +1028,7 @@ function _pollAIFixStatus(jobId, msgId, gitOpCtx, state){
         addMsg(t('ai_fix_done'),'success',{disableAiFix:true});
         _finalizeAIFixWithRetry(gitOpCtx);
       }else{
-        addMsg(t('ai_fix_failed')+(data.error||''),'error',{disableAiFix:true,maxLines:10});
+        addMsg(t('ai_fix_failed')+_formatAIFixError(data),'error',{disableAiFix:true,maxLines:14});
       }
     })
     .catch(function(e){
@@ -997,8 +1040,9 @@ function _pollAIFixStatus(jobId, msgId, gitOpCtx, state){
 function _startAIFixFlow(errorText, gitOpCtx){
   if(_aiFixActive) return;
   var cfg=_getAICfgSafe();
-  if(!cfg||!cfg.provider||!cfg.model){
-    addMsg(t('ai_fix_no_config'),'error',{disableAiFix:true});
+  var cfgErr=_validateAIFixConfig(cfg);
+  if(cfgErr){
+    addMsg(t('ai_fix_failed')+cfgErr,'error',{disableAiFix:true,maxLines:8});
     return;
   }
   _aiFixActive=true;
@@ -1020,7 +1064,7 @@ function _startAIFixFlow(errorText, gitOpCtx){
   }).then(function(r){return r.json();}).then(function(data){
     if(!data.ok||!data.jobId){
       _aiFixActive=false;
-      addMsg(t('ai_fix_failed')+((data&&data.error)||''),'error',{disableAiFix:true,maxLines:10});
+      addMsg(t('ai_fix_failed')+_formatAIFixError(data),'error',{disableAiFix:true,maxLines:14});
       return;
     }
     _pollAIFixStatus(data.jobId,msgId,gitOpCtx||null,{planShown:false});
