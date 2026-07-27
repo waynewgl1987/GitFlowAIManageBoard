@@ -490,7 +490,7 @@ def handle_get(path, params, send_json, send_stream=None):
             send_json({"ok": False, "error": "Job not found"}, 404)
         else:
             status.pop("_command_parts", None)
-            send_json({"ok": True, **status})
+            send_json({"ok": True, "job": status})
         return True
 
     elif path == "/api/latest-commit-diff":

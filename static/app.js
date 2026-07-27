@@ -273,6 +273,9 @@ var T = {
   ai_provider_base_url: {en:'Base URL', zh:'Base URL'},
   ai_provider_model_label: {en:'Model', zh:'模型'},
   ai_provider_custom_model: {en:'Or enter a custom model name…', zh:'或输入自定义模型名…'},
+  ai_model_default_option: {en:'— Select from default models —', zh:'— 从默认模型中选择 —'},
+  ai_google_hint: {en:'🔑 Use your Google AI Studio API key. Base URL defaults to Gemini OpenAI-compatible endpoint.', zh:'🔑 使用你的 Google AI Studio API Key。Base URL 默认指向 Gemini 的 OpenAI 兼容接口。'},
+  ai_google_http400_hint: {en:'(Google returned HTTP 400. Check model name and ensure Base URL is Google OpenAI-compatible endpoint.)', zh:'（Google 返回 HTTP 400，请检查模型名，并确认 Base URL 是 Google OpenAI 兼容端点。）'},
   ai_provider_test: {en:'🔌 Test Connection', zh:'🔌 测试连接'},
   ai_provider_save: {en:'💾 Save', zh:'💾 保存'},
   ai_provider_cancel: {en:'Cancel', zh:'取消'},
@@ -426,6 +429,8 @@ var T = {
   ai_fix_need_api_key: {en:'AI API key is required for current provider.', zh:'当前 AI 服务商需要 API Key。'},
   ai_fix_need_base_url: {en:'Base URL is required for custom AI provider.', zh:'自定义 AI 服务商需要 Base URL。'},
   ai_fix_error_detail_fallback: {en:'Unknown failure. Please check AI settings and server logs.', zh:'未知失败，请检查 AI 配置和服务端日志。'},
+  ai_fix_log_expand: {en:'Show more logs', zh:'展开日志'},
+  ai_fix_log_collapse: {en:'Collapse logs', zh:'收起日志'},
   ai_fix_no_retry: {en:'No retry action found for this operation.', zh:'当前操作未记录可重试动作。'},
 };
 
@@ -611,6 +616,7 @@ var squashSelected = {};
 var currentLogData = null;
 var _lastGitOpCtx = null;
 var _aiFixActive = false;
+var _aiFixLogs = {};
 
 function _rememberGitOp(name, retryFn){
   _lastGitOpCtx = {name:name||'', retry:typeof retryFn==='function'?retryFn:null, ts:Date.now()};
@@ -920,10 +926,74 @@ function _ensureAIFixProgressUI(msgId){
     box.className='msg-ai-fix-progress';
     box.innerHTML=
       '<div class="msg-ai-fix-meta"><span class="msg-ai-fix-text"></span><span class="msg-ai-fix-percent">0%</span></div>'
-      +'<div class="msg-ai-fix-bar"><div class="msg-ai-fix-fill"></div></div>';
+      +'<div class="msg-ai-fix-bar"><div class="msg-ai-fix-fill"></div></div>'
+      +'<div class="msg-ai-fix-log-wrap">'
+      +'<button class="msg-ai-fix-log-toggle" style="display:none" onclick="_toggleAIFixLog(\''+msgId+'\')"></button>'
+      +'<pre class="msg-ai-fix-log"></pre>'
+      +'</div>';
+    box.dataset.logExpanded='0';
     host.appendChild(box);
   }
   return box;
+}
+
+function _toggleAIFixLog(msgId){
+  var box=_ensureAIFixProgressUI(msgId);
+  if(!box) return;
+  box.dataset.logExpanded = box.dataset.logExpanded==='1' ? '0' : '1';
+  _renderAIFixLog(msgId, _aiFixLogs[msgId]||[]);
+}
+
+function _renderAIFixLog(msgId, lines){
+  var box=_ensureAIFixProgressUI(msgId);
+  if(!box) return;
+  lines=Array.isArray(lines)?lines:[];
+  _aiFixLogs[msgId]=lines;
+  var pre=box.querySelector('.msg-ai-fix-log');
+  var btn=box.querySelector('.msg-ai-fix-log-toggle');
+  if(!pre||!btn) return;
+  var expanded=box.dataset.logExpanded==='1';
+  var limit=expanded?10:3;
+  var shown=lines.slice(-limit);
+  pre.textContent=shown.join('\n');
+  pre.style.maxHeight=expanded?'15.5em':'4.9em';
+  pre.style.overflowY=lines.length>limit?'auto':'hidden';
+  if(lines.length<=3){
+    btn.style.display='none';
+  }else{
+    btn.style.display='inline-block';
+    btn.textContent=expanded?t('ai_fix_log_collapse'):t('ai_fix_log_expand');
+  }
+}
+
+function _collectAIFixLogs(job, state){
+  state=state||{};
+  state.logs=state.logs||[];
+  state._lastMsgKey=state._lastMsgKey||'';
+  var phase=job.phase||'';
+  var progress=(job.progress==null?0:job.progress);
+  var msg=(job.message||'').trim();
+  var key=phase+'|'+progress+'|'+msg;
+  if(key!==state._lastMsgKey){
+    state._lastMsgKey=key;
+    var line=(phase?('['+phase+'] '):'')+(msg||'...');
+    if(progress||progress===0) line+=' ('+progress+'%)';
+    if(!state.logs.length||state.logs[state.logs.length-1]!==line){
+      state.logs.push(line);
+    }
+  }
+  var applyLogs=Array.isArray(job.apply_logs)?job.apply_logs:[];
+  var startIdx=state._lastApplyLogCount||0;
+  for(var i=startIdx;i<applyLogs.length;i++){
+    var it=applyLogs[i]||{};
+    var prefix=it.ok?'[apply-ok] ':'[apply-fail] ';
+    var line=prefix+(it.cmd||'git ?');
+    if(!it.ok&&it.stderr) line+=' | '+String(it.stderr).split('\n')[0];
+    if(!it.ok&&!it.stderr&&it.stdout) line+=' | '+String(it.stdout).split('\n')[0];
+    state.logs.push(line);
+  }
+  state._lastApplyLogCount=applyLogs.length;
+  return state.logs;
 }
 
 function _updateAIFixProgress(msgId, percent, text){
@@ -979,23 +1049,25 @@ function _pollAIFixStatus(jobId, msgId, gitOpCtx, state){
   fetch('/api/ai/git-autofix-status?jobId='+encodeURIComponent(jobId))
     .then(function(r){return r.json();})
     .then(function(data){
-      if(!data.ok){
+      if(!data.ok || !data.job){
         _aiFixActive=false;
         addMsg(t('ai_fix_failed')+_formatAIFixError(data),'error',{disableAiFix:true,maxLines:14});
         return;
       }
-      _updateAIFixProgress(msgId, data.progress||0, data.message||t('ai_fix_progress'));
-      if(!data.done){
+      var job=data.job||{};
+      _updateAIFixProgress(msgId, job.progress||0, job.message||t('ai_fix_progress'));
+      _renderAIFixLog(msgId, _collectAIFixLogs(job, state));
+      if(!job.done){
         setTimeout(function(){_pollAIFixStatus(jobId,msgId,gitOpCtx,state);},700);
         return;
       }
-      if(data.phase==='await_confirm'&&data.ok){
+      if(job.phase==='await_confirm'){
         if(state.planShown) return;
         state.planShown=true;
         _aiFixActive=false;
         showConfirmDialog({
           title:t('ai_fix_plan_title'),
-          message:_renderAIFixPlanHtml(data),
+          message:_renderAIFixPlanHtml(job),
           confirmText:t('ai_fix_apply_confirm'),
           cancelText:t('ai_fix_apply_cancel'),
           confirmClass:'btn-warning',
@@ -1023,12 +1095,12 @@ function _pollAIFixStatus(jobId, msgId, gitOpCtx, state){
         return;
       }
       _aiFixActive=false;
-      if(data.ok && data.phase==='applied'){
+      if(job.ok && job.phase==='applied'){
         _updateAIFixProgress(msgId, 100, t('ai_fix_done'));
         addMsg(t('ai_fix_done'),'success',{disableAiFix:true});
         _finalizeAIFixWithRetry(gitOpCtx);
       }else{
-        addMsg(t('ai_fix_failed')+_formatAIFixError(data),'error',{disableAiFix:true,maxLines:14});
+        addMsg(t('ai_fix_failed')+_formatAIFixError(job),'error',{disableAiFix:true,maxLines:14});
       }
     })
     .catch(function(e){
@@ -1047,7 +1119,7 @@ function _startAIFixFlow(errorText, gitOpCtx){
   }
   _aiFixActive=true;
   var opName=(gitOpCtx&&gitOpCtx.name)||'git-operation';
-  var msgId=addMsg('🤖 '+t('ai_fix_starting'),'info',{disableAiFix:true});
+  var msgId=addMsg('🤖 '+t('ai_fix_starting'),'success',{disableAiFix:true});
   _updateAIFixProgress(msgId, 3, t('ai_fix_starting'));
   fetch('/api/ai/git-autofix-start',{
     method:'POST',

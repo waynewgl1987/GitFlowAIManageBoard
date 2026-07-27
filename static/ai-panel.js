@@ -11,6 +11,7 @@ var _tf = typeof tf === 'function' ? tf : function(k, l, r) { return _t(k, l); }
 var AI_PROVIDERS = {
   openai:    { name:'OpenAI',         baseUrl:'https://api.openai.com/v1',                             needsKey:true,  hint:'',  models:['gpt-4.1','gpt-4.1-mini','gpt-4o','gpt-4o-mini','gpt-3.5-turbo','o1-mini'] },
   anthropic: { name:'Anthropic',      baseUrl:'https://api.anthropic.com',                             needsKey:true,  hint:'',  models:['claude-sonnet-4.6','claude-opus-4.7','claude-opus-4.5','claude-haiku-4.5','claude-sonnet-4.5'] },
+  google:    { name:'Google AI Studio', baseUrl:'https://generativelanguage.googleapis.com/v1beta/openai', needsKey:true, hintKey:'ai_google_hint', models:['gemini-3.5-flash','gemini-2.5-pro','gemini-2.5-flash','gemini-2.0-flash','gemini-1.5-pro','gemini-1.5-flash'] },
   deepseek:  { name:'DeepSeek',       baseUrl:'https://api.deepseek.com/v1',                           needsKey:true,  hint:'',  models:['deepseek-chat','deepseek-coder','deepseek-reasoner'] },
   qwen:      { name:'Qwen',           baseUrl:'https://dashscope.aliyuncs.com/compatible-mode/v1',     needsKey:true,  hint:'',  models:['qwen-max','qwen2.5-coder-32b-instruct','qwen-plus','qwen-turbo'] },
   ollama:    { name:'Ollama (Local)', baseUrl:'http://localhost:11434/v1',                              needsKey:false, hint:'🔓 Ollama runs locally — no API key required.', models:['codellama','llama3','mistral','deepseek-coder-v2','qwen2.5-coder'] },
@@ -180,17 +181,20 @@ function _selectAIProvider(key, silent) {
 
   // Hint
   var hint = document.getElementById('ai-key-hint');
+  var hintText = p.hintKey ? t(p.hintKey) : p.hint;
   if (hint) {
-    hint.style.display = p.hint ? '' : 'none';
-    hint.textContent = p.hint;
+    hint.style.display = hintText ? '' : 'none';
+    hint.textContent = hintText || '';
   }
 
   // Model dropdown
   var sel = document.getElementById('ai-model-sel');
   var customEl = document.getElementById('ai-model-custom');
   var model = cfg.model || '';
-
-  sel.innerHTML = p.models.map(function(m){ return '<option value="' + m + '">' + m + '</option>'; }).join('') || '<option value="">— enter below —</option>';
+  var defaultOpt = (typeof t === 'function' ? t('ai_model_default_option') : '— Select from default models —');
+  var optionsHtml = '<option value="">' + defaultOpt + '</option>'
+    + p.models.map(function(m){ return '<option value="' + m + '">' + m + '</option>'; }).join('');
+  sel.innerHTML = optionsHtml;
   if (model && p.models.indexOf(model) >= 0) {
     sel.value = model;
     if (customEl) customEl.value = '';
@@ -201,6 +205,37 @@ function _selectAIProvider(key, silent) {
     sel.value = p.models[0] || '';
     if (customEl) customEl.value = '';
   }
+}
+
+function _decorateProviderError(provider, errorText) {
+  var msg = String(errorText || '').trim();
+  if (!msg) return msg;
+  if (provider === 'google' && /HTTP\s*400/i.test(msg)) {
+    msg += ' ' + (typeof t === 'function' ? t('ai_google_http400_hint') : '');
+  }
+  return msg;
+}
+
+function _bindProviderModelSync() {
+  if (_bindProviderModelSync._bound) return;
+  _bindProviderModelSync._bound = true;
+  document.addEventListener('input', function(e) {
+    if (!e || !e.target || e.target.id !== 'ai-model-custom') return;
+    var sel = document.getElementById('ai-model-sel');
+    var customEl = e.target;
+    if (!sel || !customEl) return;
+    if ((customEl.value || '').trim()) {
+      sel.value = ''; // custom model active -> unselect default list
+    }
+  });
+  document.addEventListener('change', function(e) {
+    if (!e || !e.target || e.target.id !== 'ai-model-sel') return;
+    var customEl = document.getElementById('ai-model-custom');
+    if (!customEl) return;
+    if ((e.target.value || '').trim()) {
+      customEl.value = ''; // chosen from defaults -> clear custom model
+    }
+  });
 }
 
 function testAIProvider() {
@@ -231,7 +266,8 @@ function testAIProvider() {
   .then(function(r){ return r.json(); })
   .then(function(data){
     if (statusEl) {
-      statusEl.textContent = data.ok ? (t('ai_connected')) : (t('ai_error') + (data.error || t('ai_unknown_error')));
+      var errMsg = _decorateProviderError(provider, data.error || t('ai_unknown_error'));
+      statusEl.textContent = data.ok ? (t('ai_connected')) : (t('ai_error') + errMsg);
       statusEl.style.color = data.ok ? '#10b981' : '#ef4444';
     }
   })
@@ -242,10 +278,12 @@ function testAIProvider() {
 
 function saveAIProvider() {
   var provider = _aiCfg.active || 'openai';
+  var pDef = AI_PROVIDERS[provider] || {};
   var api_key  = (document.getElementById('ai-api-key')?.value || '').trim();
   var base_url = (document.getElementById('ai-base-url')?.value || '').trim();
   var model    = (document.getElementById('ai-model-custom')?.value || '').trim()
-               || document.getElementById('ai-model-sel')?.value || 'claude-sonnet-4.6';
+               || document.getElementById('ai-model-sel')?.value
+               || (pDef.models && pDef.models[0]) || '';
   _aiCfg.providers[provider] = { api_key: api_key, base_url: base_url, model: model };
   _saveAiCfg();
   _updateAIBadge();
@@ -1693,6 +1731,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
   initPanelResize();
+  _bindProviderModelSync();
   _updateAIBadge();
   _applyDiffTheme();
   // Show welcome message
