@@ -46,7 +46,7 @@ _AI_AUTOFIX_TIMEOUT = 180
 _ALLOWED_GIT_SUBCOMMANDS = {
     "fetch", "pull", "push", "rebase", "merge", "checkout", "switch",
     "branch", "reset", "restore", "clean", "stash", "remote", "config",
-    "add", "commit", "cherry-pick", "revert"
+    "add", "commit", "cherry-pick", "revert", "update-ref"
 }
 
 
@@ -150,6 +150,38 @@ def _build_autofix_prompt(ctx, ui_lang):
     )
 
 
+def _build_lock_ref_fallback_plan(err_text):
+    txt = err_text or ""
+    low = txt.lower()
+    is_lock_ref = ("cannot lock ref" in low) or ("unable to update local ref" in low)
+    if not is_lock_ref:
+        return None
+    refs = set(re.findall(r"refs/remotes/[A-Za-z0-9._/\-]+", txt))
+    short_refs = re.findall(r"'(origin/[A-Za-z0-9._/\-]+)'", txt)
+    for sr in short_refs:
+        refs.add("refs/remotes/" + sr)
+    refs = sorted(refs)
+    commands = [{
+        "cmd": "git remote prune origin",
+        "reason": "Clean stale remote-tracking refs that can block updates",
+    }]
+    for ref in refs[:5]:
+        commands.append({
+            "cmd": f"git update-ref -d {ref}",
+            "reason": "Delete problematic local tracking ref so fetch can recreate it",
+        })
+    commands.append({
+        "cmd": "git fetch origin --prune --verbose",
+        "reason": "Re-sync remote-tracking refs after cleanup",
+    })
+    summary = (
+        "Detected stale/locked remote-tracking refs. "
+        "This fallback will prune stale refs, delete problematic tracking refs, then fetch again."
+    )
+    post_check = "Fetch should complete without cannot lock ref / expected OID mismatch errors."
+    return {"summary": summary, "post_check": post_check, "commands": commands}
+
+
 def _autofix_analyze_job(job_id, provider, api_key, base_url, model, op_name, err_text, ui_lang):
     try:
         _set_autofix_job(job_id, {"phase": "analyzing", "progress": 20, "message": "Collecting context..."})
@@ -182,6 +214,24 @@ def _autofix_analyze_job(job_id, provider, api_key, base_url, model, op_name, er
             return
         commands = _sanitize_ai_commands(payload.get("commands", []))
         if not commands:
+            fallback = _build_lock_ref_fallback_plan(err_text)
+            if fallback:
+                commands = _sanitize_ai_commands(fallback.get("commands", []))
+                if commands:
+                    _set_autofix_job(job_id, {
+                        "done": True,
+                        "ok": True,
+                        "phase": "await_confirm",
+                        "progress": 100,
+                        "summary": fallback.get("summary", ""),
+                        "post_check": fallback.get("post_check", ""),
+                        "commands": [{"cmd": c["cmd"], "reason": c["reason"]} for c in commands],
+                        "_command_parts": [c["parts"] for c in commands],
+                        "context": ctx,
+                        "message": "Fallback lock-ref plan ready",
+                        "raw": text[:1200],
+                    })
+                    return
             _set_autofix_job(job_id, {
                 "done": True, "ok": False, "phase": "failed", "progress": 100,
                 "error": "No safe git commands found in AI plan",

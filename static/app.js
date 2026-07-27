@@ -1051,7 +1051,7 @@ function _pollAIFixStatus(jobId, msgId, gitOpCtx, state){
     .then(function(data){
       if(!data.ok || !data.job){
         _aiFixActive=false;
-        addMsg(t('ai_fix_failed')+_formatAIFixError(data),'error',{disableAiFix:true,maxLines:14});
+        addMsg(t('ai_fix_failed')+_formatAIFixError(data),'error',{maxLines:14,gitOp:gitOpCtx||_lastGitOpCtx||null});
         return;
       }
       var job=data.job||{};
@@ -1081,13 +1081,13 @@ function _pollAIFixStatus(jobId, msgId, gitOpCtx, state){
             }).then(function(r){return r.json();}).then(function(d){
               if(!d.ok){
                 _aiFixActive=false;
-                addMsg(t('ai_fix_failed')+_formatAIFixError(d),'error',{disableAiFix:true,maxLines:14});
+                addMsg(t('ai_fix_failed')+_formatAIFixError(d),'error',{maxLines:14,gitOp:gitOpCtx||_lastGitOpCtx||null});
                 return;
               }
               setTimeout(function(){_pollAIFixStatus(jobId,msgId,gitOpCtx,state);},500);
             }).catch(function(e){
               _aiFixActive=false;
-              addMsg(t('network_err')+e.message,'error',{disableAiFix:true});
+              addMsg(t('network_err')+e.message,'error',{gitOp:gitOpCtx||_lastGitOpCtx||null});
             });
           },
           onCancel:function(){ addMsg(t('ai_fix_canceled'),'info',{disableAiFix:true}); }
@@ -1100,12 +1100,12 @@ function _pollAIFixStatus(jobId, msgId, gitOpCtx, state){
         addMsg(t('ai_fix_done'),'success',{disableAiFix:true});
         _finalizeAIFixWithRetry(gitOpCtx);
       }else{
-        addMsg(t('ai_fix_failed')+_formatAIFixError(job),'error',{disableAiFix:true,maxLines:14});
+        addMsg(t('ai_fix_failed')+_formatAIFixError(job),'error',{maxLines:14,gitOp:gitOpCtx||_lastGitOpCtx||null});
       }
     })
     .catch(function(e){
       _aiFixActive=false;
-      addMsg(t('network_err')+e.message,'error',{disableAiFix:true});
+      addMsg(t('network_err')+e.message,'error',{gitOp:gitOpCtx||_lastGitOpCtx||null});
     });
 }
 
@@ -1114,7 +1114,7 @@ function _startAIFixFlow(errorText, gitOpCtx){
   var cfg=_getAICfgSafe();
   var cfgErr=_validateAIFixConfig(cfg);
   if(cfgErr){
-    addMsg(t('ai_fix_failed')+cfgErr,'error',{disableAiFix:true,maxLines:8});
+    addMsg(t('ai_fix_failed')+cfgErr,'error',{maxLines:8,gitOp:gitOpCtx||_lastGitOpCtx||null});
     return;
   }
   _aiFixActive=true;
@@ -1136,7 +1136,7 @@ function _startAIFixFlow(errorText, gitOpCtx){
   }).then(function(r){return r.json();}).then(function(data){
     if(!data.ok||!data.jobId){
       _aiFixActive=false;
-      addMsg(t('ai_fix_failed')+_formatAIFixError(data),'error',{disableAiFix:true,maxLines:14});
+      addMsg(t('ai_fix_failed')+_formatAIFixError(data),'error',{maxLines:14,gitOp:gitOpCtx||_lastGitOpCtx||null});
       return;
     }
     _pollAIFixStatus(data.jobId,msgId,gitOpCtx||null,{planShown:false});
