@@ -28,7 +28,7 @@ from git_ops import (
     checkout_branch, create_branch,
     delete_branch_local, delete_branch_remote, rename_branch,
     fetch, pull_current, set_upstream, push_set_upstream,
-    rebase_current_onto, is_rebase_in_progress,
+    rebase_current_onto, is_rebase_in_progress, rebase_rebuild_keep_head_and_force_push,
     get_conflicts, get_conflict_detail,
     _get_merge_type, _get_merge_default_msg,
     resolve_conflict, get_file_commits,
@@ -987,6 +987,19 @@ def handle_post(path, data, send_json):
             "alreadyUpToDate": already_up_to_date,
             "error": combined if rc != 0 else "",
         })
+        return True
+
+    elif path == "/api/rebase-rebuild-force-push":
+        base_branch = data.get("base_branch", "").strip()
+        remote_branch = data.get("remote_branch", "").strip() or None
+        if not base_branch:
+            send_json({"ok": False, "error": "base_branch is required"}, 400)
+            return True
+        stdout, stderr, rc = rebase_rebuild_keep_head_and_force_push(base_branch, remote_branch=remote_branch)
+        if rc == 0:
+            send_json({"ok": True, "stdout": stdout})
+        else:
+            send_json({"ok": False, "error": stderr or stdout, "stdout": stdout}, 400)
         return True
 
     elif path == "/api/switch-remote-ssh":

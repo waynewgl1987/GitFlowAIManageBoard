@@ -1731,6 +1731,10 @@ function checkConflicts(){
     .catch(function(){});
 }
 
+// Captures the latest successful rebase context so push-failure flows can
+// offer a one-click "reset to rebase base + keep HEAD + force push" recovery.
+var _lastRebaseForcePushContext = null;
+
 // ═══════════ Pull + Fetch ═══════════
 function doPush(credentials, force, remoteBranch){
   _rememberGitOp('push', function(){ doPush(null, !!force, remoteBranch); });
@@ -1992,6 +1996,59 @@ function doPush(credentials, force, remoteBranch){
                   function(){ closeModal(); setTimeout(function(){ doPushForce(); },300); }
                 );
               };
+
+              if(isNonFastForward && _lastRebaseForcePushContext &&
+                 _lastRebaseForcePushContext.branch === branch &&
+                 _lastRebaseForcePushContext.baseBranch){
+                var rebuildBtn=document.createElement('button');
+                rebuildBtn.className='btn btn-danger';
+                rebuildBtn.textContent=(L==='zh')
+                  ?'🛠 按 Rebase 基线重建并强推'
+                  :'🛠 Rebuild from Rebase Base & Force Push';
+                rebuildBtn.onclick=function(){
+                  var baseBranch=_lastRebaseForcePushContext.baseBranch;
+                  var warn=(L==='zh')
+                    ?'<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:12px 14px;margin-bottom:10px;color:#7f1d1d">'
+                      +'<b>⚠️ 将执行重写历史操作</b><br><br>'
+                      +'将按以下步骤自动执行：<br>'
+                      +'1) <code>git reset --hard '+escapeHtml(baseBranch)+'</code><br>'
+                      +'2) <code>git cherry-pick 原HEAD</code><br>'
+                      +'3) <code>git push --force-with-lease</code><br><br>'
+                      +'仅保留“当前顶部 commit”，其它本地新增 commit 会被移除。'
+                      +'</div>'
+                    :'<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:12px 14px;margin-bottom:10px;color:#7f1d1d">'
+                      +'<b>⚠️ This rewrites history</b><br><br>'
+                      +'It will run:<br>'
+                      +'1) <code>git reset --hard '+escapeHtml(baseBranch)+'</code><br>'
+                      +'2) <code>git cherry-pick previous HEAD</code><br>'
+                      +'3) <code>git push --force-with-lease</code><br><br>'
+                      +'Only the current top commit will be kept; other local extra commits are removed.'
+                      +'</div>';
+                  showModal(
+                    (L==='zh')?'🛠 重建并强推':'🛠 Rebuild & Force Push',
+                    warn,
+                    (L==='zh')?'确认执行':'Proceed',
+                    function(){
+                      closeModal();
+                      addMsg((L==='zh')?'🛠 正在执行重建并强推...':'🛠 Rebuilding branch and force pushing...','info');
+                      apiPost('/api/rebase-rebuild-force-push',{
+                        base_branch: baseBranch,
+                        remote_branch: effectiveRemote
+                      },function(rr){
+                        if(rr&&rr.ok){
+                          addMsg((L==='zh')?'✅ 重建并强推成功':'✅ Rebuild + force push succeeded','success');
+                          if(rr.stdout) addMsg('📋 '+rr.stdout,'info',{maxLines:16});
+                          loadLog(1); loadCurrentBranch(); loadFiles();
+                        }else{
+                          addMsg((L==='zh'?'❌ 重建并强推失败: ':'❌ Rebuild + force push failed: ')+((rr&&rr.error)||''),'error',{maxLines:16});
+                          if(rr&&rr.stdout) addMsg('📋 '+rr.stdout,'info',{maxLines:16});
+                        }
+                      });
+                    }
+                  );
+                };
+                btnsDiv2.appendChild(rebuildBtn);
+              }
               btnsDiv2.appendChild(forceBtn);
               btnsDiv2.appendChild(pullRetryBtn);
             }
@@ -3116,6 +3173,11 @@ function _doMerge(sourceBranch,curBranch,msg){
 
 function _doRebase(sourceBranch,curBranch){
   function showForcePushPrompt(logBox){
+    _lastRebaseForcePushContext = {
+      baseBranch: sourceBranch,
+      branch: curBranch,
+      at: Date.now()
+    };
     var pushDesc=tf('rebase_push_desc',L,{branch:curBranch});
     showModalDouble(
       t('rebase_ok_title'),
