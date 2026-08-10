@@ -20,6 +20,7 @@ from git_ops import (
     get_network_timeout, save_network_timeout,
     get_gpg_sign, save_gpg_sign,
     check_unsigned_commits, resign_branch_commits, resign_branch_commits_with_autostash,
+    detect_base_branch,
     _ref_exists, _resolve_ref_for_compare,
     get_branches, has_uncommitted, stash_changes,
     stash_list, stash_diff, commit_diff, commit_files, search_diff_code,
@@ -29,6 +30,7 @@ from git_ops import (
     delete_branch_local, delete_branch_remote, rename_branch,
     fetch, pull_current, set_upstream, push_set_upstream,
     rebase_current_onto, is_rebase_in_progress, rebase_rebuild_keep_head_and_force_push,
+    check_rebase_safety,
     get_conflicts, get_conflict_detail,
     _get_merge_type, _get_merge_default_msg,
     resolve_conflict, get_file_commits,
@@ -416,8 +418,12 @@ def handle_get(path, params, send_json, send_stream=None):
         send_json({"gpg_sign": get_gpg_sign()})
         return True
 
+    elif path == "/api/detect-base":
+        send_json({"ok": True, "base": detect_base_branch()})
+        return True
+
     elif path == "/api/unsigned-commits":
-        base = params.get("base", ["develop"])[0]
+        base = params.get("base", [None])[0] or detect_base_branch()
         send_json(check_unsigned_commits(base))
         return True
 
@@ -858,7 +864,7 @@ def handle_post(path, data, send_json):
         return True
 
     elif path == "/api/resign-commits":
-        base = data.get("base", "develop")
+        base = data.get("base") or detect_base_branch()
         ok, msg = resign_branch_commits(base)
         if ok:
             send_json({"ok": True, "message": msg})
@@ -867,7 +873,7 @@ def handle_post(path, data, send_json):
         return True
 
     elif path == "/api/resign-commits-autofix":
-        base = data.get("base", "develop")
+        base = data.get("base") or detect_base_branch()
         ok, msg = resign_branch_commits_with_autostash(base)
         if ok:
             send_json({"ok": True, "message": msg})
@@ -967,6 +973,15 @@ def handle_post(path, data, send_json):
                            "error": cerr if crc != 0 else ""})
         else:
             send_json({"ok": False, "log": combined, "hasConflict": has_conflict, "error": combined})
+        return True
+
+    elif path == "/api/rebase-preflight":
+        source = data.get("branch", "").strip()
+        if not source:
+            send_json({"ok": False, "error": "No branch specified"}, 400)
+            return True
+        safety = check_rebase_safety(source)
+        send_json({"ok": True, **safety})
         return True
 
     elif path == "/api/rebase":

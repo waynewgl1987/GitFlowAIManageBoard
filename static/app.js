@@ -1743,71 +1743,75 @@ function doPush(credentials, force, remoteBranch){
 
   // If GPG signing is enabled, check for unsigned commits before pushing
   if (gpgEnabled && !doPush._skipResignCheck) {
-    apiGet('/api/unsigned-commits?base=develop', function(info) {
-      if (info.has_unsigned) {
-        showModalDouble(
-          '🔏 Unsigned Commits Detected',
-          'Found <b>' + info.unsigned_count + '</b> unsigned commit(s) out of ' + info.total_count + ' on this branch.<br><br>' +
-          'Re-sign all commits with GPG before pushing?<br>' +
-          '<span style="font-size:12px;color:#6b7280">(This will rebase and force push)</span>',
-          '🔏 Re-sign & Push',
-          function() {
-            addMsg('🔏 Re-signing commits...', 'info');
-            apiPost('/api/resign-commits', {base: 'develop'}, function(d) {
-              if (d.ok) {
-                addMsg('✅ ' + d.message, 'success');
-                // Now force push since rebase rewrites history
-                doPush._skipResignCheck = true;
-                doPush(credentials, true, remoteBranch);
-                doPush._skipResignCheck = false;
-              } else {
-                var resignErr = (d && d.error) || '';
-                addMsg('❌ Re-sign failed: ' + resignErr, 'error');
-                var canAutoFix = /cannot rebase:\s*You have unstaged changes/i.test(resignErr) ||
-                                 /Please commit or stash them/i.test(resignErr);
-                if (canAutoFix) {
-                  showModalDouble(
-                    '🧹 Auto Fix Re-sign Failure',
-                    'Detected local changes blocking rebase.<br><br>' +
-                    'Run <b>auto stash + re-sign</b>, then push immediately?',
-                    '🧹 Auto Fix & Push',
-                    function() {
-                      addMsg('🧹 Auto-fixing and re-signing commits...', 'info');
-                      apiPost('/api/resign-commits-autofix', {base: 'develop'}, function(fix) {
-                        if (fix.ok) {
-                          addMsg('✅ ' + fix.message, 'success');
-                          doPush._skipResignCheck = true;
-                          doPush(credentials, true, remoteBranch);
-                          doPush._skipResignCheck = false;
-                        } else {
-                          addMsg('❌ Auto-fix failed: ' + ((fix && fix.error) || ''), 'error');
-                        }
-                      });
-                    },
-                    'Close',
-                    function() {},
-                    'btn-primary',
-                    'btn-secondary'
-                  );
+    // Detect the actual base branch first — never hard-code 'develop'
+    apiPost('/api/detect-base', {}, function(baseData) {
+      var detectedBase = (baseData && baseData.base) || 'origin/develop';
+      apiGet('/api/unsigned-commits?base=' + encodeURIComponent(detectedBase), function(info) {
+        if (info.has_unsigned) {
+          showModalDouble(
+            '🔏 Unsigned Commits Detected',
+            'Found <b>' + info.unsigned_count + '</b> unsigned commit(s) out of ' + info.total_count + ' on this branch.<br><br>' +
+            'Re-sign all commits with GPG before pushing?<br>' +
+            '<span style="font-size:12px;color:#6b7280">(Base detected: <code>' + escapeHtml(detectedBase) + '</code>)</span>',
+            '🔏 Re-sign & Push',
+            function() {
+              addMsg('🔏 Re-signing commits...', 'info');
+              apiPost('/api/resign-commits', {base: detectedBase}, function(d) {
+                if (d.ok) {
+                  addMsg('✅ ' + d.message, 'success');
+                  // Now force push since rebase rewrites history
+                  doPush._skipResignCheck = true;
+                  doPush(credentials, true, remoteBranch);
+                  doPush._skipResignCheck = false;
+                } else {
+                  var resignErr = (d && d.error) || '';
+                  addMsg('❌ Re-sign failed: ' + resignErr, 'error');
+                  var canAutoFix = /cannot rebase:\s*You have unstaged changes/i.test(resignErr) ||
+                                   /Please commit or stash them/i.test(resignErr);
+                  if (canAutoFix) {
+                    showModalDouble(
+                      '🧹 Auto Fix Re-sign Failure',
+                      'Detected local changes blocking rebase.<br><br>' +
+                      'Run <b>auto stash + re-sign</b>, then push immediately?',
+                      '🧹 Auto Fix & Push',
+                      function() {
+                        addMsg('🧹 Auto-fixing and re-signing commits...', 'info');
+                        apiPost('/api/resign-commits-autofix', {base: detectedBase}, function(fix) {
+                          if (fix.ok) {
+                            addMsg('✅ ' + fix.message, 'success');
+                            doPush._skipResignCheck = true;
+                            doPush(credentials, true, remoteBranch);
+                            doPush._skipResignCheck = false;
+                          } else {
+                            addMsg('❌ Auto-fix failed: ' + ((fix && fix.error) || ''), 'error');
+                          }
+                        });
+                      },
+                      'Close',
+                      function() {},
+                      'btn-primary',
+                      'btn-secondary'
+                    );
+                  }
                 }
-              }
-            });
-          },
-          'Skip & Push Anyway',
-          function() {
-            doPush._skipResignCheck = true;
-            doPush(credentials, force, remoteBranch);
-            doPush._skipResignCheck = false;
-          },
-          'btn-primary',
-          'btn-secondary'
-        );
-      } else {
-        // All signed, proceed normally
-        doPush._skipResignCheck = true;
-        doPush(credentials, force, remoteBranch);
-        doPush._skipResignCheck = false;
-      }
+              });
+            },
+            'Skip & Push Anyway',
+            function() {
+              doPush._skipResignCheck = true;
+              doPush(credentials, force, remoteBranch);
+              doPush._skipResignCheck = false;
+            },
+            'btn-primary',
+            'btn-secondary'
+          );
+        } else {
+          // All signed, proceed normally
+          doPush._skipResignCheck = true;
+          doPush(credentials, force, remoteBranch);
+          doPush._skipResignCheck = false;
+        }
+      });
     });
     return;
   }
@@ -3295,8 +3299,83 @@ function _doRebase(sourceBranch,curBranch){
     });
   }
 
-  apiGet('/api/has-uncommitted',function(hasData){
-    if(!(hasData&&hasData.hasChanges)){ runRebase(false); return; }
+  // ── Pre-flight: detect merge commits / foreign commits in branch history ──
+  function runWithPreflightCheck(){
+    addMsg(L==='zh'?'🔍 正在检查分支历史安全性...':'🔍 Checking branch history safety...','info');
+    apiPost('/api/rebase-preflight',{branch:sourceBranch},function(pf){
+      var hasRisk=(pf.hasMergeCommits||((pf.foreignCommits||[]).length>0));
+      if(!hasRisk){ checkUncommittedAndRebase(); return; }
+
+      // Build warning HTML
+      var foreignRows='';
+      (pf.foreignCommits||[]).slice(0,8).forEach(function(c){
+        foreignRows+='<tr><td style="font-family:monospace;color:#7c3aed;padding:2px 8px 2px 0">'+escapeHtml(c.hash)+'</td>'
+          +'<td style="color:#b91c1c;padding:2px 8px 2px 0">'+escapeHtml(c.author)+'</td>'
+          +'<td style="color:#374151">'+escapeHtml(c.subject)+'</td></tr>';
+      });
+      var extraRows=(pf.foreignCommits||[]).length>8
+        ?'<tr><td colspan="3" style="color:#6b7280;font-style:italic">… and '+((pf.foreignCommits||[]).length-8)+' more</td></tr>':'';
+
+      var warnHtml='<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:10px;padding:14px 16px;margin-bottom:12px">'
+        +'<div style="font-size:14px;font-weight:800;color:#b91c1c;margin-bottom:8px">⚠️ '
+        +(L==='zh'?'Rebase 风险：分支历史包含其他人的 commit':'Rebase Risk: Branch contains other authors\' commits')+'</div>'
+        +'<div style="font-size:13px;color:#7f1d1d;line-height:1.7;margin-bottom:10px">'
+        +(L==='zh'
+          ?'当前分支历史中包含 <b>'+((pf.foreignCommits||[]).length)+'</b> 个其他人的 commit（可能是之前执行过 <code>git merge</code> 导致的）。'
+           +'直接 Rebase 会把这些 commit <b>重新写入到本分支</b>，导致分支混入他人代码。<br><br>'
+           +'<b>推荐做法：</b>使用 <b>Rebuild & Force Push</b>，它会自动识别并只保留属于你的 commit。'
+          :'The branch history contains <b>'+((pf.foreignCommits||[]).length)+'</b> commit(s) from other authors '
+           +'(likely caused by a previous <code>git merge</code>). A plain rebase will <b>re-apply all of them</b> onto the new base, '
+           +'polluting this branch with other people\'s code.<br><br>'
+           +'<b>Recommended:</b> Use <b>Rebuild & Force Push</b> — it keeps only YOUR commits.')
+        +'</div>'
+        +(foreignRows?'<div style="overflow-x:auto;max-height:160px;overflow-y:auto"><table style="font-size:12px;width:100%;border-collapse:collapse">'
+          +foreignRows+extraRows+'</table></div>':'')
+        +(pf.hasMergeCommits?'<div style="margin-top:8px;font-size:12px;color:#7f1d1d">⚠️ '
+          +(L==='zh'?'检测到 merge commit，这是引发该问题的直接原因。':'Merge commit(s) detected in branch — this is the direct cause of the issue.')+'</div>':'')
+        +'</div>';
+
+      document.getElementById('modal-title').innerHTML='⚠️ '+(L==='zh'?'Rebase 安全警告':'Rebase Safety Warning');
+      document.getElementById('modal-msg').innerHTML=warnHtml;
+      var btnsDiv=document.getElementById('modal-btns');
+      btnsDiv.innerHTML='';
+
+      var cancelBtn2=document.createElement('button');
+      cancelBtn2.className='btn btn-secondary';
+      cancelBtn2.textContent='Cancel';
+      cancelBtn2.onclick=closeModal;
+
+      var forceBtn=document.createElement('button');
+      forceBtn.className='btn btn-danger';
+      forceBtn.textContent=L==='zh'?'⚠️ 仍然 Rebase（不推荐）':'⚠️ Rebase Anyway (not recommended)';
+      forceBtn.onclick=function(){ closeModal(); checkUncommittedAndRebase(); };
+
+      var rebuildBtn=document.createElement('button');
+      rebuildBtn.className='btn btn-warning';
+      rebuildBtn.textContent=L==='zh'?'✅ Rebuild & Force Push（推荐）':'✅ Rebuild & Force Push (recommended)';
+      rebuildBtn.onclick=function(){
+        closeModal();
+        addMsg(L==='zh'?'🔨 正在 Rebuild 分支...':'🔨 Rebuilding branch...','info');
+        apiPost('/api/rebase-rebuild-force-push',{base_branch:sourceBranch},function(rd){
+          if(rd.ok){
+            addMsg(L==='zh'?'✅ Rebuild & Force Push 成功，分支已清理干净':'✅ Rebuild & Force Push succeeded — branch is clean','success');
+            loadLog(1);loadFiles();
+          }else{
+            addMsg((L==='zh'?'❌ Rebuild 失败: ':'❌ Rebuild failed: ')+(rd.error||''),'error');
+          }
+        });
+      };
+
+      btnsDiv.appendChild(cancelBtn2);
+      btnsDiv.appendChild(forceBtn);
+      btnsDiv.appendChild(rebuildBtn);
+      document.getElementById('modal-bg').classList.add('show');
+    });
+  }
+
+  function checkUncommittedAndRebase(){
+    apiGet('/api/has-uncommitted',function(hasData){
+      if(!(hasData&&hasData.hasChanges)){ runRebase(false); return; }
     document.getElementById('modal-title').innerHTML=L==='zh'?'🔒 检测到本地未提交改动':'🔒 Local Changes Detected';
     document.getElementById('modal-msg').innerHTML='<div style="font-size:14px;line-height:1.7">'
       +(L==='zh'
@@ -3334,6 +3413,9 @@ function _doRebase(sourceBranch,curBranch){
     btnsDiv.appendChild(stashBtn);
     document.getElementById('modal-bg').classList.add('show');
   });
+  } // end checkUncommittedAndRebase
+
+  runWithPreflightCheck();
 }
 
 // ═══════════ Rebase failure quick actions ═══════════
