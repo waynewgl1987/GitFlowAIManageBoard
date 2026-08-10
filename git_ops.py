@@ -116,6 +116,66 @@ def save_gpg_sign(enabled):
     return True, enabled
 
 
+def detect_base_branch():
+    """Detect the most appropriate base branch for the current branch.
+
+    Priority order:
+    1. Configured upstream tracking ref (@{u}) — most accurate
+    2. Closest origin/ ref by commit distance among common candidates
+       (release/*, develop, main, master)
+
+    Always returns an 'origin/' ref so we use the remote state, not a
+    potentially stale local branch.
+    """
+    # 1. Try the configured upstream tracking ref
+    up_out, _, up_rc = _run(["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+    if up_rc == 0:
+        upstream = (up_out or "").strip()
+        if upstream and upstream != "HEAD":
+            # Normalise to origin/ prefix
+            if not upstream.startswith("origin/"):
+                upstream = f"origin/{upstream}"
+            # Verify the ref resolves
+            _, _, vrc = _run(["git", "rev-parse", "--verify", upstream])
+            if vrc == 0:
+                return upstream
+
+    # 2. Find the closest remote ref among common candidates
+    candidates_raw, _, _ = _run(["git", "branch", "-r", "--format=%(refname:short)"])
+    remote_refs = [r.strip() for r in (candidates_raw or "").splitlines() if r.strip()]
+
+    # Build ordered candidate list: release/* branches first, then develop/main/master
+    release_refs = sorted([r for r in remote_refs if "/release/" in r or r.startswith("origin/release")])
+    priority_refs = release_refs + ["origin/develop", "origin/main", "origin/master"]
+    candidates = [r for r in priority_refs if r in remote_refs]
+    # De-duplicate while preserving order
+    seen = set()
+    candidates = [r for r in candidates if not (r in seen or seen.add(r))]
+
+    cur_branch = current_branch() or ""
+    best_ref = None
+    best_dist = None
+
+    for ref in candidates:
+        # Skip if this ref IS the current branch
+        ref_branch = ref.replace("origin/", "", 1)
+        if ref_branch == cur_branch or ref == cur_branch:
+            continue
+        # Get commit distance (number of commits on branch not in ref)
+        count_out, _, count_rc = _run(["git", "rev-list", "--count", f"{ref}..HEAD"])
+        if count_rc != 0:
+            continue
+        try:
+            dist = int((count_out or "").strip())
+        except ValueError:
+            continue
+        if best_dist is None or dist < best_dist:
+            best_dist = dist
+            best_ref = ref
+
+    return best_ref or "origin/develop"
+
+
 def check_unsigned_commits(base="develop"):
     """Check if current branch has unsigned commits relative to base.
     Returns {"has_unsigned": bool, "unsigned_count": int, "total_count": int}."""
@@ -135,26 +195,35 @@ def check_unsigned_commits(base="develop"):
 
 def resign_branch_commits(base="develop"):
     """Re-sign all commits on current branch relative to base using GPG.
+    Always resolves base to its origin/ remote ref to avoid rebasing onto a
+    stale local branch that may have a different merge-base.
     Returns (ok, message)."""
     branch = current_branch()
     if not branch:
         return False, "Not on any branch"
+
+    # Always prefer the origin/ remote ref to avoid stale local branch issues
+    if not base.startswith("origin/"):
+        remote_ref = f"origin/{base}"
+        _, _, probe_rc = _run(["git", "rev-parse", "--verify", remote_ref])
+        if probe_rc == 0:
+            base = remote_ref
+
     if branch == base:
         return False, f"Cannot re-sign: currently on base branch '{base}'"
     # Check if there are commits to re-sign
     info = check_unsigned_commits(base)
     if not info["has_unsigned"]:
         return True, "All commits are already signed"
-    # Do the rebase with GPG signing
-    # In some histories, a rebased commit may become effectively empty at an exec step.
-    # Keep re-sign flow moving for that case and let rebase continue.
+    # Do the rebase with GPG signing.
+    # In some histories a rebased commit may become effectively empty — keep
+    # re-sign flow moving and let rebase continue.
     resign_exec = "git commit --amend --no-edit -S --allow-empty || true"
     stdout, stderr, rc = _run(
         ["git", "rebase", "--exec", resign_exec, base],
         timeout=180
     )
     if rc != 0:
-        # Try to abort failed rebase
         _run(["git", "rebase", "--abort"])
         return False, stderr or stdout or "Rebase failed"
     return True, f"Successfully re-signed {info['unsigned_count']} commit(s)"
@@ -775,9 +844,115 @@ def is_rebase_in_progress():
         os.path.exists(os.path.join(cwd, ".git", "rebase-apply"))
 
 
-def rebase_current_onto(source):
-    """Rebase current branch onto source, with git autostash explicitly disabled."""
-    return _run(["git", "-c", "rebase.autoStash=false", "rebase", source])
+def check_rebase_safety(source):
+    """
+    Pre-flight check before rebasing current branch onto source.
+
+    Returns a dict:
+      hasMergeCommits  – True if branch-exclusive history has merge commits
+      foreignCommits   – list of {hash, author, subject} for commits not by the
+                         current git user found in the branch-exclusive range
+      ownCommitCount   – number of commits authored by current user in range
+      totalCommitCount – total commits in range
+      warning          – human-readable warning string (empty if safe)
+    """
+    result = {
+        "hasMergeCommits": False,
+        "foreignCommits": [],
+        "ownCommitCount": 0,
+        "totalCommitCount": 0,
+        "warning": "",
+    }
+
+    # Resolve the base ref (prefer origin/ remote ref when available)
+    base_ref = source
+    remote_ref = source if source.startswith("origin/") else f"origin/{source}"
+    probe, _, probe_rc = _run(["git", "rev-parse", "--verify", remote_ref])
+    if probe_rc == 0:
+        base_ref = remote_ref
+
+    merge_base_out, _, mb_rc = _run(["git", "merge-base", "HEAD", base_ref])
+    if mb_rc != 0:
+        return result
+    merge_base = merge_base_out.strip()
+    if not merge_base:
+        return result
+
+    # Detect merge commits in branch-exclusive range
+    mc_out, _, _ = _run(["git", "log", "--merges", "--oneline", f"{merge_base}..HEAD"])
+    if (mc_out or "").strip():
+        result["hasMergeCommits"] = True
+
+    # Get current user email for author comparison
+    user_email_out, _, _ = _run(["git", "config", "user.email"])
+    user_email = (user_email_out or "").strip().lower()
+    user_name_out, _, _ = _run(["git", "config", "user.name"])
+    user_name = (user_name_out or "").strip().lower()
+
+    # List all commits in range with author info
+    log_out, _, log_rc = _run([
+        "git", "log", "--no-merges",
+        "--format=%H\x1f%ae\x1f%an\x1f%s",
+        f"{merge_base}..HEAD"
+    ])
+    if log_rc != 0:
+        return result
+
+    for line in (log_out or "").splitlines():
+        parts = line.split("\x1f", 3)
+        if len(parts) < 4:
+            continue
+        h, ae, an, subj = parts
+        result["totalCommitCount"] += 1
+        is_own = (user_email and ae.strip().lower() == user_email) or \
+                 (user_name and an.strip().lower() == user_name)
+        if is_own:
+            result["ownCommitCount"] += 1
+        else:
+            result["foreignCommits"].append({
+                "hash": h.strip()[:8],
+                "author": an.strip() or ae.strip(),
+                "subject": subj.strip(),
+            })
+
+    warnings = []
+    if result["hasMergeCommits"]:
+        warnings.append(
+            "Branch history contains merge commits. Rebasing will replay all "
+            "merged commits as new commits on this branch, including commits "
+            "from other authors."
+        )
+    if result["foreignCommits"]:
+        authors = list({c["author"] for c in result["foreignCommits"]})
+        warnings.append(
+            f"Found {len(result['foreignCommits'])} commit(s) from other "
+            f"author(s) ({', '.join(authors[:3])}) in branch-exclusive history. "
+            "These will be replayed by rebase."
+        )
+    result["warning"] = " ".join(warnings)
+    return result
+
+
+def rebase_current_onto(source, fetch_first=True):
+    """Rebase current branch onto source.
+
+    Always fetches from origin first (unless fetch_first=False) so that remote
+    tracking refs are up to date before the merge-base is computed.
+    Prefers origin/<source> over a potentially stale local branch ref.
+    """
+    if fetch_first:
+        _run(["git", "fetch", "origin", "--prune"])
+
+    # Use the remote tracking ref when available so we rebase on the latest
+    # remote state, not a possibly stale local branch.
+    base_ref = source
+    if not source.startswith("origin/"):
+        remote_ref = f"origin/{source}"
+        _, _, probe_rc = _run(["git", "rev-parse", "--verify", remote_ref])
+        if probe_rc == 0:
+            base_ref = remote_ref
+
+    return _run(["git", "-c", "rebase.autoStash=false", "rebase", base_ref])
 
 
 def rebase_abort():
