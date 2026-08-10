@@ -795,6 +795,92 @@ def rebase_continue():
     env = {"GIT_EDITOR": "true"}
     return _run(["git", "rebase", "--continue"], env=env)
 
+def rebase_rebuild_keep_head_and_force_push(base_branch, remote_branch=None):
+    """
+    Rebuild current branch on top of base_branch by keeping only the current HEAD commit,
+    then force-push to origin.
+
+    Sequence:
+      1) ensure clean working tree
+      2) capture current HEAD hash
+      3) reset --hard <base_branch>
+      4) cherry-pick captured HEAD commit
+      5) git push --force-with-lease origin <branch>:<remote_branch>
+    """
+    base = (base_branch or "").strip()
+    if not base:
+        return "", "base_branch is required", -1
+
+    branch = (current_branch() or "").strip()
+    if not branch or branch == "HEAD":
+        return "", "Detached HEAD is not supported for this operation", -1
+
+    target_remote = (remote_branch or branch).strip() or branch
+    refspec = f"{branch}:{target_remote}" if target_remote != branch else branch
+    logs = []
+
+    def _record(cmd, out, err, rc):
+        logs.append("$ " + " ".join(cmd))
+        if out:
+            logs.append(out.strip())
+        if err:
+            logs.append(err.strip())
+        logs.append(f"[rc={rc}]")
+        logs.append("")
+
+    # Safety: require clean working tree.
+    s_out, s_err, s_rc = _run(["git", "status", "--porcelain"])
+    _record(["git", "status", "--porcelain"], s_out, s_err, s_rc)
+    if s_rc != 0:
+        return "\n".join(logs).strip(), s_err or s_out or "Failed to check working tree", s_rc
+    if (s_out or "").strip():
+        return "\n".join(logs).strip(), "Working tree is not clean. Please commit/stash changes first.", -1
+
+    # Validate base exists.
+    b_out, b_err, b_rc = _run(["git", "rev-parse", "--verify", base])
+    _record(["git", "rev-parse", "--verify", base], b_out, b_err, b_rc)
+    if b_rc != 0:
+        return "\n".join(logs).strip(), b_err or b_out or f"Base branch not found: {base}", b_rc
+
+    # Capture original HEAD commit to keep.
+    h_out, h_err, h_rc = _run(["git", "rev-parse", "HEAD"])
+    _record(["git", "rev-parse", "HEAD"], h_out, h_err, h_rc)
+    if h_rc != 0 or not (h_out or "").strip():
+        return "\n".join(logs).strip(), h_err or h_out or "Cannot resolve HEAD commit", h_rc if h_rc != 0 else -1
+    keep_commit = h_out.strip()
+
+    # Reset branch to base.
+    r_cmd = ["git", "reset", "--hard", base]
+    r_out, r_err, r_rc = _run(r_cmd)
+    _record(r_cmd, r_out, r_err, r_rc)
+    if r_rc != 0:
+        return "\n".join(logs).strip(), r_err or r_out or "Reset to base failed", r_rc
+
+    # Re-apply the previous HEAD commit.
+    c_cmd = ["git", "cherry-pick", keep_commit]
+    c_out, c_err, c_rc = _run(c_cmd)
+    _record(c_cmd, c_out, c_err, c_rc)
+    if c_rc != 0:
+        # Handle "empty cherry-pick" state by skipping it.
+        combined = ((c_out or "") + "\n" + (c_err or "")).lower()
+        if "previous cherry-pick is now empty" in combined or "nothing to commit" in combined:
+            sk_cmd = ["git", "cherry-pick", "--skip"]
+            sk_out, sk_err, sk_rc = _run(sk_cmd)
+            _record(sk_cmd, sk_out, sk_err, sk_rc)
+            if sk_rc != 0:
+                return "\n".join(logs).strip(), sk_err or sk_out or "Empty cherry-pick skip failed", sk_rc
+        else:
+            return "\n".join(logs).strip(), c_err or c_out or "Cherry-pick failed", c_rc
+
+    # Force push to remote.
+    p_cmd = ["git", "push", "--force-with-lease", "origin", refspec]
+    p_out, p_err, p_rc = _run(p_cmd)
+    _record(p_cmd, p_out, p_err, p_rc)
+    if p_rc != 0:
+        return "\n".join(logs).strip(), p_err or p_out or "Force push failed", p_rc
+
+    return "\n".join(logs).strip(), "", 0
+
 
 def fetch():
     """Fetch from origin with pruning."""
