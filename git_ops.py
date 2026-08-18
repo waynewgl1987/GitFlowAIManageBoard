@@ -209,7 +209,8 @@ def check_unsigned_commits(base="develop"):
     lines = [l.strip() for l in out.strip().splitlines() if l.strip()]
     total = len(lines)
     # G=good, U=good untrusted, B=bad, X=expired, Y=expired key, R=revoked, E=error, N=none
-    unsigned = [l for l in lines if l.split()[-1] in ("N", "B", "E")]
+    # E means "signed but can't verify locally (no public key)" → treat as signed
+    unsigned = [l for l in lines if l.split()[-1] in ("N", "B")]
     return {"has_unsigned": len(unsigned) > 0, "unsigned_count": len(unsigned), "total_count": total}
 
 
@@ -218,7 +219,9 @@ def get_unsigned_commit_list(base="develop"):
 
     Returns {"unsigned": [{"hash": str, "short": str, "subject": str}],
              "total_count": int, "unsigned_count": int}.
-    Signature codes N (none), B (bad), E (error) are treated as unsigned."""
+    Only N (none) and B (bad) are truly unsigned.
+    E (error verifying) means signed by someone whose public key is not in
+    the local GPG keyring — this is NOT considered unsigned."""
     branch = current_branch()
     if not branch or branch == base:
         return {"unsigned": [], "total_count": 0, "unsigned_count": 0}
@@ -243,7 +246,7 @@ def get_unsigned_commit_list(base="develop"):
             continue
         full_h, short_h, sig, subject = parts
         all_commits.append(full_h)
-        if sig in ("N", "B", "E"):
+        if sig in ("N", "B"):  # E = signed but key not in local keyring → not unsigned
             unsigned.append({"hash": full_h.strip(), "short": short_h.strip(), "subject": subject.strip()})
 
     return {"unsigned": unsigned, "total_count": len(all_commits), "unsigned_count": len(unsigned)}
@@ -1723,7 +1726,10 @@ def get_commit_log(page=1, per_page=10, search="", order="desc", unsigned_only=F
     # Collect unpushed hashes once for the current branch
     unpushed = _get_unpushed_hashes(branch)
 
-    _UNSIGNED = frozenset(("N", "B", "E"))
+    # N = no signature, B = bad signature → truly unsigned/broken
+    # E = error verifying (signer's public key not in local keyring) → signed
+    #     by someone else, just can't verify locally; treat as NOT unsigned
+    _UNSIGNED = frozenset(("N", "B"))
 
     def _parse(lines):
         result = []

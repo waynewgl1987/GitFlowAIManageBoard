@@ -4542,8 +4542,10 @@ function renderLog(data){
     var gpg=c.gpg_status||'';
     var gpgBadge='';
     if(gpg==='G'||gpg==='U'||gpg==='X'||gpg==='Y'||gpg==='R'){
-      gpgBadge='<span title="GPG signed" style="display:inline-flex;align-items:center;font-size:11px;font-weight:600;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;border-radius:20px;padding:2px 8px;margin-left:4px;white-space:nowrap;cursor:default">🔐 Signed</span>';
-    } else if(gpg==='N'||gpg==='B'||gpg==='E'){
+      gpgBadge='<span title="GPG signed and verified" style="display:inline-flex;align-items:center;font-size:11px;font-weight:600;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;border-radius:20px;padding:2px 8px;margin-left:4px;white-space:nowrap;cursor:default">🔐 Signed</span>';
+    } else if(gpg==='E'){
+      gpgBadge='<span title="GPG signed — public key not in local keyring, cannot verify locally" style="display:inline-flex;align-items:center;font-size:11px;font-weight:600;background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd;border-radius:20px;padding:2px 8px;margin-left:4px;white-space:nowrap;cursor:default">🔏 Signed*</span>';
+    } else if(gpg==='N'||gpg==='B'){
       gpgBadge='<span title="No GPG signature" style="display:inline-flex;align-items:center;font-size:11px;font-weight:600;background:#fef9c3;color:#92400e;border:1px solid #fcd34d;border-radius:20px;padding:2px 8px;margin-left:4px;white-space:nowrap;cursor:default">🔓 Unsigned</span>';
     }
     if(gpgBadge) statusCell+=' '+gpgBadge;
@@ -5726,9 +5728,11 @@ function updateSquashBar(){
     var gpg=c.gpg_status||'';
     var gpgBadge='';
     if(gpg==='G'||gpg==='U'||gpg==='X'||gpg==='Y'||gpg==='R'){
-      gpgBadge='<span class="sp-gpg" style="font-size:10px;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;border-radius:12px;padding:1px 6px">🔐</span>';
-    } else if(gpg==='N'||gpg==='B'||gpg==='E'){
-      gpgBadge='<span class="sp-gpg" style="font-size:10px;background:#fef9c3;color:#92400e;border:1px solid #fcd34d;border-radius:12px;padding:1px 6px">🔓</span>';
+      gpgBadge='<span class="sp-gpg" title="Signed & verified" style="font-size:10px;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;border-radius:12px;padding:1px 6px">🔐</span>';
+    } else if(gpg==='E'){
+      gpgBadge='<span class="sp-gpg" title="Signed — key not in local keyring" style="font-size:10px;background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd;border-radius:12px;padding:1px 6px">🔏</span>';
+    } else if(gpg==='N'||gpg==='B'){
+      gpgBadge='<span class="sp-gpg" title="No GPG signature" style="font-size:10px;background:#fef9c3;color:#92400e;border:1px solid #fcd34d;border-radius:12px;padding:1px 6px">🔓</span>';
     }
     html+='<div class="squash-panel-item">'
       +'<button class="sp-remove" onclick="removeFromSquash(\''+escapeAttr(hash)+'\')" title="Remove from squash">✕</button>'
