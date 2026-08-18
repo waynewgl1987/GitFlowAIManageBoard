@@ -15,14 +15,16 @@ from ai_module.ai_provider import (
 from git_ops import (
     PORT, set_project_path, _MSGLOG, _MSGLOG_LOCK, _PUSH_JOBS, _PUSH_JOBS_LOCK,
     _run, _run_push_streaming, _run_gitop_streaming,
+    _write_local_log,
     current_branch, display_branch, get_project_info,
     get_project_path, get_protected_config, is_branch_protected,
     get_network_timeout, save_network_timeout,
     get_gpg_sign, save_gpg_sign,
-    check_unsigned_commits, resign_branch_commits, resign_branch_commits_with_autostash,
+    check_unsigned_commits, get_unsigned_commit_list, squash_unsigned_commits,
+    resign_branch_commits, resign_branch_commits_with_autostash,
     detect_base_branch,
     _ref_exists, _resolve_ref_for_compare,
-    get_branches, has_uncommitted, stash_changes,
+    get_branches, has_uncommitted, get_git_state, get_branch_diverge_status, stash_changes,
     stash_list, stash_diff, commit_diff, commit_files, search_diff_code,
     stash_pop, stash_drop, file_commit_diff,
     pull_request_diff,
@@ -36,7 +38,7 @@ from git_ops import (
     resolve_conflict, get_file_commits,
     get_uncommitted_changes, get_commit_log, get_pull_requests,
     is_valid_commit_path,
-    reset_to, revert_commit, drop_commit, squash_commits, abort_merge_or_rebase,
+    reset_to, revert_commit, drop_commit, squash_commits, squash_selected_commits, abort_merge_or_rebase,
     rebase_abort, rebase_skip, rebase_continue,
     worktree_list, worktree_add, worktree_remove, worktree_prune,
     get_git_graph,
@@ -427,6 +429,11 @@ def handle_get(path, params, send_json, send_stream=None):
         send_json(check_unsigned_commits(base))
         return True
 
+    elif path == "/api/unsigned-commit-list":
+        base = params.get("base", [None])[0] or detect_base_branch()
+        send_json(get_unsigned_commit_list(base))
+        return True
+
     elif path == "/api/protected-branches":
         send_json(get_protected_config())
         return True
@@ -444,6 +451,15 @@ def handle_get(path, params, send_json, send_stream=None):
 
     elif path == "/api/has-uncommitted":
         send_json({"hasChanges": has_uncommitted()})
+        return True
+
+    elif path == "/api/git-state":
+        send_json(get_git_state())
+        return True
+
+    elif path == "/api/branch-diverge-status":
+        remote_branch = data.get("remote_branch", "").strip() or None
+        send_json(get_branch_diverge_status(remote_branch))
         return True
 
     elif path == "/api/unpushed-count":
@@ -495,12 +511,22 @@ def handle_get(path, params, send_json, send_stream=None):
         })
         return True
 
+    elif path == "/api/head-hash":
+        branch = current_branch()
+        head_out, _, _ = _run(["git", "rev-parse", "HEAD"])
+        head_hash = head_out.strip() if head_out else ""
+        count_out, _, _ = _run(["git", "rev-list", "--count", branch])
+        total = int(count_out.strip()) if count_out.strip().isdigit() else 0
+        send_json({"branch": branch, "hash": head_hash, "total": total})
+        return True
+
     elif path == "/api/commits":
         page = int(params.get("page", ["1"])[0])
         per_page = int(params.get("per_page", ["10"])[0])
         search = params.get("search", [""])[0]
         order = params.get("order", ["desc"])[0]
-        send_json(get_commit_log(page, per_page, search, order))
+        unsigned_only = params.get("unsigned_only", ["0"])[0] == "1"
+        send_json(get_commit_log(page, per_page, search, order, unsigned_only))
         return True
 
     elif path == "/api/pull-requests":
@@ -872,6 +898,16 @@ def handle_post(path, data, send_json):
             send_json({"ok": False, "error": msg}, 400)
         return True
 
+    elif path == "/api/squash-unsigned":
+        base = data.get("base") or detect_base_branch()
+        message = data.get("message") or None
+        ok, msg = squash_unsigned_commits(base, message)
+        if ok:
+            send_json({"ok": True, "message": msg})
+        else:
+            send_json({"ok": False, "error": msg}, 400)
+        return True
+
     elif path == "/api/resign-commits-autofix":
         base = data.get("base") or detect_base_branch()
         ok, msg = resign_branch_commits_with_autostash(base)
@@ -919,6 +955,17 @@ def handle_post(path, data, send_json):
     elif path == "/api/push":
         import tempfile, stat as _stat
         branch = current_branch()
+        # Resolve detached HEAD → real branch name using symbolic-ref fallback
+        if not branch or branch in ("HEAD", "unknown"):
+            sym_out, _, sym_rc = _run(["git", "symbolic-ref", "--short", "HEAD"])
+            if sym_rc == 0 and sym_out.strip():
+                branch = sym_out.strip()
+            else:
+                # Last resort: find which branch points at HEAD
+                ref_out, _, ref_rc = _run(["git", "branch", "--points-at", "HEAD", "--format=%(refname:short)"])
+                candidates = [r.strip() for r in ref_out.splitlines() if r.strip() and r.strip() != "HEAD"]
+                if candidates:
+                    branch = candidates[0]
         username = data.get("username", "").strip()
         password = data.get("password", "").strip()
         force = bool(data.get("force", False))
@@ -1085,10 +1132,12 @@ def handle_post(path, data, send_json):
         env = {"GIT_EDITOR": "true"}
         gpg_flag = ["-S"] if get_gpg_sign() else []
         if os.path.exists(os.path.join(cwd, ".git", "CHERRY_PICK_HEAD")):
-            stdout, stderr, rc = _run(["git", "cherry-pick", "--continue"] + gpg_flag, env=env)
+            # --continue does not accept -S; GPG signing is controlled by commit.gpgsign config
+            stdout, stderr, rc = _run(["git", "cherry-pick", "--continue"], env=env)
         elif os.path.exists(os.path.join(cwd, ".git", "rebase-merge")) or \
              os.path.exists(os.path.join(cwd, ".git", "rebase-apply")):
-            stdout, stderr, rc = _run(["git", "rebase", "--continue"] + gpg_flag, env=env)
+            # --continue does not accept -S; GPG signing is controlled by commit.gpgsign config
+            stdout, stderr, rc = _run(["git", "rebase", "--continue"], env=env)
         elif os.path.exists(os.path.join(cwd, ".git", "MERGE_HEAD")):
             if msg:
                 stdout, stderr, rc = _run(["git", "commit"] + gpg_flag + ["-m", msg])
@@ -1142,6 +1191,21 @@ def handle_post(path, data, send_json):
             send_json({"ok": True, "stdout": stdout})
         else:
             send_json({"ok": False, "error": stderr or stdout}, 400)
+        return True
+
+    elif path == "/api/squash-selected":
+        hashes = data.get("hashes", [])
+        msg = data.get("message", "")
+        # Always use server-side GPG setting; client hint is secondary
+        gpg_sign = get_gpg_sign() or bool(data.get("gpg_sign", False))
+        if not hashes or len(hashes) < 2:
+            send_json({"ok": False, "error": "Need at least 2 commit hashes"}, 400)
+            return True
+        ok, result_msg = squash_selected_commits(hashes, msg, gpg_sign)
+        if ok:
+            send_json({"ok": True, "message": result_msg})
+        else:
+            send_json({"ok": False, "error": result_msg}, 400)
         return True
 
     elif path == "/api/rename-branch":
