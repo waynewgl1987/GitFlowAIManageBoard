@@ -4946,7 +4946,7 @@ function _renderAIDiffSections(diffText, idPrefix, forcedTitle){
     html+='<b style="margin-left:8px;color:#1d4ed8;flex:1;font-size:12px">'+escapeHtml(sec.title||_aiCmpText('未命名文件','Unnamed file'))+'</b>';
     html+='<span style="font-size:11px;color:#94a3b8">'+count+' '+_aiCmpText('行','lines')+'</span>';
     html+='</div>';
-    html+='<div id="'+bodyId+'" style="display:none">'+highlightDiff((sec.lines||[]).join('\n'))+'</div>';
+    html+='<div id="'+bodyId+'" style="display:none"><div class="diff-block">'+highlightDiff((sec.lines||[]).join('\n'))+'</div></div>';
     html+='</div>';
   }
   return html;
@@ -5011,12 +5011,12 @@ function _renderAIDiffComparisonSections(st){
     html+='<span style="font-size:10px;color:#64748b;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:1px 6px;margin-right:4px">C '+(curText?curText.split('\n').length:0)+'</span>';
     html+='<span style="font-size:10px;color:#64748b;background:#ecfeff;border:1px solid #a5f3fc;border-radius:10px;padding:1px 6px">H '+(oldText?oldText.split('\n').length:0)+'</span>';
     html+='</div>';
-    html+='<div id="'+bodyId+'" style="display:none;padding:8px 10px;background:#fff">';
+    html+='<div id="'+bodyId+'" style="display:none;padding:8px 10px;background:#fff;overflow:auto">';
     html+='<div style="font-size:11px;color:#0f766e;margin-bottom:6px;font-weight:700">'+_aiCmpText('当前提交','Current Commit')+'</div>';
-    html+=(curText?highlightDiff(curText):('<div style="padding:8px;color:#94a3b8;font-size:12px">'+_aiCmpText('当前提交该 section 无改动','No changes in this section for current commit')+'</div>'));
+    html+=(curText?('<div class="diff-block">'+highlightDiff(curText)+'</div>'):('<div style="padding:8px;color:#94a3b8;font-size:12px">'+_aiCmpText('当前提交该 section 无改动','No changes in this section for current commit')+'</div>'));
     html+='<div style="height:8px"></div>';
     html+='<div style="font-size:11px;color:#0369a1;margin-bottom:6px;font-weight:700">'+_aiCmpText('历史提交','Historical Commit')+'</div>';
-    html+=(oldText?highlightDiff(oldText):('<div style="padding:8px;color:#94a3b8;font-size:12px">'+_aiCmpText('历史提交该 section 无改动','No changes in this section for historical commit')+'</div>'));
+    html+=(oldText?('<div class="diff-block">'+highlightDiff(oldText)+'</div>'):('<div style="padding:8px;color:#94a3b8;font-size:12px">'+_aiCmpText('历史提交该 section 无改动','No changes in this section for historical commit')+'</div>'));
     html+='</div></div>';
   }
   return html;
@@ -5152,7 +5152,7 @@ function _openCommitAIComparePanel(opts){
           +(cInfo.date?('<div style="margin-top:4px">'+_aiCmpText('日期: ','Date: ')+escapeHtml(cInfo.date)+'</div>'):'')
           +'<div id="commit-ai-compare-target" style="margin-top:4px">'+_aiCmpText('对比历史: 未选择','Comparing with: not selected')+'</div>'
         +'</div>'
-        +'<div id="commit-ai-current-diff" style="flex:1;overflow-y:auto;padding:10px;background:#fafafa">'
+        +'<div id="commit-ai-current-diff" style="flex:1;overflow:auto;padding:10px;background:#fafafa">'
           +'<div id="commit-ai-compare-sections"></div>'
         +'</div>'
         +'<div style="padding:8px 12px;border-top:1px solid #f1f5f9;background:#f8fafc">'
