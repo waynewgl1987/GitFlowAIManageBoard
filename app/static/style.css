@@ -134,13 +134,14 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",sans-s
 .cb-wrap{display:flex;align-items:center;gap:8px}
 input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:var(--color-primary);flex-shrink:0}
 .cb-wrap input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:var(--color-primary)}
-.diff-block{background:#f8fbff;border-radius:10px;padding:0;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;line-height:1.55;white-space:normal;word-break:normal;max-height:600px;overflow:auto;border:1px solid #dbe3f1;box-shadow:none}
+.diff-block{background:#eef2f7;border-radius:10px;padding:0;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;line-height:1.55;white-space:normal;word-break:normal;max-height:600px;max-width:100%;overflow:auto;border:1px solid #cfd8e6;box-shadow:none}
 .diff-block.expanded-full{max-height:none;overflow-y:visible}
 .diff-block.diff-block--bare{background:transparent;border:none;border-radius:0;box-shadow:none;padding:0}
+.diff-file-body .diff-block{border:none;border-radius:0;background:transparent;max-height:520px}
 .diff-table{width:max-content;min-width:100%;border-collapse:collapse}
-.diff-table tr{border-bottom:1px solid #edf2fb}
-.diff-table tr:hover .diff-content{background:#eef4ff}
-.diff-prefix{width:34px;min-width:34px;text-align:right;padding:0 8px 0 0;user-select:none;vertical-align:top;background:#f5f8ff;color:#8fa1bf;border-right:1px solid #e6ecf7;font-weight:600;font-size:11px;line-height:1.55}
+.diff-table tr{border-bottom:1px solid #e2e8f0}
+.diff-table tr:hover .diff-content{background:#e3ecf7}
+.diff-prefix{width:34px;min-width:34px;text-align:right;padding:0 8px 0 0;user-select:none;vertical-align:top;background:#e5ebf3;color:#7d8ba6;border-right:1px solid #d5dde9;font-weight:600;font-size:11px;line-height:1.55}
 .diff-content{padding:1px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;line-height:1.55;white-space:pre;tab-size:2;word-break:normal}
 .diff-add{background:#f0fdf5;color:#157347;font-weight:600}
 .diff-rem{background:#fff1f2;color:#be123c;font-weight:600}
@@ -150,8 +151,8 @@ input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:var(--
 .diff-file-header:hover{background:#eaf2ff}
 .diff-file-title{color:#1d4ed8;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-left:2px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .diff-file-meta{font-size:10px;color:#64748b;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:1px 6px;font-variant-numeric:tabular-nums}
-.diff-file-body{background:#fff;padding:0;margin:8px 10px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}
-.diff-current-label{padding:8px 10px 6px;font-size:12px;font-weight:700;color:#0f766e;background:#fff}
+.diff-file-body{background:#eef2f7;padding:0;margin:8px 10px;border:1px solid #cfd8e6;border-radius:8px;overflow:hidden;max-width:calc(100% - 20px)}
+.diff-current-label{padding:8px 10px 6px;font-size:12px;font-weight:700;color:#0f766e;background:#eef2f7}
 .diff-file-actions{padding:8px 10px;border-top:1px solid #e5e7eb;background:#fff;display:flex;gap:6px;flex-wrap:wrap}
 .toolbar{display:flex;flex-direction:column;gap:10px;margin-top:28px;padding:16px 20px;background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .toolbar-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}

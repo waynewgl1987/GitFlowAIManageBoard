@@ -4629,7 +4629,7 @@ function highlightPRDiffFiles(text, headSha, prNumber){
     html+='</div>';
     html+='<div id="'+fileId+'" class="diff-file-body" style="display:none">';
     html+='<div class="diff-current-label">'+_aiCmpText('当前提交','Current Commit')+'</div>';
-    html+=highlightDiff(fileDiffText);
+    html+='<div class="diff-block diff-block--bare">'+highlightDiff(fileDiffText)+'</div>';
     html+='<div class="diff-file-actions">';
     html+='<button class="btn btn-sm btn-primary" title="'+escapeAttr(_aiCmpText('分析此文件改动','Analyze this file changes'))+'" onclick="event.stopPropagation();openPRAICompareFile(\''+escapeAttr(sec.file)+'\',\''+escapeAttr(headSha||'')+'\',\''+escapeAttr(prNumber)+'\')">🤖 AI Compare</button>';
     html+='</div></div></div>';
@@ -4886,7 +4886,7 @@ function highlightDiffFiles(text, commitHash){
     html+='</div>';
     html+='<div id="'+fileId+'" class="diff-file-body" style="display:none">';
     html+='<div class="diff-current-label">'+_aiCmpText('当前提交','Current Commit')+'</div>';
-    html+=highlightDiff(fileDiffText);
+    html+='<div class="diff-block diff-block--bare">'+highlightDiff(fileDiffText)+'</div>';
     html+='<div class="diff-file-actions">';
     html+='<button class="btn btn-sm btn-secondary restore-file-btn" title="Restore this file to a specific commit — choose from commit history" data-file="'+escapeAttr(sec.file)+'" onclick="event.stopPropagation();openRestorePage(this.getAttribute(\'data-file\'))">📂 Restore to commit...</button>';
     html+=' <button class="btn btn-sm btn-primary" title="Open AI compare panel for this file" onclick="event.stopPropagation();openCommitAICompare(\''+escapeAttr(sec.file)+'\',\''+escapeAttr(commitHash)+'\')">🤖 AI Compare</button>';
