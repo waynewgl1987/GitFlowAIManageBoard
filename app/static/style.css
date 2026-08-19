@@ -137,18 +137,18 @@ input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:var(--
 .diff-block{background:#f8fbff;border-radius:10px;padding:0;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;line-height:1.55;white-space:normal;word-break:normal;max-height:600px;overflow:auto;border:1px solid #dbe3f1;box-shadow:none}
 .diff-block.expanded-full{max-height:none;overflow-y:visible}
 .diff-block.diff-block--bare{background:transparent;border:none;border-radius:0;box-shadow:none;padding:0}
-.diff-table{width:100%;border-collapse:collapse}
+.diff-table{width:max-content;min-width:100%;border-collapse:collapse}
 .diff-table tr{border-bottom:1px solid #edf2fb}
 .diff-table tr:hover .diff-content{background:#eef4ff}
 .diff-prefix{width:34px;min-width:34px;text-align:right;padding:0 8px 0 0;user-select:none;vertical-align:top;background:#f5f8ff;color:#8fa1bf;border-right:1px solid #e6ecf7;font-weight:600;font-size:11px;line-height:1.55}
-.diff-content{padding:1px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;line-height:1.55;white-space:pre;tab-size:2}
+.diff-content{padding:1px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;line-height:1.55;white-space:pre;tab-size:2;word-break:normal}
 .diff-add{background:#f0fdf5;color:#157347;font-weight:600}
 .diff-rem{background:#fff1f2;color:#be123c;font-weight:600}
 .diff-meta{background:#f7faff;color:#6b7280;font-style:italic}
 .diff-file-card{border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;overflow:hidden;background:#fff;box-shadow:none}
 .diff-file-header{display:flex;align-items:center;padding:8px 10px;background:#f3f7ff;cursor:pointer;border-bottom:1px solid #dfe7f5;gap:8px}
 .diff-file-header:hover{background:#eaf2ff}
-.diff-file-title{color:#1d4ed8;flex:1;margin-left:2px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.diff-file-title{color:#1d4ed8;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-left:2px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .diff-file-meta{font-size:10px;color:#64748b;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:1px 6px;font-variant-numeric:tabular-nums}
 .diff-file-body{background:#fff;padding:0;margin:8px 10px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}
 .diff-current-label{padding:8px 10px 6px;font-size:12px;font-weight:700;color:#0f766e;background:#fff}
@@ -340,7 +340,8 @@ input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:var(--
 .log-table > tbody > tr.pr-risk-row:hover > td{background:rgba(254,226,226,.88)}
 .log-table > tbody > tr.log-diff-row > td{border-left:none !important;border-right:none !important;border-top:none !important;border-bottom:1px solid #ececf1 !important}
 .log-diff-cell{padding:0 !important;background:#ffffff}
-.log-diff-panel{padding:10px 12px;max-height:620px;overflow:auto;background:#ffffff}
+.log-diff-panel{padding:10px 12px;max-height:620px;max-width:100%;overflow:auto;background:#ffffff}
+#log-content,#prs-content{min-height:170px}
 .log-hash{font-family:monospace;color:var(--color-primary);font-weight:600;font-size:12px}
 .log-hash-cell{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
 .log-copy-btn{
