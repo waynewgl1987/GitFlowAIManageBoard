@@ -7,11 +7,18 @@ Browser opens http://127.0.0.1:8989
 """
 
 import os, json, socket, sys
+
+# Ensure app/ is on sys.path so `core.*` and `ai_module.*` resolve correctly
+# regardless of the working directory the launcher uses.
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+if _APP_DIR not in sys.path:
+    sys.path.insert(0, _APP_DIR)
+
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
-from git_ops import PORT, _MSGLOG, _PUSH_JOBS, current_branch
-from api_handlers import handle_get, handle_post
+from core.git_ops import PORT, _MSGLOG, _PUSH_JOBS, current_branch
+from core.api_handlers import handle_get, handle_post
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 MIME_TYPES = {
@@ -104,7 +111,7 @@ class QuietServer(HTTPServer):
 
 
 def main():
-    import git_ops
+    import core.git_ops as git_ops
     port = git_ops.PORT
     while True:
         try:

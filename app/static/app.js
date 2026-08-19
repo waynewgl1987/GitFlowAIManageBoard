@@ -302,6 +302,7 @@ var T = {
   force_push_btn: {en:'Force Push Now', zh:'立即 Force Push'},
   force_push_later: {en:'Later', zh:'稍后手动操作'},
   squash_tip: {en:'💡 Tip: Check 2 or more commit checkboxes to merge them into one commit (Squash)', zh:'💡 提示：勾选 2 个或以上 commit 的 checkbox，可将它们合并为一个新 commit（Squash）'},
+  log_scroll_hint: {en:'↑ scroll up to see more commits ↑', zh:'↑ 向上滚动查看更多提交 ↑'},
   squash_panel_title: {en:'Squash Commits', zh:'Squash 合并'},
   squash_nonadj_note: {en:'Non-adjacent commits selected — they will be grouped at the oldest position via interactive rebase. Only these commits are squashed; others are NOT affected.', zh:'所选 commit 不相邻，将通过 interactive rebase 把它们集中后再合并，其余 commit 顺序不变、不受影响。'},
   create_branch_btn: {en:'+ Create Branch', zh:'+ 新建分支'},
@@ -1995,6 +1996,7 @@ function doPush(credentials, force, remoteBranch){
               ? {hashes:lastSquashResult.selectedHashes.slice(), squashHash:lastSquashResult.hash}
               : null;
             clearSquashResultSection();
+            cancelSquash();  // dismiss squash panel & clear selection after successful push
             // Nuke any stale localStorage log caches (all branches) so the UI never
             // resurrects the pre-squash commit list from cache.
             _purgeAllLogCaches();
@@ -5979,8 +5981,49 @@ function toggleSquashSelect(cb){
   var hash=cb.dataset.hash;
   if(cb.checked){
     squashSelected[hash]=true;
-    // Cache commit data now so it's available even after page change
     if(_logCommitMap[hash]) squashCommitCache[hash]=_logCommitMap[hash];
+
+    var allHashes=Object.keys(squashSelected);
+    if(allHashes.length>=2){
+      // Check for file conflicts BEFORE confirming the selection.
+      // If a conflict is found, revert the checkbox and show why.
+      apiPost('/api/squash-conflict-check',{hashes:allHashes},function(r){
+        if(!r||!r.conflict){
+          updateSquashBar();
+          return;
+        }
+        // Revert — this commit can't be added to the selection
+        cb.checked=false;
+        delete squashSelected[hash];
+        delete squashCommitCache[hash];
+
+        var fileList=r.files.slice(0,8).map(function(f){
+          return '<li style="font-family:monospace;font-size:12px;color:#475569">'+escapeHtml(f)+'</li>';
+        }).join('');
+        var moreNote=r.files.length>8?'<li style="color:#94a3b8">…+'+(r.files.length-8)+' more</li>':'';
+        var body=(L==='zh'?
+          '<p style="margin:0 0 10px">无法将此 commit 加入 Squash 选择。<br>'
+          +'所选 commit <b>不相邻</b>，中间的 commit 修改了<b>相同的文件</b>，重排后会产生冲突。</p>'
+          +'<p style="margin:0 0 8px;color:#64748b;font-size:13px">冲突文件：</p>'
+          +'<ul style="margin:0 0 12px 18px;padding:0">'+fileList+moreNote+'</ul>'
+          +'<p style="margin:0;color:#64748b;font-size:12px">💡 请只选相邻的 commit，或同时选中中间的 commit 一起 squash。</p>'
+          :
+          '<p style="margin:0 0 10px">This commit cannot be added to the squash selection.<br>'
+          +'The selected commits are <b>non-adjacent</b> and the intervening commits modify the <b>same files</b>, which would cause a rebase conflict.</p>'
+          +'<p style="margin:0 0 8px;color:#64748b;font-size:13px">Conflicting files:</p>'
+          +'<ul style="margin:0 0 12px 18px;padding:0">'+fileList+moreNote+'</ul>'
+          +'<p style="margin:0;color:#64748b;font-size:12px">💡 Select only adjacent commits, or include the intervening commits in the squash.</p>'
+        );
+        showModal(
+          '<span style="color:#b45309">⚠️ '+(L==='zh'?'无法添加此 commit':'Cannot Add This Commit')+'</span>',
+          body,
+          L==='zh'?'知道了':'OK',
+          null
+        );
+        updateSquashBar();
+      });
+      return; // bar will be updated in callback
+    }
   } else {
     delete squashSelected[hash];
     delete squashCommitCache[hash];

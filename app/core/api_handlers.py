@@ -12,7 +12,7 @@ from ai_module.ai_provider import (
     start_chat_job, get_job_status,
     call_llm,
 )
-from git_ops import (
+from core.git_ops import (
     PORT, set_project_path, _MSGLOG, _MSGLOG_LOCK, _PUSH_JOBS, _PUSH_JOBS_LOCK,
     _run, _run_push_streaming, _run_gitop_streaming,
     _write_local_log,
@@ -38,7 +38,7 @@ from git_ops import (
     resolve_conflict, get_file_commits,
     get_uncommitted_changes, get_commit_log, get_pull_requests,
     is_valid_commit_path,
-    reset_to, revert_commit, drop_commit, squash_commits, squash_selected_commits, abort_merge_or_rebase,
+    reset_to, revert_commit, drop_commit, squash_commits, squash_selected_commits, squash_conflict_check, abort_merge_or_rebase,
     rebase_abort, rebase_skip, rebase_continue,
     worktree_list, worktree_add, worktree_remove, worktree_prune,
     get_git_graph,
@@ -1256,6 +1256,12 @@ def handle_post(path, data, send_json):
             send_json({"ok": True, "stdout": stdout})
         else:
             send_json({"ok": False, "error": stderr or stdout}, 400)
+        return True
+
+    elif path == "/api/squash-conflict-check":
+        hashes = data.get("hashes", [])
+        result = squash_conflict_check(hashes)
+        send_json(result)
         return True
 
     elif path == "/api/squash-selected":
