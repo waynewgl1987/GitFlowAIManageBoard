@@ -12,7 +12,7 @@ from ai_module.ai_provider import (
     start_chat_job, get_job_status,
     call_llm,
 )
-from git_ops import (
+from core.git_ops import (
     PORT, set_project_path, _MSGLOG, _MSGLOG_LOCK, _PUSH_JOBS, _PUSH_JOBS_LOCK,
     _run, _run_push_streaming, _run_gitop_streaming,
     _write_local_log,

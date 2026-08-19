@@ -18,8 +18,12 @@ _PUSH_JOBS = {}       # {job_id: {lines:[], done:bool, ok:bool, error:str, authR
 _PUSH_JOBS_LOCK = threading.Lock()
 _MSGLOG_LOCK    = threading.Lock()
 
-# Local persistent log — never committed to the repo (.gitignored)
-_LOCAL_LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gitboard.log")
+# config.ini lives in app/ (_APP_DIR); gitboard.log stays at the repo root.
+_CORE_DIR     = os.path.dirname(os.path.abspath(__file__))  # app/core/
+_APP_DIR      = os.path.dirname(_CORE_DIR)                  # app/
+_PROJECT_ROOT = os.path.dirname(_APP_DIR)                   # repo root/
+
+_LOCAL_LOG_PATH = os.path.join(_PROJECT_ROOT, "gitboard.log")
 _LOCAL_LOG_LOCK = threading.Lock()
 
 def _write_local_log(section: str, lines):
@@ -67,7 +71,7 @@ def _get_git_env(extra=None):
 def _load_app_config():
     """Read config.ini next to this script. Returns (app_name, app_version, exact_set, contains_list, network_timeout)."""
     cfg = configparser.ConfigParser()
-    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+    cfg_path = os.path.join(_APP_DIR, "config.ini")
     if os.path.exists(cfg_path):
         cfg.read(cfg_path, encoding="utf-8")
     name    = cfg.get("app", "name",    fallback="Git Manage Board")
@@ -101,7 +105,7 @@ def save_network_timeout(seconds):
         return False, "Timeout must be a positive integer"
 
     cfg = configparser.ConfigParser()
-    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+    cfg_path = os.path.join(_APP_DIR, "config.ini")
     if os.path.exists(cfg_path):
         cfg.read(cfg_path, encoding="utf-8")
     if not cfg.has_section("git"):
@@ -115,7 +119,7 @@ def save_network_timeout(seconds):
 def get_gpg_sign():
     """Return whether GPG signing is enabled for commits."""
     cfg = configparser.ConfigParser()
-    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+    cfg_path = os.path.join(_APP_DIR, "config.ini")
     if os.path.exists(cfg_path):
         cfg.read(cfg_path, encoding="utf-8")
     return cfg.getboolean("git", "gpg_sign", fallback=False)
@@ -125,7 +129,7 @@ def save_gpg_sign(enabled):
     """Persist gpg_sign setting to config.ini. Returns (ok, value_or_error)."""
     enabled = bool(enabled)
     cfg = configparser.ConfigParser()
-    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+    cfg_path = os.path.join(_APP_DIR, "config.ini")
     if os.path.exists(cfg_path):
         cfg.read(cfg_path, encoding="utf-8")
     if not cfg.has_section("git"):
