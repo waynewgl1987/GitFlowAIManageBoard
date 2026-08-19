@@ -431,6 +431,148 @@ def _run(cmd, cwd=None, timeout=None, env=None):
         return "", str(e), -1
 
 
+def _resolve_git_dir():
+    """Resolve absolute git dir path for PROJECT_PATH."""
+    out, _, rc = _run(["git", "rev-parse", "--git-dir"], timeout=20)
+    raw = (out or "").strip()
+    if rc == 0 and raw:
+        return raw if os.path.isabs(raw) else os.path.abspath(os.path.join(PROJECT_PATH, raw))
+    return os.path.join(PROJECT_PATH, ".git")
+
+
+def _is_fetch_ref_lock_error(text):
+    low = (text or "").lower()
+    if "cannot lock ref" in low or "unable to update local ref" in low:
+        return True
+    return (" is at " in low) and (" but expected " in low)
+
+
+def _extract_problem_remote_tracking_refs(text):
+    raw = text or ""
+    refs = set(re.findall(r"refs/remotes/[A-Za-z0-9._/\-]+", raw))
+    short_refs = re.findall(r"'(origin/[A-Za-z0-9._/\-]+)'", raw)
+    for sr in short_refs:
+        refs.add("refs/remotes/" + sr)
+    return sorted(r for r in refs if r.startswith("refs/remotes/"))
+
+
+def _remote_tracking_ref_to_heads_ref(ref):
+    if not isinstance(ref, str):
+        return None
+    prefix = "refs/remotes/origin/"
+    if not ref.startswith(prefix):
+        return None
+    tail = ref[len(prefix):]
+    if not tail:
+        return None
+    return "refs/heads/" + tail
+
+
+def _build_case_conflict_exclude_head_refs(remote_tracking_refs):
+    """Return remote heads refs to exclude when names collide by case."""
+    heads_refs = []
+    for ref in remote_tracking_refs or []:
+        hr = _remote_tracking_ref_to_heads_ref(ref)
+        if hr:
+            heads_refs.append(hr)
+    groups = {}
+    for hr in heads_refs:
+        groups.setdefault(hr.lower(), []).append(hr)
+
+    excludes = []
+    for variants in groups.values():
+        uniq = sorted(set(variants))
+        if len(uniq) <= 1:
+            continue
+        lower_candidates = [v for v in uniq if v == v.lower()]
+        keep = sorted(lower_candidates)[0] if lower_candidates else uniq[0]
+        for hr in uniq:
+            if hr != keep:
+                excludes.append(hr)
+    return sorted(set(excludes))
+
+
+def _fetch_with_case_conflict_excludes(exclude_head_refs, env=None):
+    """Fetch with explicit refspec and negative refspec excludes (local-only workaround)."""
+    cmd = ["git", "fetch", "origin", "--prune", "--verbose", "+refs/heads/*:refs/remotes/origin/*"]
+    for hr in (exclude_head_refs or [])[:500]:
+        cmd.append("^" + hr)
+    out, err, rc = _run(cmd, env=env)
+    return out, err, rc, cmd
+
+
+def _discover_remote_case_conflict_excludes(env=None):
+    """Scan origin heads and return excludes for case-colliding refs."""
+    out, err, rc = _run(["git", "ls-remote", "--heads", "origin"], timeout=120, env=env)
+    if rc != 0:
+        return [], err
+    heads = []
+    for line in (out or "").splitlines():
+        if "\t" not in line:
+            continue
+        _, ref = line.split("\t", 1)
+        ref = (ref or "").strip()
+        if ref.startswith("refs/heads/"):
+            heads.append(ref)
+    groups = {}
+    for ref in heads:
+        groups.setdefault(ref.lower(), []).append(ref)
+    excludes = []
+    for variants in groups.values():
+        uniq = sorted(set(variants))
+        if len(uniq) <= 1:
+            continue
+        lower_candidates = [v for v in uniq if v == v.lower()]
+        keep = sorted(lower_candidates)[0] if lower_candidates else uniq[0]
+        for ref in uniq:
+            if ref != keep:
+                excludes.append(ref)
+    return sorted(set(excludes)), ""
+
+
+def _delete_all_origin_tracking_refs(env=None):
+    """Delete all local refs/remotes/origin/* tracking refs (local only)."""
+    out, err, rc = _run(["git", "for-each-ref", "--format=%(refname)", "refs/remotes/origin"], timeout=60, env=env)
+    if rc != 0:
+        return 0, err
+    refs = [r.strip() for r in (out or "").splitlines() if r.strip()]
+    deleted = 0
+    for ref in refs:
+        _, _, drc = _run(["git", "update-ref", "-d", ref], timeout=20, env=env)
+        if drc == 0:
+            deleted += 1
+    return deleted, ""
+
+
+def _cleanup_remote_tracking_lock_files(refs=None):
+    """Delete local remote-tracking .lock files (best-effort)."""
+    git_dir = _resolve_git_dir()
+    deleted, failed = [], []
+    targets = []
+
+    if refs:
+        for ref in refs:
+            if isinstance(ref, str) and ref.startswith("refs/remotes/"):
+                targets.append(os.path.join(git_dir, ref + ".lock"))
+    else:
+        remotes_dir = os.path.join(git_dir, "refs", "remotes")
+        if os.path.isdir(remotes_dir):
+            for root, _, files in os.walk(remotes_dir):
+                for fn in files:
+                    if fn.endswith(".lock"):
+                        targets.append(os.path.join(root, fn))
+
+    for p in sorted(set(targets)):
+        try:
+            if os.path.exists(p):
+                os.remove(p)
+                deleted.append(p)
+        except Exception as e:
+            failed.append(f"{p}: {e}")
+
+    return deleted, failed
+
+
 def _run_push_streaming(job_id, branch, extra_env=None, force=False, is_ssh=False, remote_branch=None):
     """Run git push in a background thread, streaming output lines into _PUSH_JOBS[job_id].
     
@@ -525,6 +667,19 @@ def _run_push_streaming(job_id, branch, extra_env=None, force=False, is_ssh=Fals
         _append(f'{"⚠️  Force push (--force-with-lease)" if force else "🚀 Normal push"}')
         _append_raw('─' * 52)
 
+        # Snapshot HEAD + origin/<remote_branch> at push start for post-mortem.
+        _pre_push_head_out, _, _ = _run(["git", "rev-parse", "HEAD"], timeout=10)
+        _pre_push_head = (_pre_push_head_out or "").strip()
+        _pre_push_origin_out, _, _pre_origin_rc = _run(
+            ["git", "rev-parse", f"refs/remotes/origin/{target_remote}"], timeout=10
+        )
+        _pre_push_origin = (_pre_push_origin_out or "").strip() if _pre_origin_rc == 0 else ""
+        _write_local_log("push:start", [
+            f"branch={branch}  target=origin/{target_remote}  force={force}  ssh={is_ssh}",
+            f"pre_push_HEAD={_pre_push_head}",
+            f"pre_push_origin/{target_remote}={_pre_push_origin or '-'}",
+        ])
+
         rc, timed_out = _try_push(push_base + ["origin", push_refspec])
 
         if rc != 0 and not timed_out:
@@ -557,8 +712,13 @@ def _run_push_streaming(job_id, branch, extra_env=None, force=False, is_ssh=Fals
             job['error'] = str(e)
 
 
-def _run_gitop_streaming(job_id, op, mode=None):
-    """Stream git fetch or pull into _PUSH_JOBS[job_id] (background thread)."""
+def _run_gitop_streaming(job_id, op, mode=None, force=False):
+    """Stream git fetch or pull into _PUSH_JOBS[job_id] (background thread).
+
+    force=True bypasses the "diverged branch" safety guard on pull. The guard
+    protects fresh local rewrites (squash/rebase/amend) from being silently
+    dropped by `git pull --rebase`'s patch-id matching.
+    """
     import time as _time
     run_env = _get_git_env()
 
@@ -592,6 +752,53 @@ def _run_gitop_streaming(job_id, op, mode=None):
             cmd = ["git", "fetch", "origin", "--prune", "--verbose"]
         else:
             mode_str = mode or 'merge'
+            # Divergence guard for streaming pull: if local has commits remote
+            # doesn't AND remote has commits local doesn't, `git pull --rebase`
+            # will patch-id-match and silently drop the local rewrite (this is
+            # exactly how squash results have been vanishing right after they
+            # succeeded). Refuse the pull unless the client passes force=true.
+            if not force and branch_name and branch_name not in ("HEAD", "unknown"):
+                ahead_out, _, ahead_rc = _run(
+                    ["git", "rev-list", "--count",
+                     f"refs/remotes/origin/{branch_name}..HEAD"], timeout=15
+                )
+                behind_out, _, behind_rc = _run(
+                    ["git", "rev-list", "--count",
+                     f"HEAD..refs/remotes/origin/{branch_name}"], timeout=15
+                )
+                try:
+                    _ahead = int((ahead_out or "0").strip() or "0") if ahead_rc == 0 else 0
+                    _behind = int((behind_out or "0").strip() or "0") if behind_rc == 0 else 0
+                except ValueError:
+                    _ahead = _behind = 0
+                if _ahead > 0 and _behind > 0:
+                    head_snap, _, _ = _run(["git", "rev-parse", "HEAD"], timeout=10)
+                    orig_snap, _, _ = _run(
+                        ["git", "rev-parse", f"refs/remotes/origin/{branch_name}"], timeout=10
+                    )
+                    _write_local_log("gitop-pull:blocked-diverged", [
+                        f"branch={branch_name}",
+                        f"local_ahead={_ahead}  remote_ahead={_behind}",
+                        f"HEAD={(head_snap or '').strip()}",
+                        f"origin/{branch_name}={(orig_snap or '').strip()}",
+                        f"mode={mode_str}",
+                    ])
+                    _append(f'⛔ Pull blocked: branch is diverged '
+                            f'(local ahead {_ahead}, remote ahead {_behind}).')
+                    _append('   `git pull --rebase` in this state would patch-id-match')
+                    _append('   your local rewrite (squash/rebase/amend) and silently drop it.')
+                    _append('   Use Force Push (--force-with-lease) instead.')
+                    with _PUSH_JOBS_LOCK:
+                        job['done'] = True
+                        job['ok'] = False
+                        job['divergedBlocked'] = True
+                        job['error'] = (
+                            f"Pull blocked: branch {branch_name} is diverged "
+                            f"(local ahead {_ahead}, remote ahead {_behind}). "
+                            "Pulling would drop your local rewrite via patch-id "
+                            "matching. Use Force Push instead."
+                        )
+                    return
             if mode_str == 'rebase':
                 _append('⬇️ Operation: pull --rebase --verbose')
                 cmd = ["git", "pull", "--rebase", "--verbose", "origin", branch_name]
@@ -634,26 +841,62 @@ def _run_gitop_streaming(job_id, op, mode=None):
 
         rc = _exec_cmd(cmd)
 
-        # Auto-fix "cannot lock ref" errors by pruning stale refs and retrying
+        # Auto-fix local remote-tracking ref lock/OID mismatch issues, then retry fetch
         if rc != 0 and op == 'fetch':
             lines_text = '\n'.join(job['lines'])
-            if 'cannot lock ref' in lines_text or 'unable to update local ref' in lines_text:
+            if _is_fetch_ref_lock_error(lines_text):
+                refs = _extract_problem_remote_tracking_refs(lines_text)
                 _append_raw('')
-                _append('🔧 Detected stale ref lock — running gc & prune, then retrying...')
-                _append_raw('$ git gc --prune=now')
-                try:
-                    subprocess.run(["git", "gc", "--prune=now"], cwd=PROJECT_PATH, env=run_env,
-                                 capture_output=True, text=True, timeout=60)
-                except subprocess.TimeoutExpired:
-                    _append('⚠️ git gc timed out — skipping')
+                _append('🔧 Detected local remote-tracking ref conflict. Cleaning local refs/locks and retrying fetch...')
+                deleted, failed = _cleanup_remote_tracking_lock_files(refs or None)
+                _append(f'🧹 Removed lock files: {len(deleted)}' + (f' (failed: {len(failed)})' if failed else ''))
                 _append_raw('$ git remote prune origin')
-                try:
-                    subprocess.run(["git", "remote", "prune", "origin"], cwd=PROJECT_PATH, env=run_env,
-                                 capture_output=True, text=True, timeout=30)
-                except subprocess.TimeoutExpired:
-                    _append('⚠️ git remote prune timed out — skipping')
+                _, prune_err, prune_rc = _run(["git", "remote", "prune", "origin"], timeout=30, env=run_env)
+                if prune_rc != 0 and prune_err:
+                    _append('⚠️ git remote prune warning: ' + prune_err)
+                for ref in refs[:10]:
+                    _append_raw('$ git update-ref -d ' + ref)
+                    _, del_err, del_rc = _run(["git", "update-ref", "-d", ref], timeout=20, env=run_env)
+                    if del_rc != 0 and del_err:
+                        _append('⚠️ update-ref warning: ' + del_err)
                 _append_raw('$ ' + ' '.join(cmd))
                 rc = _exec_cmd(cmd)
+                if rc != 0:
+                    with _PUSH_JOBS_LOCK:
+                        retry_text = '\n'.join(job['lines'])
+                    if _is_fetch_ref_lock_error(retry_text):
+                        retry_refs = _extract_problem_remote_tracking_refs(retry_text) or refs
+                        exclude_head_refs = _build_case_conflict_exclude_head_refs(retry_refs)
+                        if not exclude_head_refs:
+                            exclude_head_refs, ls_err = _discover_remote_case_conflict_excludes(env=run_env)
+                            if ls_err:
+                                _append('⚠️ ls-remote warning: ' + ls_err)
+                        if exclude_head_refs:
+                            _append_raw('')
+                            _append('⚠️ Detected case-colliding branch names on local case-insensitive FS.')
+                            _append('🩹 Applying local-only fetch exclude workaround and retrying...')
+                            shown = exclude_head_refs[:10]
+                            for hr in shown:
+                                _append('   exclude: ' + hr)
+                            if len(exclude_head_refs) > len(shown):
+                                _append(f'   ... and {len(exclude_head_refs) - len(shown)} more')
+                            out3, err3, rc3, cmd3 = _fetch_with_case_conflict_excludes(exclude_head_refs, env=run_env)
+                            _append_raw('$ ' + ' '.join(cmd3))
+                            for l in ((out3 or "") + "\n" + (err3 or "")).splitlines():
+                                _append(l)
+                            rc = rc3
+                            if rc != 0 and _is_fetch_ref_lock_error((out3 or "") + "\n" + (err3 or "")):
+                                _append_raw('')
+                                _append('🧹 Escalating local cleanup: rebuild all origin tracking refs...')
+                                deleted_all, del_all_err = _delete_all_origin_tracking_refs(env=run_env)
+                                if del_all_err:
+                                    _append('⚠️ delete-all warning: ' + del_all_err)
+                                _append(f'🗑️ Deleted local origin tracking refs: {deleted_all}')
+                                out4, err4, rc4, cmd4 = _fetch_with_case_conflict_excludes(exclude_head_refs, env=run_env)
+                                _append_raw('$ ' + ' '.join(cmd4))
+                                for l in ((out4 or "") + "\n" + (err4 or "")).splitlines():
+                                    _append(l)
+                                rc = rc4
 
         with _PUSH_JOBS_LOCK:
             job['done'] = True
@@ -1307,13 +1550,109 @@ def rebase_rebuild_keep_head_and_force_push(base_branch, remote_branch=None):
 def fetch():
     """Fetch from origin with pruning."""
     out, err, rc = _run(["git", "fetch", "origin", "--prune", "--verbose"])
+    if rc != 0:
+        combined_err = ((out or "") + "\n" + (err or "")).strip()
+        if _is_fetch_ref_lock_error(combined_err):
+            refs = _extract_problem_remote_tracking_refs(combined_err)
+            deleted, failed = _cleanup_remote_tracking_lock_files(refs or None)
+            _run(["git", "remote", "prune", "origin"], timeout=30)
+            for ref in refs[:10]:
+                _run(["git", "update-ref", "-d", ref], timeout=20)
+            out2, err2, rc2 = _run(["git", "fetch", "origin", "--prune", "--verbose"])
+            note = f"[auto-fix] local lock cleanup: deleted={len(deleted)}, failed={len(failed)}"
+            out = ((out or "") + "\n" + note + "\n" + (out2 or "")).strip()
+            err = ((err or "") + ("\n" if err else "") + (err2 or "")).strip()
+            rc = rc2
+            if rc != 0:
+                next_text = ((out or "") + "\n" + (err or "")).strip()
+                if _is_fetch_ref_lock_error(next_text):
+                    refs2 = _extract_problem_remote_tracking_refs(next_text) or refs
+                    exclude_head_refs = _build_case_conflict_exclude_head_refs(refs2)
+                    if not exclude_head_refs:
+                        exclude_head_refs, _ = _discover_remote_case_conflict_excludes()
+                    if exclude_head_refs:
+                        out3, err3, rc3, cmd3 = _fetch_with_case_conflict_excludes(exclude_head_refs)
+                        note2 = (
+                            "[auto-fix] case-collision workaround excludes: "
+                            + ", ".join(exclude_head_refs[:10])
+                            + (f", ... (+{len(exclude_head_refs) - 10} more)" if len(exclude_head_refs) > 10 else "")
+                            + f"\n[auto-fix] retry cmd: {' '.join(cmd3)}"
+                        )
+                        out = ((out or "") + "\n" + note2 + "\n" + (out3 or "")).strip()
+                        err = ((err or "") + ("\n" if err else "") + (err3 or "")).strip()
+                        rc = rc3
+                        if rc != 0 and _is_fetch_ref_lock_error(((out3 or "") + "\n" + (err3 or "")).strip()):
+                            deleted_all, del_all_err = _delete_all_origin_tracking_refs()
+                            out4, err4, rc4, cmd4 = _fetch_with_case_conflict_excludes(exclude_head_refs)
+                            note3 = (
+                                f"[auto-fix] escalated local rebuild: deleted {deleted_all} origin tracking refs"
+                                + (f" (warning: {del_all_err})" if del_all_err else "")
+                                + f"\n[auto-fix] retry cmd: {' '.join(cmd4)}"
+                            )
+                            out = ((out or "") + "\n" + note3 + "\n" + (out4 or "")).strip()
+                            err = ((err or "") + ("\n" if err else "") + (err4 or "")).strip()
+                            rc = rc4
     combined = (out + "\n" + err).strip()
     return combined, err, rc
 
 
-def pull_current(mode="merge"):
-    """拉取最新代码（--verbose 返回完整日志）"""
+def pull_current(mode="merge", force=False):
+    """拉取最新代码（--verbose 返回完整日志）。
+
+    force=False (default): if local branch is diverged from origin/<branch>
+    (both sides have commits the other lacks), refuse the pull. In this
+    state — typical after a squash / rebase / amend — `git pull --rebase`
+    silently drops the local rewrite (patch-id detects each squashed commit
+    as "already upstream"), so the safe answer is Force Push, not Pull.
+    Pass force=True to bypass this guard.
+    """
     branch = current_branch()
+
+    if not force and branch and branch not in ("HEAD", "unknown"):
+        # Best-effort divergence detection. This does NOT run `git fetch` —
+        # it relies on the current state of refs/remotes/origin/<branch>,
+        # which is what any subsequent pull would use anyway.
+        ahead_out, _, ahead_rc = _run(
+            ["git", "rev-list", "--count", f"refs/remotes/origin/{branch}..HEAD"], timeout=15
+        )
+        behind_out, _, behind_rc = _run(
+            ["git", "rev-list", "--count", f"HEAD..refs/remotes/origin/{branch}"], timeout=15
+        )
+        if ahead_rc == 0 and behind_rc == 0:
+            try:
+                ahead = int((ahead_out or "0").strip() or "0")
+                behind = int((behind_out or "0").strip() or "0")
+            except ValueError:
+                ahead = behind = 0
+            if ahead > 0 and behind > 0:
+                head_snap, _, _ = _run(["git", "rev-parse", "HEAD"], timeout=10)
+                orig_snap, _, _ = _run(["git", "rev-parse", f"refs/remotes/origin/{branch}"], timeout=10)
+                _write_local_log("pull:blocked-diverged", [
+                    f"branch={branch}",
+                    f"local_ahead={ahead}  remote_ahead={behind}",
+                    f"HEAD={(head_snap or '').strip()}",
+                    f"origin/{branch}={(orig_snap or '').strip()}",
+                    f"mode={mode}",
+                    "Refused pull because branch is diverged. Local rewrites "
+                    "(squash/rebase/amend) would be silently dropped by patch-id "
+                    "matching during `git pull --rebase`.",
+                ])
+                msg = (
+                    "Pull blocked: branch is diverged.\n"
+                    f"details: branch={branch}, local_ahead={ahead}, remote_ahead={behind}\n"
+                    f"HEAD={(head_snap or '').strip()[:12]}  "
+                    f"origin/{branch}={(orig_snap or '').strip()[:12]}\n"
+                    "reason=In this state `git pull --rebase` uses patch-id matching "
+                    "and will drop your local commits (e.g. a fresh squash) as "
+                    '"already upstream", silently reverting your rewrite back to '
+                    "the remote tip. This is exactly what has been wiping the "
+                    "squash result immediately after it succeeded.\n"
+                    "hint=If you just did a Squash / Rebase / Amend, DO NOT pull. "
+                    "Use Force Push (--force-with-lease) instead. If you truly "
+                    "need to pull anyway, call /api/pull with force=true."
+                )
+                return msg, msg, 1
+
     if mode == "rebase":
         out, err, rc = _run(["git", "pull", "--rebase", "--verbose", "origin", branch])
         if rc != 0: out, err, rc = _run(["git", "pull", "--rebase", "--verbose", "origin", "HEAD"])
@@ -2032,23 +2371,29 @@ def squash_selected_commits(hashes, msg, gpg_sign=False):
                           their original position.  Middle commits are plain
                           `pick` and stay in their original relative order.
 
-    Returns (ok: bool, message: str).
+    Returns (ok: bool, message: str, squash_commit_hash: str).
     """
     import tempfile, stat as _stat
 
+    if is_rebase_in_progress():
+        return False, (
+            "Another rebase is already in progress. "
+            "Please finish it first (Continue/Skip) or abort it, then retry squash."
+        ), ""
+
     if not hashes or len(hashes) < 2:
-        return False, "Need at least 2 commits to squash"
+        return False, "Need at least 2 commits to squash", ""
 
     branch = current_branch()
     if not branch:
-        return False, "Not on any branch"
+        return False, "Not on any branch", ""
 
     selected_set = set(h.strip() for h in hashes)
 
     # Full commit list from HEAD, newest first → reverse to oldest first
     log_out, _, log_rc = _run(["git", "log", "--format=%H", "HEAD"])
     if log_rc != 0:
-        return False, "Cannot read commit log"
+        return False, "Cannot read commit log", ""
     all_hashes_oldest_first = list(reversed(
         [h.strip() for h in log_out.strip().splitlines() if h.strip()]
     ))
@@ -2056,14 +2401,61 @@ def squash_selected_commits(hashes, msg, gpg_sign=False):
     # Validate all selected hashes exist
     present = [h for h in all_hashes_oldest_first if h in selected_set]
     if len(present) < len(selected_set):
-        return False, "Some selected commits were not found in branch history"
+        return False, "Some selected commits were not found in branch history", ""
 
     # Oldest selected commit is the anchor (rebase base)
     oldest_selected = present[0]
     mb_out, _, mb_rc = _run(["git", "rev-parse", oldest_selected + "^"])
     if mb_rc != 0:
-        return False, "Cannot squash: the oldest selected commit is the initial (root) commit"
+        return False, "Cannot squash: the oldest selected commit is the initial (root) commit", ""
     rebase_base = mb_out.strip()
+
+    def _resolve_new_squash_hash():
+        out_h, _, rc_h = _run(["git", "rev-list", "--reverse", f"{rebase_base}..HEAD"])
+        if rc_h == 0:
+            hs = [x.strip() for x in (out_h or "").splitlines() if x.strip()]
+            if hs:
+                return hs[0]
+        head_h, _, rc_head = _run(["git", "rev-parse", "HEAD"])
+        if rc_head == 0 and (head_h or "").strip():
+            return head_h.strip()
+        return ""
+
+    def _remaining_selected_hashes():
+        remain = []
+        for h in present:
+            _, _, anc_rc = _run(["git", "merge-base", "--is-ancestor", h, "HEAD"], timeout=30)
+            if anc_rc == 0:
+                remain.append(h)
+        return remain
+
+    def _build_presence_failure_details(remain, mode):
+        remain_short = ", ".join(x[:8] for x in remain[:8]) if remain else "-"
+        selected_short = ", ".join(x[:8] for x in present[:8]) if present else "-"
+        has_merges = len(merge_set) > 0
+        reason = (
+            "git completed but selected commits are still reachable from HEAD; "
+            "history rewrite did not actually replace those commits."
+        )
+        if mode == "adjacent-tip":
+            hint = (
+                "Likely cause: branch moved during operation, or selected commits are also reachable "
+                "through another ancestry path."
+            )
+        else:
+            hint = (
+                "Likely cause: complex shared history (especially on develop) or merge-heavy range "
+                "prevented intended rewrite."
+            )
+        merge_note = f"merge_commits_in_range={len(merge_set)}" if has_merges else "merge_commits_in_range=0"
+        return (
+            "Squash failed: selected commits still present after rewrite.\n"
+            f"details: branch={branch}, mode={mode}, base={rebase_base[:8]}, {merge_note}\n"
+            f"selected={selected_short}\n"
+            f"still_present={remain_short}\n"
+            f"reason={reason}\n"
+            f"hint={hint}"
+        )
 
     # All commits in the rebase range, oldest first
     range_out, _, _ = _run(["git", "log", "--format=%H", f"{rebase_base}..HEAD"])
@@ -2080,27 +2472,96 @@ def squash_selected_commits(hashes, msg, gpg_sign=False):
         return False, (
             f"Cannot squash merge commit(s): {', '.join(h[:8] for h in selected_merges)}. "
             "Please deselect merge commits and only squash regular commits."
-        )
+        ), ""
 
     selected_in_range = [h for h in range_hashes if h in selected_set]  # oldest→newest
     non_selected      = [h for h in range_hashes if h not in selected_set]
 
-    # ── Fast path: all selected commits are adjacent ──────────────────────
+    # ── Fast path: adjacent commits at branch tip only ────────────────────
     # Check adjacency: no non-selected commit between first and last selected
     first_pos = range_hashes.index(selected_in_range[0])
     last_pos  = range_hashes.index(selected_in_range[-1])
     is_adjacent = all(h in selected_set for h in range_hashes[first_pos:last_pos + 1])
+    touches_head = (last_pos == len(range_hashes) - 1)
 
-    if is_adjacent:
-        # git reset --soft to parent of oldest selected, then re-commit
+    # `reset --soft rebase_base` only preserves "selected-only squash" when
+    # the selected adjacent block reaches HEAD. Otherwise it would also include
+    # newer non-selected commits.
+    if is_adjacent and touches_head:
+        # Snapshot HEAD before the operation so we can (a) prove it moved and
+        # (b) hard-reset back to it if anything goes wrong.
+        pre_head, _, _ = _run(["git", "rev-parse", "HEAD"])
+        pre_head = (pre_head or "").strip()
+
         _, reset_err, reset_rc = _run(["git", "reset", "--soft", rebase_base])
         if reset_rc != 0:
-            return False, reset_err or "git reset --soft failed"
+            _write_local_log("squash-selected", [
+                f"branch={branch}  mode=adjacent-tip  pre_head={pre_head[:12]}",
+                f"FAILED at reset --soft {rebase_base[:12]}: {reset_err}",
+            ])
+            return False, reset_err or "git reset --soft failed", ""
+
         gpg_flag = ["-S"] if gpg_sign else []
         commit_out, commit_err, commit_rc = _run(["git", "commit"] + gpg_flag + ["-m", msg])
         if commit_rc != 0:
-            return False, commit_err or commit_out or "git commit failed"
-        return True, f"Squashed {len(selected_in_range)} adjacent commit(s) into 1"
+            # Restore branch to pre-squash HEAD so user isn't stranded with
+            # staged wipe of their history.
+            if pre_head:
+                _run(["git", "reset", "--hard", pre_head])
+            _write_local_log("squash-selected", [
+                f"branch={branch}  mode=adjacent-tip  pre_head={pre_head[:12]}",
+                f"FAILED at git commit: rc={commit_rc}",
+                f"stderr={commit_err}",
+                f"stdout={commit_out}",
+                "rolled back to pre_head",
+            ])
+            return False, commit_err or commit_out or "git commit failed", ""
+
+        post_head, _, _ = _run(["git", "rev-parse", "HEAD"])
+        post_head = (post_head or "").strip()
+
+        # HEAD MUST have moved. If not, the branch ref wasn't updated
+        # (e.g. detached HEAD, hook interference). Roll back and hard-fail.
+        if not post_head or post_head == pre_head:
+            if pre_head:
+                _run(["git", "reset", "--hard", pre_head])
+            details = (
+                "Squash failed: HEAD did not move after reset+commit.\n"
+                f"details: branch={branch}, mode=adjacent-tip\n"
+                f"pre_head={pre_head[:12]}  post_head={post_head[:12] if post_head else '-'}\n"
+                f"rebase_base={rebase_base[:12]}\n"
+                f"reset_stderr={reset_err or '-'}\n"
+                f"commit_stderr={commit_err or '-'}\n"
+                "reason=branch ref was not updated (possible detached HEAD, "
+                "hook that aborts commit silently, or worktree/repo state issue)\n"
+                "hint=run `git status` and `git log --oneline -5` in the project "
+                "directory, and check for a pre-commit/post-commit hook."
+            )
+            _write_local_log("squash-selected", [
+                f"branch={branch}  mode=adjacent-tip  HEAD_UNCHANGED",
+                f"pre={pre_head}  post={post_head}",
+                "rolled back to pre_head",
+            ])
+            return False, details, ""
+
+        remain = _remaining_selected_hashes()
+        if remain:
+            # HEAD moved but some selected commits still reachable — restore
+            # so user can retry from clean state.
+            if pre_head:
+                _run(["git", "reset", "--hard", pre_head])
+            _write_local_log("squash-selected", [
+                f"branch={branch}  mode=adjacent-tip  remain={len(remain)}",
+                f"pre={pre_head}  post={post_head}",
+                "rolled back to pre_head",
+            ])
+            return False, _build_presence_failure_details(remain, "adjacent-tip"), ""
+
+        _write_local_log("squash-selected", [
+            f"branch={branch}  mode=adjacent-tip  squashed={len(selected_in_range)}",
+            f"pre_head={pre_head[:12]}  new_head={post_head[:12]}  rebase_base={rebase_base[:12]}",
+        ])
+        return True, f"Squashed {len(selected_in_range)} adjacent commit(s) into 1", _resolve_new_squash_hash()
 
     # ── Non-adjacent path ──────────────────────────────────────────────────
     # Use plain `git rebase -i` (NO --rebase-merges).
@@ -2167,6 +2628,10 @@ def squash_selected_commits(hashes, msg, gpg_sign=False):
     ed_f.close()
     os.chmod(editor_path, os.stat(editor_path).st_mode | _stat.S_IEXEC | _stat.S_IXGRP | _stat.S_IXOTH)
 
+    # Snapshot HEAD before rebase so we can prove it moved and rollback on failure.
+    pre_head_na, _, _ = _run(["git", "rev-parse", "HEAD"])
+    pre_head_na = (pre_head_na or "").strip()
+
     try:
         env = {
             "GIT_SEQUENCE_EDITOR": seq_editor_path,
@@ -2186,10 +2651,11 @@ def squash_selected_commits(hashes, msg, gpg_sign=False):
         if rc != 0:
             _run(["git", "rebase", "--abort"])
             _write_local_log("squash-selected", [
-                f"branch={branch}  rc={rc}  selected={len(hashes)}",
+                f"branch={branch}  mode=non-adjacent  rc={rc}  selected={len(hashes)}",
+                f"pre_head={pre_head_na[:12]}",
                 "ERROR: " + (err or out or "rebase failed"),
             ])
-            return False, err or out or "Interactive rebase failed"
+            return False, err or out or "Interactive rebase failed", ""
 
         # Ensure we land back on the named branch (rebase can leave detached HEAD)
         post_branch = current_branch()
@@ -2198,11 +2664,44 @@ def squash_selected_commits(hashes, msg, gpg_sign=False):
             if sw_rc != 0:
                 _run(["git", "checkout", "-B", branch])
 
+        post_head_na, _, _ = _run(["git", "rev-parse", "HEAD"])
+        post_head_na = (post_head_na or "").strip()
+
         _write_local_log("squash-selected", [
-            f"branch={branch}  adjacent=False  squashed={len(selected_in_range)}",
+            f"branch={branch}  mode=non-adjacent  squashed={len(selected_in_range)}",
+            f"pre_head={pre_head_na[:12]}  post_head={post_head_na[:12]}",
             out.strip() if out else "",
         ])
-        return True, f"Squashed {len(selected_in_range)} non-adjacent commit(s) into 1"
+
+        # HEAD MUST have moved for a real rewrite. If not, git rebase treated
+        # the todo list as a no-op (all commits stayed as-is).
+        if not post_head_na or post_head_na == pre_head_na:
+            if pre_head_na:
+                _run(["git", "reset", "--hard", pre_head_na])
+            details = (
+                "Squash failed: HEAD did not move after `git rebase -i`.\n"
+                f"details: branch={branch}, mode=non-adjacent, base={rebase_base[:12]}\n"
+                f"pre_head={pre_head_na[:12]}  post_head={post_head_na[:12] if post_head_na else '-'}\n"
+                f"merge_commits_in_range={len(merge_set)}\n"
+                "reason=rebase produced no history rewrite; the sequence editor "
+                "may have failed to match commits, or merge commits shielded the "
+                "selection from `drop`.\n"
+                "hint=check gitboard.log for the squash-selected entry; consider "
+                "flattening merges first or squashing on a topic branch that "
+                "contains only the target commits."
+            )
+            return False, details, ""
+
+        remain = _remaining_selected_hashes()
+        if remain:
+            if pre_head_na:
+                _run(["git", "reset", "--hard", pre_head_na])
+            _write_local_log("squash-selected", [
+                f"branch={branch}  mode=non-adjacent  remain={len(remain)}",
+                "rolled back to pre_head",
+            ])
+            return False, _build_presence_failure_details(remain, "non-adjacent-rebase"), ""
+        return True, f"Squashed {len(selected_in_range)} non-adjacent commit(s) into 1", _resolve_new_squash_hash()
     finally:
         for p in (seq_editor_path, editor_path):
 

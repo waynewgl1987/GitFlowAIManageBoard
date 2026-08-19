@@ -67,6 +67,14 @@ var T = {
   squash_confirm: {en:'Squash {n} commits into one?', zh:'将 {n} 个commit合并为1个？'},
   squash_ok: {en:'Squash successful!', zh:'Squash 成功！'},
   squash_fail: {en:'Squash failed: ', zh:'Squash 失败: '},
+  squash_result_title: {en:'Squash Result', zh:'Squash 结果'},
+  squash_result_ready: {en:'Ready to push', zh:'可直接推送'},
+  squash_result_hash: {en:'Commit', zh:'提交'},
+  squash_result_msg: {en:'Message', zh:'消息'},
+  squash_result_focus_btn: {en:'Locate in Log', zh:'在日志中定位'},
+  squash_result_push_btn: {en:'Force Push Now', zh:'立即 Force Push'},
+  squash_result_clear_btn: {en:'Clear', zh:'清除'},
+  squash_result_missing_hash: {en:'Squash finished but no new commit hash was returned. Please refresh log and verify before pushing.', zh:'Squash 执行结束但未返回新 commit hash。请先刷新日志确认后再推送。'},
   reset_ok: {en:'Reset ({mode}) successful', zh:'Reset ({mode}) 成功'},
   reset_fail: {en:'Reset failed: ', zh:'Reset 失败: '},
   revert_ok: {en:'Revert successful', zh:'Revert 成功'},
@@ -619,6 +627,7 @@ var modalCallback = null;
 var resolvedConflicts = {};
 var squashSelected = {};
 var squashCommitCache = {};  // hash → full commit data, persists across page turns
+var lastSquashResult = null; // {hash, message, selectedCount}
 var currentLogData = null;
 var logUnsignedFilter = false;
 var _lastGitOpCtx = null;
@@ -675,6 +684,22 @@ function _invalidateLogCache() {
   _logCache.pages = {};
   _logCache.headHash = null;
   _saveLogCache();
+}
+
+// Aggressive: remove ALL persisted log caches (all branches/perPage/order combos).
+// Use after history-rewriting operations (squash, rebase, reset, drop) and after push,
+// so a stale entry under a different key never resurrects old commits in the UI.
+function _purgeAllLogCaches() {
+  try {
+    var toDel = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf('gitboard_log_') === 0) toDel.push(k);
+    }
+    toDel.forEach(function(k){ try { localStorage.removeItem(k); } catch(e) {} });
+  } catch(e) {}
+  _logCache.pages = {};
+  _logCache.headHash = null;
 }
 
 // Use after any git mutation (commit/squash/push/rebase/reset/revert/drop)
@@ -771,7 +796,13 @@ function escapeJS(s){return escapeAttr(s).replace(/\\/g,'\\\\').replace(/'/g,"\\
 function addMsg(msg, cls, opts) {
   cls=cls||'info';
   opts=opts||{};
-  var maxLines = opts.maxLines || 0; // 0 = no limit
+  // Global cap: every message (red/blue/green) shows at most 10 lines. If the
+  // caller passes a smaller maxLines we respect it; larger values (or the
+  // default 0 = unlimited) are clamped to 10 so long stack traces / reflogs
+  // never blow up the message area — they become a scrollable box instead.
+  var GLOBAL_MSG_LINE_CAP = 10;
+  var requested = opts.maxLines || GLOBAL_MSG_LINE_CAP;
+  var maxLines = Math.min(requested, GLOBAL_MSG_LINE_CAP);
   msgLog.push({time:new Date().toLocaleString(), type:cls, text:msg});
   _saveMsgLogToStorage();
   updateMsgCount();
@@ -825,7 +856,19 @@ function addMsgWithAction(msg, cls, actions) {
   var div=document.createElement('div');
   div.className='msg-item '+cls;
   div.id=id;
-  div.innerHTML='<div class="msg-main"><span class="msg-text">'+escapeHtml(msg)+'</span><span class="msg-close" onclick="dismissMsg(\''+id+'\')">✕</span></div><div class="msg-actions"></div>';
+  // Same 10-line cap as addMsg — long errors become a scrollable box.
+  var GLOBAL_MSG_LINE_CAP = 10;
+  var lines = (msg || '').split('\n');
+  var needScroll = lines.length > GLOBAL_MSG_LINE_CAP;
+  var textHtml;
+  if (needScroll) {
+    textHtml = '<span class="msg-text msg-text-scroll" style="display:block;max-height:'
+      +(GLOBAL_MSG_LINE_CAP*1.6)+'em;overflow-y:auto;white-space:pre-wrap;font-family:monospace;font-size:12px;line-height:1.6">'
+      +escapeHtml(msg)+'</span>';
+  } else {
+    textHtml = '<span class="msg-text">'+escapeHtml(msg)+'</span>';
+  }
+  div.innerHTML='<div class="msg-main">'+textHtml+'<span class="msg-close" onclick="dismissMsg(\''+id+'\')">✕</span></div><div class="msg-actions"></div>';
   var actionWrap = div.querySelector('.msg-actions');
   (actions||[]).forEach(function(a){
     var b=document.createElement('button');
@@ -1947,8 +1990,67 @@ function doPush(credentials, force, remoteBranch){
           if(r.ok){
             if(ld3) ld3.innerHTML+='<span style="color:#4ade80;font-weight:700">✅ Push succeeded!\n</span>';
             addMsg('✅ Push OK','success');
+            // Capture pending squash context BEFORE clearing so we can post-verify.
+            var _pendingSquashVerify = (lastSquashResult && lastSquashResult.selectedHashes && lastSquashResult.selectedHashes.length)
+              ? {hashes:lastSquashResult.selectedHashes.slice(), squashHash:lastSquashResult.hash}
+              : null;
+            clearSquashResultSection();
+            // Nuke any stale localStorage log caches (all branches) so the UI never
+            // resurrects the pre-squash commit list from cache.
+            _purgeAllLogCaches();
             // Reload log and branch so commit history reflects force-push/rewrite
             _reloadLog(1); loadCurrentBranch();
+            // Post-push verification: if we just pushed after a squash, confirm the
+            // squashed commits are truly gone from both local HEAD and remote branch.
+            if(_pendingSquashVerify){
+              var qs='/api/check-commits-present?hashes='+encodeURIComponent(_pendingSquashVerify.hashes.join(','));
+              apiGet(qs,function(vr){
+                if(!vr||!vr.ok) return;
+                var stillLocal=(vr.present_local||[]).filter(function(h){
+                  return h!==_pendingSquashVerify.squashHash;
+                });
+                var stillRemote=(vr.present_remote||[]).filter(function(h){
+                  return h!==_pendingSquashVerify.squashHash;
+                });
+                if(stillLocal.length===0 && stillRemote.length===0) return;
+                var shortList=function(arr){return arr.map(function(x){return x.substring(0,8);}).join(', ');};
+                var lines=[];
+                lines.push((L==='zh')
+                  ? '❌ Push 完成，但被 squash 的 commit 依然存在。Squash 实际上没有改写历史。'
+                  : '❌ Push completed, but the squashed commits are still present. The squash did not actually rewrite history.');
+                if(stillLocal.length){
+                  lines.push((L==='zh'?'本地 HEAD 仍可达: ':'Still reachable from local HEAD: ')+shortList(stillLocal));
+                }
+                if(stillRemote.length){
+                  lines.push((L==='zh'?'远端分支仍可达: ':'Still reachable on remote branch: ')+shortList(stillRemote));
+                }
+                lines.push((L==='zh')
+                  ? '常见原因: 选中的 commit 位于合并 (merge) 之下，rebase -i 静默跳过了 merge，导致 drop 未生效。'
+                  : 'Common cause: selected commits live below a merge; rebase -i silently skipped the merge so the drop had no effect.');
+                lines.push((L==='zh')
+                  ? '建议: 先 rebase 展平/去掉相关 merge，或在一个仅含目标 commit 的 topic 分支上重试 squash。'
+                  : 'Suggestion: flatten/remove the merge first, or retry the squash on a topic branch that contains only the target commits.');
+                addMsg(lines.join('\n'),'error',{maxLines:20});
+                setSquashResult(_pendingSquashVerify.squashHash,
+                  (L==='zh'?'⚠️ Push 完成但未真正 squash':'⚠️ Push done but squash did NOT take effect'),
+                  _pendingSquashVerify.hashes.length,
+                  _pendingSquashVerify.hashes);
+                // Pull the last 40 HEAD reflog entries so we can see exactly
+                // what moved HEAD back onto the old commits (post-commit hook,
+                // pull, reset, external process, etc.). This is high-signal
+                // for diagnosing "squash succeeded then vanished".
+                apiGet('/api/head-reflog?limit=40',function(rl){
+                  if(!rl||!rl.ok) return;
+                  var reflogTxt=(rl.reflog||'').trim();
+                  var headTxt=(rl.head||'').substring(0,12);
+                  var brTxt=rl.branch||'';
+                  var header=(L==='zh')
+                    ? ('🔍 当前 HEAD='+headTxt+' 分支='+brTxt+'\n最近 HEAD 变动 (reflog, 最新在最前):')
+                    : ('🔍 Current HEAD='+headTxt+' branch='+brTxt+'\nRecent HEAD moves (reflog, newest first):');
+                  addMsg(header+'\n'+(reflogTxt||'(empty)'),'info',{maxLines:60});
+                });
+              });
+            }
             // Re-enable close button
             var cbOk=document.querySelector('#modal-btns .btn-warning');
             if(cbOk){cbOk.disabled=false;cbOk.style.opacity='';cbOk.textContent='Close';cbOk.onclick=closeModal;}
@@ -2029,18 +2131,26 @@ function doPush(credentials, force, remoteBranch){
                   var hintEl = document.getElementById(hintMsgId);
                   if(!hintEl || !ds) return;
                   if(ds.diverged){
-                    // Local was rewritten (rebase/resign) — force push is the answer
+                    // Local was rewritten (rebase/resign/squash) — force push is the only safe answer.
                     hintEl.style.color='#fbbf24';
                     hintEl.textContent='💡 Branch is diverged: local has '+(ds.ahead||0)+' commit(s) remote doesn\'t, remote has '+(ds.behind||0)+' the local doesn\'t.\n'
-                      +'   This typically means a rebase or resign changed local history. Force Push to update remote.\n'
+                      +'   This typically means a rebase / squash / resign changed local history.\n'
+                      +'   ⚠️ DO NOT Pull — `git pull --rebase` will silently drop your local rewrite via patch-id matching.\n'
+                      +'   ✅ Use Force Push (--force-with-lease) to update remote.\n'
                       +(ds.ownCommits > 0 ? '   ✅ You have '+ds.ownCommits+' signed commit(s) of your own ready to push.\n' : '');
-                    // Promote Force Push, demote Pull
+                    // Promote Force Push, HARD-DISABLE Pull
                     forceBtn.className='btn btn-warning';
                     forceBtn.textContent=(L==='zh')?'🚀 Force Push（推荐）':'🚀 Force Push (recommended)';
                     pullRetryBtn.className='btn btn-secondary';
+                    pullRetryBtn.disabled=true;
+                    pullRetryBtn.style.opacity='0.45';
+                    pullRetryBtn.style.cursor='not-allowed';
+                    pullRetryBtn.textContent=(L==='zh')
+                      ?'⬇️ Pull（已禁用，分支已分叉）'
+                      :'⬇️ Pull (disabled — branch diverged)';
                     pullRetryBtn.title=(L==='zh')
-                      ?'分支已分叉，Pull 会产生重复 commit，请使用 Force Push。'
-                      :'Branch is diverged — pulling creates duplicate commits. Use Force Push instead.';
+                      ?'分支已分叉：本地有 rewrite（squash/rebase/amend），Pull 会通过 patch-id 匹配把你的 squash commit 悄悄丢掉，回到远端 tip。请点 Force Push。'
+                      :'Branch diverged: local has a rewrite (squash/rebase/amend). Pulling would use patch-id matching to silently drop your squash commit and revert to the remote tip. Use Force Push instead.';
                     // Re-order buttons: force first
                     var parent = forceBtn.parentNode;
                     if(parent){ parent.removeChild(forceBtn); parent.insertBefore(forceBtn, pullRetryBtn); }
@@ -2459,6 +2569,52 @@ function doFetch() {
 }
 
 function handlePullErr(err) {
+  // Divergence guard triggered on backend: local was rewritten (squash /
+  // rebase / amend) and pulling would silently drop it via patch-id matching.
+  // Show a dedicated modal that steers the user to Force Push.
+  if(err && (err.indexOf('Pull blocked: branch')>=0 || err.indexOf('diverged') >= 0 && err.indexOf('patch-id')>=0)){
+    var title=(L==='zh')?'⛔ Pull 已被拦截（分支已分叉）':'⛔ Pull blocked (branch diverged)';
+    var body=(L==='zh')
+      ? '<div style="font-size:13px;line-height:1.7">'
+        +'<b>你的本地分支有 rewrite（Squash / Rebase / Amend），如果 Pull 会被 <code>git pull --rebase</code> 通过 patch-id 匹配悄悄丢掉，回到远端 tip。</b><br><br>'
+        +'✅ 正确做法：点右上或每行的 <b>Force Push</b>（<code>--force-with-lease</code>）把本地 rewrite 推上去。<br><br>'
+        +'⚠️ 如果你 <b>确实</b> 想放弃本地 rewrite 用远端覆盖，可以点下面 "Pull Anyway"（会强制 Pull）。'
+        +'<pre style="background:#0f172a;color:#e2e8f0;padding:10px 12px;border-radius:6px;font-size:12px;max-height:180px;overflow:auto;white-space:pre-wrap;word-break:break-all;margin-top:10px">'
+        +escapeHtml(err)+'</pre></div>'
+      : '<div style="font-size:13px;line-height:1.7">'
+        +'<b>Your local branch has a rewrite (Squash / Rebase / Amend). Pulling now would let <code>git pull --rebase</code> patch-id-match your local commits and silently drop them back to the remote tip.</b><br><br>'
+        +'✅ Correct next step: click <b>Force Push</b> (<code>--force-with-lease</code>) to publish your local rewrite.<br><br>'
+        +'⚠️ If you <b>really</b> want to discard the local rewrite and reset onto remote, use "Pull Anyway" below.'
+        +'<pre style="background:#0f172a;color:#e2e8f0;padding:10px 12px;border-radius:6px;font-size:12px;max-height:180px;overflow:auto;white-space:pre-wrap;word-break:break-all;margin-top:10px">'
+        +escapeHtml(err)+'</pre></div>';
+    showModal(title, body, (L==='zh')?'知道了':'Got it', null);
+    var btnsDiv=document.getElementById('modal-btns');
+    if(btnsDiv){
+      var forceLink=document.createElement('button');
+      forceLink.className='btn btn-warning';
+      forceLink.textContent=(L==='zh')?'🚀 Force Push':'🚀 Force Push';
+      forceLink.onclick=function(){ closeModal(); doForcePush(); };
+      var pullAnyway=document.createElement('button');
+      pullAnyway.className='btn btn-danger';
+      pullAnyway.textContent=(L==='zh')?'⬇️ 强制 Pull（放弃本地 rewrite）':'⬇️ Pull Anyway (discard local rewrite)';
+      pullAnyway.onclick=function(){
+        closeModal();
+        addMsg((L==='zh')?'⬇️ 强制 Pull（force=true）...':'⬇️ Force pulling (force=true)...','info');
+        apiPost('/api/pull',{mode:'rebase',force:true},function(pd){
+          if(pd && pd.ok){
+            addMsg('✅ '+t('pull_ok'),'success');
+            _reloadLog(1); loadFiles(); loadCurrentBranch(); checkConflicts();
+          } else {
+            addMsg((L==='zh'?'❌ Pull 失败: ':'❌ Pull failed: ')+((pd&&(pd.error||pd.log))||''),'error',{maxLines:12});
+          }
+        });
+      };
+      btnsDiv.insertBefore(forceLink, btnsDiv.firstChild);
+      btnsDiv.appendChild(pullAnyway);
+    }
+    addMsg((L==='zh')?'⛔ Pull 被拦截：分支已分叉。请 Force Push，不要 Pull。':'⛔ Pull blocked: branch diverged. Force Push instead of Pull.','error',{maxLines:8});
+    return;
+  }
   if(err.indexOf('CONFLICT')>=0||err.indexOf('conflict')>=0||err.indexOf('Automatic merge failed')>=0){
     addMsg('⚠️ '+t('pull_conflict')+' — 请在 Conflicts 标签页中手动解决冲突','error');
     checkConflicts();
@@ -4498,7 +4654,11 @@ function openPRAIAnalysis(prNumber, headSha){
 
 function renderLog(data){
   var container=document.getElementById('log-content');
-  if(!data.commits||!data.commits.length){container.innerHTML='<div class="empty">'+t('no_match')+'</div>';return}
+  if(!data.commits||!data.commits.length){
+    container.innerHTML='<div class="empty">'+t('no_match')+'</div>';
+    renderSquashResultSection();
+    return;
+  }
   _logCommitMap={};
   var sortIcon=logSortOrder==='desc'?' ↓':' ↑';
   var sortTip=logSortOrder==='desc'?'Newest first — click for oldest first':'Oldest first — click for newest first';
@@ -4571,6 +4731,7 @@ function renderLog(data){
   html+='</tbody></table>';
   container.innerHTML=html;
   updateSquashBar();
+  renderSquashResultSection();
 }
 
 function _renderCommitMessageCell(message,id,badgeHtml){
@@ -5745,6 +5906,68 @@ function updateSquashBar(){
   if(!html) html='<div style="padding:10px 14px;color:#94a3b8;font-size:12px">'+(L==='zh'?'无选中 commit':'No commits selected')+'</div>';
   listEl.innerHTML=html;
 }
+
+function renderSquashResultSection(){
+  var panel=document.getElementById('squash-result-panel');
+  if(!panel) return;
+  if(!lastSquashResult || !lastSquashResult.hash){
+    panel.style.display='none';
+    panel.innerHTML='';
+    return;
+  }
+  var hash=lastSquashResult.hash||'';
+  var shortHash=hash?hash.substring(0,12):'—';
+  var msg=lastSquashResult.message||'';
+  var n=lastSquashResult.selectedCount||0;
+  var html='<div class="squash-result">'
+    +'<div class="squash-result-head">✂️ '+t('squash_result_title')
+    +'<span class="squash-result-badge">'+t('squash_result_ready')+'</span></div>'
+    +'<div class="squash-result-grid">'
+    +'<div class="squash-result-key">'+t('squash_result_hash')+'</div>'
+    +'<div class="squash-result-hash" title="'+escapeAttr(hash)+'">'+escapeHtml(shortHash)+'</div>'
+    +'<div class="squash-result-key">'+t('squash_result_msg')+'</div>'
+    +'<div>'+escapeHtml(msg||('- '+n+' commit(s) squashed -'))+'</div>'
+    +'</div>'
+    +'<div class="squash-result-actions">'
+    +'<button class="btn btn-sm btn-secondary" onclick="focusSquashCommitInLog()">'+t('squash_result_focus_btn')+'</button>'
+    +'<button class="btn btn-sm btn-danger" onclick="doForcePush()">'+t('squash_result_push_btn')+'</button>'
+    +'<button class="btn btn-sm btn-secondary" onclick="clearSquashResultSection()">'+t('squash_result_clear_btn')+'</button>'
+    +'</div></div>';
+  panel.innerHTML=html;
+  panel.style.display='block';
+}
+
+function setSquashResult(hash, message, selectedCount, selectedHashes){
+  if(!hash){
+    clearSquashResultSection();
+    return;
+  }
+  lastSquashResult={
+    hash:(hash||''),
+    message:(message||''),
+    selectedCount:(selectedCount||0),
+    selectedHashes:(Array.isArray(selectedHashes)?selectedHashes.slice():[])
+  };
+  renderSquashResultSection();
+}
+
+function clearSquashResultSection(){
+  lastSquashResult=null;
+  renderSquashResultSection();
+}
+
+function focusSquashCommitInLog(){
+  if(!lastSquashResult||!lastSquashResult.hash) return;
+  var searchEl=document.getElementById('log-search');
+  var searchBtn=document.getElementById('log-search-btn');
+  if(searchEl){
+    searchEl.value=lastSquashResult.hash.substring(0,12);
+  }
+  if(searchBtn){
+    searchBtn.style.display='inline-block';
+  }
+  loadLog(1);
+}
 function toggleHash(el){
   var full = el.getAttribute('data-full');
   var cur = el.textContent;
@@ -5843,13 +6066,49 @@ function doSquash(){
     showModal('Squash',
       tf('squash_confirm',L,{n:hashes.length}),
       'Squash',function(){
+        clearSquashResultSection();
         addMsg(L==='zh'?'🔀 正在 Squash...':'🔀 Squashing...','info');
         apiPost('/api/squash-selected',{hashes:hashes,message:msg,gpg_sign:!!gpgOn},function(data){
+          var ver=(data&&data.backend_version)||'';
+          if(!ver){
+            addMsg((L==='zh')
+              ? '⚠️ 后端返回缺少 backend_version 字段，你可能没有重启 GitAutoManageBoard 服务。请重启 python 服务后再试。'
+              : '⚠️ Backend response missing backend_version. Your GitAutoManageBoard service is likely running stale code. Please restart it and retry.',
+              'error',{maxLines:6});
+          }
           if(data.ok){
+            var sqHash=(data&&data.squash_commit_hash)||'';
+            var pre=(data&&data.pre_head)||'';
+            var post=(data&&data.post_head)||'';
+            if(pre && post && pre===post){
+              clearSquashResultSection();
+              addMsg((L==='zh'?'❌ Squash 未生效：HEAD 没有移动。pre_head=':'❌ Squash did not take effect: HEAD did not move. pre_head=')
+                +pre.substring(0,12)+'  post_head='+post.substring(0,12),
+                'error',{maxLines:6});
+              return;
+            }
+            if(sqHash){
+              setSquashResult(sqHash, msg, hashes.length, hashes);
+              addMsg((L==='zh'?'ℹ️ HEAD 已从 ':'ℹ️ HEAD moved from ')
+                +(pre||'?').substring(0,12)+(L==='zh'?' 移动到 ':' to ')+(post||'?').substring(0,12),
+                'info');
+            } else {
+              clearSquashResultSection();
+              addMsg('⚠️ '+t('squash_result_missing_hash'),'error');
+            }
+            _purgeAllLogCaches();
             squashSelected={};squashCommitCache={};_reloadLog(1);loadFiles();
             addMsg(data.message||t('squash_ok'),'success');
-            doForcePush();
           } else {
+            clearSquashResultSection();
+            if(data.rebaseInProgress){
+              var title=(L==='zh')?'⚠️ Squash 被 Rebase 阻塞':'⚠️ Squash blocked by existing rebase';
+              var body='<div style="background:#0f172a;color:#e2e8f0;font-family:monospace;font-size:12px;line-height:1.5;'
+                +'padding:12px 14px;border-radius:8px;max-height:220px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;'
+                +'border:1px solid #1e293b">'+escapeHtml(data.error||'')+'</div>';
+              _showRebaseFailureModal(title, body, false);
+              return;
+            }
             addMsg(t('squash_fail')+(data.error||''),'error');
           }
         });

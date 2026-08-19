@@ -543,6 +543,60 @@ def handle_get(path, params, send_json, send_stream=None):
         send_json(search_diff_code(pattern, max_count))
         return True
 
+    elif path == "/api/head-reflog":
+        limit = 40
+        try:
+            limit = max(5, min(200, int(params.get("limit", ["40"])[0])))
+        except Exception:
+            pass
+        # Prefer `git reflog HEAD` for a decoded view; fall back to raw file.
+        out, err, rc = _run(["git", "reflog", "HEAD", f"-n{limit}", "--date=iso"], timeout=15)
+        if rc != 0 or not (out or "").strip():
+            try:
+                gd = _resolve_git_dir()
+                p = os.path.join(gd, "logs", "HEAD")
+                with open(p, "r", encoding="utf-8", errors="replace") as f:
+                    lines = f.read().splitlines()
+                out = "\n".join(lines[-limit:])
+            except Exception as e:
+                out = ""
+                err = err or str(e)
+        head_out, _, _ = _run(["git", "rev-parse", "HEAD"], timeout=10)
+        br_out, _, _ = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], timeout=10)
+        send_json({
+            "ok": True,
+            "head": (head_out or "").strip(),
+            "branch": (br_out or "").strip(),
+            "reflog": out or "",
+            "error": err or "",
+        })
+        return True
+
+    elif path == "/api/check-commits-present":
+        raw = params.get("hashes", [""])[0]
+        hashes = [h.strip() for h in raw.split(",") if h.strip()]
+        present_local = []
+        present_remote = []
+        try:
+            br = current_branch() or ""
+        except Exception:
+            br = ""
+        for h in hashes:
+            _, _, rc = _run(["git", "merge-base", "--is-ancestor", h, "HEAD"], timeout=15)
+            if rc == 0:
+                present_local.append(h)
+            if br:
+                _, _, rc2 = _run(["git", "merge-base", "--is-ancestor", h, "refs/remotes/origin/" + br], timeout=15)
+                if rc2 == 0:
+                    present_remote.append(h)
+        send_json({
+            "ok": True,
+            "branch": br,
+            "present_local": present_local,
+            "present_remote": present_remote,
+        })
+        return True
+
     elif path == "/api/file-commits":
         file_path = params.get("file", [""])[0]
         page = int(params.get("page", ["1"])[0])
@@ -864,11 +918,17 @@ def handle_post(path, data, send_json):
 
     elif path == "/api/pull":
         mode = data.get("mode", "merge")
-        log, stderr, rc = pull_current(mode)
+        force = bool(data.get("force", False))
+        log, stderr, rc = pull_current(mode, force=force)
         if rc == 0:
             send_json({"ok": True, "log": log})
         else:
-            send_json({"ok": False, "error": stderr or log, "log": log}, 400)
+            # Detect divergence-guard rejection so the frontend can render a
+            # dedicated warning modal instead of a generic error.
+            body = {"ok": False, "error": stderr or log, "log": log}
+            if isinstance(log, str) and log.startswith("Pull blocked: branch is diverged"):
+                body["divergedBlocked"] = True
+            send_json(body, 400)
         return True
 
     elif path == "/api/network-timeout":
@@ -928,11 +988,16 @@ def handle_post(path, data, send_json):
     elif path == "/api/gitop-start":
         op = data.get("op", "fetch")
         mode = data.get("mode", "merge")
+        force = bool(data.get("force", False))
         job_id = str(_uuid4())[:8]
         with _PUSH_JOBS_LOCK:
             _PUSH_JOBS[job_id] = {'lines': [], 'done': False, 'ok': False,
                                   'error': '', 'authRequired': False}
-        threading.Thread(target=_run_gitop_streaming, args=(job_id, op, mode), daemon=True).start()
+        threading.Thread(
+            target=_run_gitop_streaming,
+            args=(job_id, op, mode, force),
+            daemon=True,
+        ).start()
         send_json({"ok": True, "jobId": job_id})
         return True
 
@@ -1198,14 +1263,93 @@ def handle_post(path, data, send_json):
         msg = data.get("message", "")
         # Always use server-side GPG setting; client hint is secondary
         gpg_sign = get_gpg_sign() or bool(data.get("gpg_sign", False))
+        if is_rebase_in_progress():
+            send_json({
+                "ok": False,
+                "error": (
+                    "Another rebase is already in progress. "
+                    "Please finish it first (Continue/Skip) or abort it, then retry squash."
+                ),
+                "rebaseInProgress": True,
+            }, 409)
+            return True
         if not hashes or len(hashes) < 2:
             send_json({"ok": False, "error": "Need at least 2 commit hashes"}, 400)
             return True
-        ok, result_msg = squash_selected_commits(hashes, msg, gpg_sign)
+        # Snapshot HEAD before/after so client can visibly confirm the branch
+        # ref actually moved. This exposes the case where old backend code (or
+        # a hook) silently no-ops the rewrite while returning ok=True.
+        pre_head_out, _, _ = _run(["git", "rev-parse", "HEAD"])
+        pre_head_snap = (pre_head_out or "").strip()
+        # Also snapshot origin/<branch> so we can later detect "reset to origin".
+        try:
+            _pre_branch = current_branch() or ""
+        except Exception:
+            _pre_branch = ""
+        _pre_origin = ""
+        if _pre_branch:
+            _po, _, _po_rc = _run(["git", "rev-parse", "refs/remotes/origin/" + _pre_branch], timeout=10)
+            if _po_rc == 0:
+                _pre_origin = (_po or "").strip()
+        _write_local_log("squash-selected:start", [
+            f"branch={_pre_branch}  pre_HEAD={pre_head_snap}",
+            f"pre_origin/{_pre_branch}={_pre_origin or '-'}",
+            f"gpg_sign={gpg_sign}",
+            f"count={len(hashes)}",
+            "hashes=" + ",".join(h[:12] for h in hashes),
+            "message=" + (msg or "")[:200],
+        ])
+        ok, result_msg, squash_hash = squash_selected_commits(hashes, msg, gpg_sign)
+        post_head_out, _, _ = _run(["git", "rev-parse", "HEAD"])
+        post_head_snap = (post_head_out or "").strip()
+        _write_local_log("squash-selected:end", [
+            f"branch={_pre_branch}  ok={ok}  squash_hash={squash_hash}",
+            f"pre_HEAD={pre_head_snap}  post_HEAD={post_head_snap}",
+            f"moved={pre_head_snap != post_head_snap and bool(post_head_snap)}",
+            "result_msg=" + (result_msg or "")[:400],
+        ])
         if ok:
-            send_json({"ok": True, "message": result_msg})
+            # Defense-in-depth: if HEAD didn't move even though squash_selected_commits
+            # returned ok, force-fail so the UI cannot mislead the user.
+            if not post_head_snap or post_head_snap == pre_head_snap:
+                _write_local_log("squash-selected:head-did-not-move", [
+                    f"branch={_pre_branch}",
+                    f"pre_HEAD={pre_head_snap}",
+                    f"post_HEAD={post_head_snap}",
+                    "server reported ok=True but rev-parse HEAD is unchanged",
+                ])
+                send_json({
+                    "ok": False,
+                    "error": (
+                        "Squash reported success but HEAD did not move.\n"
+                        f"pre_head={pre_head_snap[:12]}  post_head={post_head_snap[:12] or '-'}\n"
+                        "This means the branch ref was not updated. Likely causes: "
+                        "detached HEAD, a git hook that aborts commit silently, or "
+                        "the Python server is running stale code — restart the "
+                        "GitAutoManageBoard service and hard-refresh the browser, "
+                        "then retry."
+                    ),
+                    "pre_head": pre_head_snap,
+                    "post_head": post_head_snap,
+                    "backend_version": "squash-v2-headmove",
+                }, 400)
+                return True
+            send_json({
+                "ok": True,
+                "message": result_msg,
+                "squash_commit_hash": squash_hash,
+                "pre_head": pre_head_snap,
+                "post_head": post_head_snap,
+                "backend_version": "squash-v2-headmove",
+            })
         else:
-            send_json({"ok": False, "error": result_msg}, 400)
+            send_json({
+                "ok": False,
+                "error": result_msg,
+                "pre_head": pre_head_snap,
+                "post_head": post_head_snap,
+                "backend_version": "squash-v2-headmove",
+            }, 400)
         return True
 
     elif path == "/api/rename-branch":
