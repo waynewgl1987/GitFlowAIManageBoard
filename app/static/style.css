@@ -337,7 +337,7 @@ input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:var(--
 .log-table > tbody > tr.log-diff-row:hover > td{background:#ffffff}
 .log-table > tbody > tr.pr-risk-row > td{background:rgba(254,242,242,.62)}
 .log-table > tbody > tr.pr-risk-row:hover > td{background:rgba(254,226,226,.88)}
-.log-table > tbody > tr.log-diff-row > td{border:none !important}
+.log-table > tbody > tr.log-diff-row > td{border-left:none !important;border-right:none !important;border-top:none !important;border-bottom:1px solid #ececf1 !important}
 .log-diff-cell{padding:0 !important;background:#ffffff}
 .log-diff-panel{padding:10px 12px;max-height:620px;overflow:auto;background:#ffffff}
 .log-hash{font-family:monospace;color:var(--color-primary);font-weight:600;font-size:12px}
