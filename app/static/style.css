@@ -150,7 +150,7 @@ input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:var(--
 .diff-file-header:hover{background:#f1f5f9}
 .diff-file-title{color:#1d4ed8;flex:1;margin-left:2px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .diff-file-meta{font-size:10px;color:#64748b;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:1px 6px;font-variant-numeric:tabular-nums}
-.diff-file-body{background:#fff}
+.diff-file-body{background:#fff;padding:0;margin:8px 10px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}
 .diff-file-actions{padding:6px 10px;border-top:1px solid #e5e7eb;background:#fafafa;display:flex;gap:6px;flex-wrap:wrap}
 .toolbar{display:flex;flex-direction:column;gap:10px;margin-top:28px;padding:16px 20px;background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .toolbar-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -339,7 +339,7 @@ input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:var(--
 .log-table > tbody > tr.pr-risk-row:hover > td{background:rgba(254,226,226,.88)}
 .log-table > tbody > tr.log-diff-row > td{border:none !important}
 .log-diff-cell{padding:0 !important;background:#f8fafc}
-.log-diff-panel{padding:12px 14px;max-height:620px;overflow:auto;background:#f8fafc}
+.log-diff-panel{padding:10px 12px;max-height:620px;overflow:auto;background:#fff}
 .log-hash{font-family:monospace;color:var(--color-primary);font-weight:600;font-size:12px}
 .log-hash-cell{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
 .log-copy-btn{
