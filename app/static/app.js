@@ -4539,7 +4539,7 @@ function renderPullRequests(data){
       +'</td>';
     html+='<td style="text-align:center"><span class="file-toggle" id="pr-toggle-'+idx+'">▶</span></td>';
     html+='</tr>';
-    html+='<tr id="pr-diff-row-'+idx+'" style="display:none"><td colspan="7" style="padding:0"><div id="pr-diff-'+idx+'" style="padding:12px 16px;max-height:600px;overflow-y:auto"></div></td></tr>';
+    html+='<tr id="pr-diff-row-'+idx+'" class="log-diff-row" style="display:none"><td colspan="7" class="log-diff-cell"><div id="pr-diff-'+idx+'" class="log-diff-panel"></div></td></tr>';
   });
   html+='</tbody></table>';
   container.innerHTML=html;
@@ -4607,14 +4607,14 @@ function highlightPRDiffFiles(text, headSha, prNumber){
     if(headSha){
       _commitFileDiffStore[_commitDiffStoreKey(headSha, sec.file)] = fileDiffText;
     }
-    html+='<div style="border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;overflow:hidden">';
-    html+='<div style="display:flex;align-items:center;padding:8px 14px;background:#f9fafb;cursor:pointer" onclick="toggleDiffFile(\''+fileId+'\',this)">';
+    html+='<div class="diff-file-card">';
+    html+='<div class="diff-file-header" onclick="toggleDiffFile(\''+fileId+'\',this)">';
     html+='<span class="file-toggle" id="'+fileId+'-toggle">▶</span>';
-    html+='<b style="color:#2563eb;flex:1;margin-left:8px">'+escapeHtml(sec.file)+'</b>';
-    html+='<span style="font-size:11px;color:#9ca3af">'+sec.lines.length+' lines</span>';
+    html+='<b class="diff-file-title">'+escapeHtml(sec.file)+'</b>';
+    html+='<span class="diff-file-meta">'+sec.lines.length+' lines</span>';
     html+='</div>';
-    html+='<div id="'+fileId+'" style="display:none">'+highlightDiff(fileDiffText)+'</div>';
-    html+='<div style="padding:4px 14px;border-top:1px solid #e5e7eb;background:#fafafa">';
+    html+='<div id="'+fileId+'" class="diff-file-body" style="display:none">'+highlightDiff(fileDiffText)+'</div>';
+    html+='<div class="diff-file-actions">';
     html+='<button class="btn btn-sm btn-primary" title="'+escapeAttr(_aiCmpText('分析此文件改动','Analyze this file changes'))+'" onclick="event.stopPropagation();openPRAICompareFile(\''+escapeAttr(sec.file)+'\',\''+escapeAttr(headSha||'')+'\',\''+escapeAttr(prNumber)+'\')">🤖 AI Compare</button>';
     html+='</div></div>';
   });
@@ -4728,7 +4728,7 @@ function renderLog(data){
     html+='</td>';
     html+='<td style="text-align:center"><span class="file-toggle" id="log-toggle-'+idx+'">▶</span></td>';
     html+='</tr>';
-    html+='<tr id="commit-diff-row-'+idx+'" style="display:none"><td colspan="8" style="padding:0"><div id="commit-diff-'+idx+'" style="padding:12px 16px;max-height:600px;overflow-y:auto"></div></td></tr>';
+    html+='<tr id="commit-diff-row-'+idx+'" class="log-diff-row" style="display:none"><td colspan="8" class="log-diff-cell"><div id="commit-diff-'+idx+'" class="log-diff-panel"></div></td></tr>';
   });
   html+='</tbody></table>';
   container.innerHTML=html;
@@ -4852,8 +4852,7 @@ function highlightDiffFiles(text, commitHash){
       +'<div style="font-size:12px;color:#475569;margin-bottom:6px">No per-file patch blocks in this commit view. Loading changed-file list…</div>'
       +'<div id="'+fallbackId+'" style="font-size:12px;color:#64748b">Loading files…</div>'
       +'</div>';
-    for(var j=0;j<lines.length;j++)
-      h+=diffLine(lines[j]);
+    h+=highlightDiff(text);
     setTimeout(function(){ _loadCommitAIEntryFiles(commitHash,fallbackId); },0);
     return h;
   }
@@ -4863,31 +4862,19 @@ function highlightDiffFiles(text, commitHash){
     var fileId='diff-file-'+si+'-'+commitHash.substr(0,7);
     var fileDiffText=(sec.lines||[]).join('\n');
     _commitFileDiffStore[_commitDiffStoreKey(commitHash, sec.file)] = fileDiffText;
-    html+='<div style="border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;overflow:hidden">';
-    html+='<div style="display:flex;align-items:center;padding:8px 14px;background:#f9fafb;cursor:pointer" onclick="toggleDiffFile(\''+fileId+'\',this)">';
+    html+='<div class="diff-file-card">';
+    html+='<div class="diff-file-header" onclick="toggleDiffFile(\''+fileId+'\',this)">';
     html+='<span class="file-toggle" id="'+fileId+'-toggle">▶</span>';
-    html+='<b style="color:#2563eb;flex:1;margin-left:8px">'+escapeHtml(sec.file)+'</b>';
-    html+='<span style="font-size:11px;color:#9ca3af">'+sec.lines.length+' lines</span>';
+    html+='<b class="diff-file-title">'+escapeHtml(sec.file)+'</b>';
+    html+='<span class="diff-file-meta">'+sec.lines.length+' lines</span>';
     html+='</div>';
-    html+='<div id="'+fileId+'" style="display:none">';
-    for(var k=0;k<sec.lines.length;k++)
-      html+=diffLine(sec.lines[k]);
-    html+='</div>';
-    html+='<div style="padding:4px 14px;border-top:1px solid #e5e7eb;background:#fafafa">';
+    html+='<div id="'+fileId+'" class="diff-file-body" style="display:none">'+highlightDiff(fileDiffText)+'</div>';
+    html+='<div class="diff-file-actions">';
     html+='<button class="btn btn-sm btn-secondary restore-file-btn" title="Restore this file to a specific commit — choose from commit history" data-file="'+escapeAttr(sec.file)+'" onclick="event.stopPropagation();openRestorePage(this.getAttribute(\'data-file\'))">📂 Restore to commit...</button>';
     html+=' <button class="btn btn-sm btn-primary" title="Open AI compare panel for this file" onclick="event.stopPropagation();openCommitAICompare(\''+escapeAttr(sec.file)+'\',\''+escapeAttr(commitHash)+'\')">🤖 AI Compare</button>';
     html+='</div></div>';
   });
   return html;
-  
-  function diffLine(line){
-    var s='<div style="font-family:monospace;font-size:12px;line-height:1.6;white-space:pre-wrap;padding:1px 8px;';
-    if(line.charAt(0)==='+')s+='background:#e6ffed;color:#059664';
-    else if(line.charAt(0)==='-')s+='background:#ffeef0;color:#dc2626';
-    else if(/^(@@|diff|index|commit|Author:|Date:)/.test(line))s+='color:#6b7280';
-    s+='">'+escapeHtml(line)+'</div>';
-    return s;
-  }
 }
 
 function _loadCommitAIEntryFiles(commitHash,targetId){
