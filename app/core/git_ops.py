@@ -2180,6 +2180,117 @@ def _pull_request_total_count(state="in_review", search=""):
 
 
 _PR_AUTHOR_NAME_CACHE = {}
+_PR_FILES_CACHE = {}
+
+_MAIN_ENTRY_BASENAMES = {
+    # iOS / macOS
+    "appdelegate.swift", "appdelegate.m", "appdelegate.mm",
+    "scenedelegate.swift", "scenedelegate.m", "scenedelegate.mm",
+    "main.swift",
+    # Android / Kotlin / Java
+    "androidmanifest.xml", "mainactivity.kt", "mainactivity.java",
+    "mainapplication.kt", "mainapplication.java", "application.kt", "application.java",
+    # Python
+    "__main__.py", "main.py", "app.py", "manage.py", "wsgi.py", "asgi.py", "run.py",
+    # JS / TS / RN
+    "index.js", "index.ts", "index.tsx", "main.js", "main.ts", "main.tsx", "app.tsx",
+    # Flutter / Dart
+    "main.dart",
+    # ArkTS / HarmonyOS
+    "entryability.ets", "entryability.ts", "mainability.ets", "mainability.ts",
+    "app.ets", "module.json5", "app.json5",
+    # Backend / systems
+    "program.cs", "main.go", "main.rs",
+}
+
+_MAIN_ENTRY_PATH_SUFFIXES = (
+    "app/src/main/androidmanifest.xml",
+    "src/main/resources/application.yml",
+    "src/main/resources/application.yaml",
+    "src/main/resources/application.properties",
+    "lib/main.dart",
+    "entry/src/main/module.json5",
+    "entry/src/main/resources/base/profile/main_pages.json",
+)
+
+_MAIN_ENTRY_PATH_REGEXES = [
+    re.compile(r"(^|/)src/main/.*/(mainactivity|mainapplication|application)\.(kt|java)$"),
+    re.compile(r"(^|/)(ios|iphoneos|macos|app)/.*/(appdelegate|scenedelegate)\.(swift|m|mm)$"),
+    re.compile(r"(^|/)entry/src/main/ets/.*/(entryability|mainability)\.(ets|ts)$"),
+    re.compile(r"(^|/)src/main\.(py|js|ts|tsx)$"),
+]
+
+
+def _collect_pr_changed_files(pr_number):
+    num = str(pr_number or "").strip()
+    if not num:
+        return []
+    cached = _PR_FILES_CACHE.get(num)
+    if cached is not None:
+        return cached
+
+    files = []
+    out, _, rc = _run(["gh", "pr", "view", num, "--json", "files"])
+    if rc == 0:
+        try:
+            rows = ((json.loads(out or "{}") or {}).get("files") or [])
+        except Exception:
+            rows = []
+        for row in rows:
+            p = ((row or {}).get("path") or "").strip()
+            if p:
+                files.append(p)
+
+    if not files:
+        diff_out, _, diff_rc = pull_request_diff(num)
+        if diff_rc == 0 and diff_out:
+            for line in diff_out.splitlines():
+                m = re.match(r"^diff --git a/(.+?) b/(.+)$", line)
+                if m:
+                    files.append(m.group(2))
+
+    uniq = []
+    seen = set()
+    for p in files:
+        key = (p or "").strip()
+        if key and key not in seen:
+            seen.add(key)
+            uniq.append(key)
+    _PR_FILES_CACHE[num] = uniq
+    return uniq
+
+
+def _is_main_entry_file(file_path):
+    p = (file_path or "").replace("\\", "/").strip().lower()
+    if not p:
+        return False
+    base = p.rsplit("/", 1)[-1]
+    if base in _MAIN_ENTRY_BASENAMES:
+        return True
+    for suffix in _MAIN_ENTRY_PATH_SUFFIXES:
+        if p.endswith(suffix):
+            return True
+    for rgx in _MAIN_ENTRY_PATH_REGEXES:
+        if rgx.search(p):
+            return True
+    return False
+
+
+def _build_pr_risk_info(pr_number):
+    files = _collect_pr_changed_files(pr_number)
+    files_changed = len(files)
+    main_entry_files = [p for p in files if _is_main_entry_file(p)]
+    main_entry_changed = bool(main_entry_files)
+    too_many_files = files_changed > 10
+    return {
+        "is_risky": bool(main_entry_changed or too_many_files),
+        "main_entry_changed": main_entry_changed,
+        "too_many_files": too_many_files,
+        "files_changed": files_changed,
+        "main_entry_files": main_entry_files[:5],
+    }
+
+
 def _author_name_from_commit(head_sha):
     sha = (head_sha or "").strip()
     if not sha:
@@ -2281,6 +2392,8 @@ def get_pull_requests(page=1, per_page=10, state="in_review", search=""):
     else:
         skip = max(0, (page - 1) * per_page)
         page_items = prs[skip:skip + per_page]
+    for pr in page_items:
+        pr["risk"] = _build_pr_risk_info(pr.get("number"))
     return {
         "pull_requests": page_items,
         "total": total,

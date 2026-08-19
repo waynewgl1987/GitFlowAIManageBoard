@@ -4506,6 +4506,14 @@ function renderPullRequests(data){
     var date=(pr.merged_at||'')||(pr.updated_at||pr.created_at||'');
     var merged=(pr.state==='merged')||(prState==='merged');
     var closed=(pr.state==='closed')||(prState==='closed');
+    var risk=(pr&&pr.risk)||{};
+    var riskHints=[];
+    if(risk.main_entry_changed) riskHints.push(_aiCmpText('主入口改动','Main entry changed'));
+    if(risk.too_many_files) riskHints.push(_aiCmpText('改动文件 '+Number(risk.files_changed||0),'Files changed '+Number(risk.files_changed||0)));
+    var riskTitle='';
+    if(risk.main_entry_files && risk.main_entry_files.length){
+      riskTitle=' · '+risk.main_entry_files.join(', ');
+    }
     var statusCell=
       '<span class="pr-status-pill" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;'
       +(merged
@@ -4517,7 +4525,13 @@ function renderPullRequests(data){
       +(merged?('✅ '+t('prs_merged')):(closed?('⚪ '+t('prs_closed')):('🟡 '+t('prs_open'))))
       +(pr.is_draft?(' · '+t('prs_draft')):'')
       +'</span>';
-    html+='<tr style="cursor:pointer" onclick="togglePRDiff('+Number(pr.number||0)+','+idx+',\''+escapeAttr(pr.head_sha||'')+'\')">';
+    if(risk.is_risky){
+      statusCell+='<div class="pr-risk-pill" title="'+escapeAttr(_aiCmpText('风险提示：','Risk: ')+(riskHints.join(' · ')||_aiCmpText('请重点关注','Needs attention'))+riskTitle)+'">⚠️ '+_aiCmpText('RISK','RISK')+'</div>';
+      if(riskHints.length){
+        statusCell+='<div class="pr-risk-note">'+escapeHtml(riskHints.join(' · '))+'</div>';
+      }
+    }
+    html+='<tr class="'+(risk.is_risky?'pr-risk-row':'')+'" style="cursor:pointer" onclick="togglePRDiff('+Number(pr.number||0)+','+idx+',\''+escapeAttr(pr.head_sha||'')+'\')">';
     html+='<td><span class="log-hash">#'+escapeHtml(String(pr.number||''))+'</span></td>';
     var authorMain=(pr.author_name||pr.author_display||pr.author_login||pr.author||'');
     var authorId=(pr.author_login||pr.author||'').trim();
