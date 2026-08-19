@@ -4625,12 +4625,14 @@ function highlightPRDiffFiles(text, headSha, prNumber){
     html+='<div class="diff-file-header" onclick="toggleDiffFile(\''+fileId+'\',this)">';
     html+='<span class="file-toggle" id="'+fileId+'-toggle">▶</span>';
     html+='<b class="diff-file-title">'+escapeHtml(sec.file)+'</b>';
-    html+='<span class="diff-file-meta">'+sec.lines.length+' lines</span>';
+    html+='<span class="diff-file-meta">'+_aiCmpText('当前 ','Current ')+sec.lines.length+'</span>';
     html+='</div>';
-    html+='<div id="'+fileId+'" class="diff-file-body" style="display:none">'+highlightDiff(fileDiffText)+'</div>';
+    html+='<div id="'+fileId+'" class="diff-file-body" style="display:none">';
+    html+='<div class="diff-current-label">'+_aiCmpText('当前提交','Current Commit')+'</div>';
+    html+=highlightDiff(fileDiffText);
     html+='<div class="diff-file-actions">';
     html+='<button class="btn btn-sm btn-primary" title="'+escapeAttr(_aiCmpText('分析此文件改动','Analyze this file changes'))+'" onclick="event.stopPropagation();openPRAICompareFile(\''+escapeAttr(sec.file)+'\',\''+escapeAttr(headSha||'')+'\',\''+escapeAttr(prNumber)+'\')">🤖 AI Compare</button>';
-    html+='</div></div>';
+    html+='</div></div></div>';
   });
   return html;
 }
@@ -4880,13 +4882,15 @@ function highlightDiffFiles(text, commitHash){
     html+='<div class="diff-file-header" onclick="toggleDiffFile(\''+fileId+'\',this)">';
     html+='<span class="file-toggle" id="'+fileId+'-toggle">▶</span>';
     html+='<b class="diff-file-title">'+escapeHtml(sec.file)+'</b>';
-    html+='<span class="diff-file-meta">'+sec.lines.length+' lines</span>';
+    html+='<span class="diff-file-meta">'+_aiCmpText('当前 ','Current ')+sec.lines.length+'</span>';
     html+='</div>';
-    html+='<div id="'+fileId+'" class="diff-file-body" style="display:none">'+highlightDiff(fileDiffText)+'</div>';
+    html+='<div id="'+fileId+'" class="diff-file-body" style="display:none">';
+    html+='<div class="diff-current-label">'+_aiCmpText('当前提交','Current Commit')+'</div>';
+    html+=highlightDiff(fileDiffText);
     html+='<div class="diff-file-actions">';
     html+='<button class="btn btn-sm btn-secondary restore-file-btn" title="Restore this file to a specific commit — choose from commit history" data-file="'+escapeAttr(sec.file)+'" onclick="event.stopPropagation();openRestorePage(this.getAttribute(\'data-file\'))">📂 Restore to commit...</button>';
     html+=' <button class="btn btn-sm btn-primary" title="Open AI compare panel for this file" onclick="event.stopPropagation();openCommitAICompare(\''+escapeAttr(sec.file)+'\',\''+escapeAttr(commitHash)+'\')">🤖 AI Compare</button>';
-    html+='</div></div>';
+    html+='</div></div></div>';
   });
   return html;
 }
