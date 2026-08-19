@@ -56,6 +56,9 @@ var T = {
   reset_soft: {en:'Soft Reset', zh:'软重置'},
   reset_hard: {en:'Hard Reset', zh:'硬重置'},
   reset_desc: {en:'<b>Soft Reset</b>: Keeps working tree changes, moves commits back to staging.<br><b>Hard Reset</b>: Discards ALL changes back to that commit.', zh:'<b>Soft Reset</b>: 保留工作区改动，commit 回到暂存区。<br><b>Hard Reset</b>: 丢弃所有改动，直接回到该commit状态。'},
+  reset_hard_push_title: {en:'⚠️ Hard Reset Completed', zh:'⚠️ Hard Reset 已完成'},
+  reset_hard_push_desc: {en:'<b>Hard Reset rewrote local history.</b><br>If this branch was already pushed, your next push should use <b>Force Push</b>.<br><br>Push to remote now?', zh:'<b>Hard Reset 已改写本地历史。</b><br>如果此分支之前已推送到远端，下一步应使用 <b>Force Push</b>。<br><br>现在推送到远端吗？'},
+  reset_hard_force_btn: {en:'Force Push to Remote', zh:'Force Push 到远端'},
   revert_title: {en:'Revert', zh:'撤销'},
   revert_desc: {en:'Creates a new commit that undoes this commit. History is preserved.', zh:'创建一个新commit撤销该commit，不丢失历史。'},
   drop_title: {en:'Drop Commit', zh:'删除 Commit'},
@@ -64,6 +67,14 @@ var T = {
   squash_confirm: {en:'Squash {n} commits into one?', zh:'将 {n} 个commit合并为1个？'},
   squash_ok: {en:'Squash successful!', zh:'Squash 成功！'},
   squash_fail: {en:'Squash failed: ', zh:'Squash 失败: '},
+  squash_result_title: {en:'Squash Result', zh:'Squash 结果'},
+  squash_result_ready: {en:'Ready to push', zh:'可直接推送'},
+  squash_result_hash: {en:'Commit', zh:'提交'},
+  squash_result_msg: {en:'Message', zh:'消息'},
+  squash_result_focus_btn: {en:'Locate in Log', zh:'在日志中定位'},
+  squash_result_push_btn: {en:'Force Push Now', zh:'立即 Force Push'},
+  squash_result_clear_btn: {en:'Clear', zh:'清除'},
+  squash_result_missing_hash: {en:'Squash finished but no new commit hash was returned. Please refresh log and verify before pushing.', zh:'Squash 执行结束但未返回新 commit hash。请先刷新日志确认后再推送。'},
   reset_ok: {en:'Reset ({mode}) successful', zh:'Reset ({mode}) 成功'},
   reset_fail: {en:'Reset failed: ', zh:'Reset 失败: '},
   revert_ok: {en:'Revert successful', zh:'Revert 成功'},
@@ -291,6 +302,9 @@ var T = {
   force_push_btn: {en:'Force Push Now', zh:'立即 Force Push'},
   force_push_later: {en:'Later', zh:'稍后手动操作'},
   squash_tip: {en:'💡 Tip: Check 2 or more commit checkboxes to merge them into one commit (Squash)', zh:'💡 提示：勾选 2 个或以上 commit 的 checkbox，可将它们合并为一个新 commit（Squash）'},
+  log_scroll_hint: {en:'↑ scroll up to see more commits ↑', zh:'↑ 向上滚动查看更多提交 ↑'},
+  squash_panel_title: {en:'Squash Commits', zh:'Squash 合并'},
+  squash_nonadj_note: {en:'Non-adjacent commits selected — they will be grouped at the oldest position via interactive rebase. Only these commits are squashed; others are NOT affected.', zh:'所选 commit 不相邻，将通过 interactive rebase 把它们集中后再合并，其余 commit 顺序不变、不受影响。'},
   create_branch_btn: {en:'+ Create Branch', zh:'+ 新建分支'},
   new_branch_placeholder: {en:'New branch name...', zh:'新分支名...'},
   branch_search_placeholder: {en:'Search branches (fuzzy)...', zh:'搜索分支（模糊匹配）...'},
@@ -613,10 +627,88 @@ var expandedPaths = {};
 var modalCallback = null;
 var resolvedConflicts = {};
 var squashSelected = {};
+var squashCommitCache = {};  // hash → full commit data, persists across page turns
+var lastSquashResult = null; // {hash, message, selectedCount}
 var currentLogData = null;
+var logUnsignedFilter = false;
 var _lastGitOpCtx = null;
 var _aiFixActive = false;
 var _aiFixLogs = {};
+
+// ── Commit log local cache ────────────────────────────────────────────────────
+var _logCache = {
+  branch: null, headHash: null, total: 0, perPage: 10, order: 'desc', pages: {}
+};
+
+function _logCacheStorageKey(branch, perPage, order) {
+  return 'gitboard_log_' + (branch||'') + '_' + perPage + '_' + order;
+}
+
+function _saveLogCache() {
+  try {
+    var key = _logCacheStorageKey(_logCache.branch, _logCache.perPage, _logCache.order);
+    localStorage.setItem(key, JSON.stringify(_logCache));
+  } catch(e) {}
+}
+
+function _tryRestoreLogCache(branch, perPage, order) {
+  try {
+    // If branch is known, try direct key first
+    if (branch) {
+      var key = _logCacheStorageKey(branch, perPage, order);
+      var raw = localStorage.getItem(key);
+      if (raw) {
+        var d = JSON.parse(raw);
+        if (d && d.perPage == perPage && d.order === order) {
+          _logCache = d;
+          return true;
+        }
+      }
+    }
+    // Branch unknown (first load): scan localStorage for any matching entry
+    var prefix = 'gitboard_log_';
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.startsWith(prefix)) {
+        var d2 = JSON.parse(localStorage.getItem(k));
+        if (d2 && d2.perPage == perPage && d2.order === order && d2.pages) {
+          _logCache = d2;
+          return true;
+        }
+      }
+    }
+  } catch(e) {}
+  return false;
+}
+
+function _invalidateLogCache() {
+  _logCache.pages = {};
+  _logCache.headHash = null;
+  _saveLogCache();
+}
+
+// Aggressive: remove ALL persisted log caches (all branches/perPage/order combos).
+// Use after history-rewriting operations (squash, rebase, reset, drop) and after push,
+// so a stale entry under a different key never resurrects old commits in the UI.
+function _purgeAllLogCaches() {
+  try {
+    var toDel = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf('gitboard_log_') === 0) toDel.push(k);
+    }
+    toDel.forEach(function(k){ try { localStorage.removeItem(k); } catch(e) {} });
+  } catch(e) {}
+  _logCache.pages = {};
+  _logCache.headHash = null;
+}
+
+// Use after any git mutation (commit/squash/push/rebase/reset/revert/drop)
+function _reloadLog(page) {
+  _invalidateLogCache();
+  loadLog(page || 1);
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 function _rememberGitOp(name, retryFn){
   _lastGitOpCtx = {name:name||'', retry:typeof retryFn==='function'?retryFn:null, ts:Date.now()};
@@ -705,7 +797,13 @@ function escapeJS(s){return escapeAttr(s).replace(/\\/g,'\\\\').replace(/'/g,"\\
 function addMsg(msg, cls, opts) {
   cls=cls||'info';
   opts=opts||{};
-  var maxLines = opts.maxLines || 0; // 0 = no limit
+  // Global cap: every message (red/blue/green) shows at most 10 lines. If the
+  // caller passes a smaller maxLines we respect it; larger values (or the
+  // default 0 = unlimited) are clamped to 10 so long stack traces / reflogs
+  // never blow up the message area — they become a scrollable box instead.
+  var GLOBAL_MSG_LINE_CAP = 10;
+  var requested = opts.maxLines || GLOBAL_MSG_LINE_CAP;
+  var maxLines = Math.min(requested, GLOBAL_MSG_LINE_CAP);
   msgLog.push({time:new Date().toLocaleString(), type:cls, text:msg});
   _saveMsgLogToStorage();
   updateMsgCount();
@@ -759,7 +857,19 @@ function addMsgWithAction(msg, cls, actions) {
   var div=document.createElement('div');
   div.className='msg-item '+cls;
   div.id=id;
-  div.innerHTML='<div class="msg-main"><span class="msg-text">'+escapeHtml(msg)+'</span><span class="msg-close" onclick="dismissMsg(\''+id+'\')">✕</span></div><div class="msg-actions"></div>';
+  // Same 10-line cap as addMsg — long errors become a scrollable box.
+  var GLOBAL_MSG_LINE_CAP = 10;
+  var lines = (msg || '').split('\n');
+  var needScroll = lines.length > GLOBAL_MSG_LINE_CAP;
+  var textHtml;
+  if (needScroll) {
+    textHtml = '<span class="msg-text msg-text-scroll" style="display:block;max-height:'
+      +(GLOBAL_MSG_LINE_CAP*1.6)+'em;overflow-y:auto;white-space:pre-wrap;font-family:monospace;font-size:12px;line-height:1.6">'
+      +escapeHtml(msg)+'</span>';
+  } else {
+    textHtml = '<span class="msg-text">'+escapeHtml(msg)+'</span>';
+  }
+  div.innerHTML='<div class="msg-main">'+textHtml+'<span class="msg-close" onclick="dismissMsg(\''+id+'\')">✕</span></div><div class="msg-actions"></div>';
   var actionWrap = div.querySelector('.msg-actions');
   (actions||[]).forEach(function(a){
     var b=document.createElement('button');
@@ -1743,71 +1853,75 @@ function doPush(credentials, force, remoteBranch){
 
   // If GPG signing is enabled, check for unsigned commits before pushing
   if (gpgEnabled && !doPush._skipResignCheck) {
-    apiGet('/api/unsigned-commits?base=develop', function(info) {
-      if (info.has_unsigned) {
-        showModalDouble(
-          '🔏 Unsigned Commits Detected',
-          'Found <b>' + info.unsigned_count + '</b> unsigned commit(s) out of ' + info.total_count + ' on this branch.<br><br>' +
-          'Re-sign all commits with GPG before pushing?<br>' +
-          '<span style="font-size:12px;color:#6b7280">(This will rebase and force push)</span>',
-          '🔏 Re-sign & Push',
-          function() {
-            addMsg('🔏 Re-signing commits...', 'info');
-            apiPost('/api/resign-commits', {base: 'develop'}, function(d) {
-              if (d.ok) {
-                addMsg('✅ ' + d.message, 'success');
-                // Now force push since rebase rewrites history
-                doPush._skipResignCheck = true;
-                doPush(credentials, true, remoteBranch);
-                doPush._skipResignCheck = false;
-              } else {
-                var resignErr = (d && d.error) || '';
-                addMsg('❌ Re-sign failed: ' + resignErr, 'error');
-                var canAutoFix = /cannot rebase:\s*You have unstaged changes/i.test(resignErr) ||
-                                 /Please commit or stash them/i.test(resignErr);
-                if (canAutoFix) {
-                  showModalDouble(
-                    '🧹 Auto Fix Re-sign Failure',
-                    'Detected local changes blocking rebase.<br><br>' +
-                    'Run <b>auto stash + re-sign</b>, then push immediately?',
-                    '🧹 Auto Fix & Push',
-                    function() {
-                      addMsg('🧹 Auto-fixing and re-signing commits...', 'info');
-                      apiPost('/api/resign-commits-autofix', {base: 'develop'}, function(fix) {
-                        if (fix.ok) {
-                          addMsg('✅ ' + fix.message, 'success');
-                          doPush._skipResignCheck = true;
-                          doPush(credentials, true, remoteBranch);
-                          doPush._skipResignCheck = false;
-                        } else {
-                          addMsg('❌ Auto-fix failed: ' + ((fix && fix.error) || ''), 'error');
-                        }
-                      });
-                    },
-                    'Close',
-                    function() {},
-                    'btn-primary',
-                    'btn-secondary'
-                  );
+    // Detect the actual base branch first — never hard-code 'develop'
+    apiPost('/api/detect-base', {}, function(baseData) {
+      var detectedBase = (baseData && baseData.base) || 'origin/develop';
+      apiGet('/api/unsigned-commits?base=' + encodeURIComponent(detectedBase), function(info) {
+        if (info.has_unsigned) {
+          showModalDouble(
+            '🔏 Unsigned Commits Detected',
+            'Found <b>' + info.unsigned_count + '</b> unsigned commit(s) out of ' + info.total_count + ' on this branch.<br><br>' +
+            'Re-sign all commits with GPG before pushing?<br>' +
+            '<span style="font-size:12px;color:#6b7280">(Base detected: <code>' + escapeHtml(detectedBase) + '</code>)</span>',
+            '🔏 Re-sign & Push',
+            function() {
+              addMsg('🔏 Re-signing commits...', 'info');
+              apiPost('/api/resign-commits', {base: detectedBase}, function(d) {
+                if (d.ok) {
+                  addMsg('✅ ' + d.message, 'success');
+                  // Now force push since rebase rewrites history
+                  doPush._skipResignCheck = true;
+                  doPush(credentials, true, remoteBranch);
+                  doPush._skipResignCheck = false;
+                } else {
+                  var resignErr = (d && d.error) || '';
+                  addMsg('❌ Re-sign failed: ' + resignErr, 'error');
+                  var canAutoFix = /cannot rebase:\s*You have unstaged changes/i.test(resignErr) ||
+                                   /Please commit or stash them/i.test(resignErr);
+                  if (canAutoFix) {
+                    showModalDouble(
+                      '🧹 Auto Fix Re-sign Failure',
+                      'Detected local changes blocking rebase.<br><br>' +
+                      'Run <b>auto stash + re-sign</b>, then push immediately?',
+                      '🧹 Auto Fix & Push',
+                      function() {
+                        addMsg('🧹 Auto-fixing and re-signing commits...', 'info');
+                        apiPost('/api/resign-commits-autofix', {base: detectedBase}, function(fix) {
+                          if (fix.ok) {
+                            addMsg('✅ ' + fix.message, 'success');
+                            doPush._skipResignCheck = true;
+                            doPush(credentials, true, remoteBranch);
+                            doPush._skipResignCheck = false;
+                          } else {
+                            addMsg('❌ Auto-fix failed: ' + ((fix && fix.error) || ''), 'error');
+                          }
+                        });
+                      },
+                      'Close',
+                      function() {},
+                      'btn-primary',
+                      'btn-secondary'
+                    );
+                  }
                 }
-              }
-            });
-          },
-          'Skip & Push Anyway',
-          function() {
-            doPush._skipResignCheck = true;
-            doPush(credentials, force, remoteBranch);
-            doPush._skipResignCheck = false;
-          },
-          'btn-primary',
-          'btn-secondary'
-        );
-      } else {
-        // All signed, proceed normally
-        doPush._skipResignCheck = true;
-        doPush(credentials, force, remoteBranch);
-        doPush._skipResignCheck = false;
-      }
+              });
+            },
+            'Skip & Push Anyway',
+            function() {
+              doPush._skipResignCheck = true;
+              doPush(credentials, force, remoteBranch);
+              doPush._skipResignCheck = false;
+            },
+            'btn-primary',
+            'btn-secondary'
+          );
+        } else {
+          // All signed, proceed normally
+          doPush._skipResignCheck = true;
+          doPush(credentials, force, remoteBranch);
+          doPush._skipResignCheck = false;
+        }
+      });
     });
     return;
   }
@@ -1877,8 +1991,67 @@ function doPush(credentials, force, remoteBranch){
           if(r.ok){
             if(ld3) ld3.innerHTML+='<span style="color:#4ade80;font-weight:700">✅ Push succeeded!\n</span>';
             addMsg('✅ Push OK','success');
+            // Capture pending squash context BEFORE clearing so we can post-verify.
+            var _pendingSquashVerify = (lastSquashResult && lastSquashResult.selectedHashes && lastSquashResult.selectedHashes.length)
+              ? {hashes:lastSquashResult.selectedHashes.slice(), squashHash:lastSquashResult.hash}
+              : null;
+            clearSquashResultSection();
+            // Nuke any stale localStorage log caches (all branches) so the UI never
+            // resurrects the pre-squash commit list from cache.
+            _purgeAllLogCaches();
             // Reload log and branch so commit history reflects force-push/rewrite
-            loadLog(1); loadCurrentBranch();
+            _reloadLog(1); loadCurrentBranch();
+            // Post-push verification: if we just pushed after a squash, confirm the
+            // squashed commits are truly gone from both local HEAD and remote branch.
+            if(_pendingSquashVerify){
+              var qs='/api/check-commits-present?hashes='+encodeURIComponent(_pendingSquashVerify.hashes.join(','));
+              apiGet(qs,function(vr){
+                if(!vr||!vr.ok) return;
+                var stillLocal=(vr.present_local||[]).filter(function(h){
+                  return h!==_pendingSquashVerify.squashHash;
+                });
+                var stillRemote=(vr.present_remote||[]).filter(function(h){
+                  return h!==_pendingSquashVerify.squashHash;
+                });
+                if(stillLocal.length===0 && stillRemote.length===0) return;
+                var shortList=function(arr){return arr.map(function(x){return x.substring(0,8);}).join(', ');};
+                var lines=[];
+                lines.push((L==='zh')
+                  ? '❌ Push 完成，但被 squash 的 commit 依然存在。Squash 实际上没有改写历史。'
+                  : '❌ Push completed, but the squashed commits are still present. The squash did not actually rewrite history.');
+                if(stillLocal.length){
+                  lines.push((L==='zh'?'本地 HEAD 仍可达: ':'Still reachable from local HEAD: ')+shortList(stillLocal));
+                }
+                if(stillRemote.length){
+                  lines.push((L==='zh'?'远端分支仍可达: ':'Still reachable on remote branch: ')+shortList(stillRemote));
+                }
+                lines.push((L==='zh')
+                  ? '常见原因: 选中的 commit 位于合并 (merge) 之下，rebase -i 静默跳过了 merge，导致 drop 未生效。'
+                  : 'Common cause: selected commits live below a merge; rebase -i silently skipped the merge so the drop had no effect.');
+                lines.push((L==='zh')
+                  ? '建议: 先 rebase 展平/去掉相关 merge，或在一个仅含目标 commit 的 topic 分支上重试 squash。'
+                  : 'Suggestion: flatten/remove the merge first, or retry the squash on a topic branch that contains only the target commits.');
+                addMsg(lines.join('\n'),'error',{maxLines:20});
+                setSquashResult(_pendingSquashVerify.squashHash,
+                  (L==='zh'?'⚠️ Push 完成但未真正 squash':'⚠️ Push done but squash did NOT take effect'),
+                  _pendingSquashVerify.hashes.length,
+                  _pendingSquashVerify.hashes);
+                // Pull the last 40 HEAD reflog entries so we can see exactly
+                // what moved HEAD back onto the old commits (post-commit hook,
+                // pull, reset, external process, etc.). This is high-signal
+                // for diagnosing "squash succeeded then vanished".
+                apiGet('/api/head-reflog?limit=40',function(rl){
+                  if(!rl||!rl.ok) return;
+                  var reflogTxt=(rl.reflog||'').trim();
+                  var headTxt=(rl.head||'').substring(0,12);
+                  var brTxt=rl.branch||'';
+                  var header=(L==='zh')
+                    ? ('🔍 当前 HEAD='+headTxt+' 分支='+brTxt+'\n最近 HEAD 变动 (reflog, 最新在最前):')
+                    : ('🔍 Current HEAD='+headTxt+' branch='+brTxt+'\nRecent HEAD moves (reflog, newest first):');
+                  addMsg(header+'\n'+(reflogTxt||'(empty)'),'info',{maxLines:60});
+                });
+              });
+            }
             // Re-enable close button
             var cbOk=document.querySelector('#modal-btns .btn-warning');
             if(cbOk){cbOk.disabled=false;cbOk.style.opacity='';cbOk.textContent='Close';cbOk.onclick=closeModal;}
@@ -1931,17 +2104,96 @@ function doPush(credentials, force, remoteBranch){
             clsBtn2.className='btn btn-secondary';clsBtn2.textContent='Close';clsBtn2.onclick=closeModal;
             btnsDiv2.appendChild(clsBtn2);
             if(isAnyRejected){
-              if(isNonFastForward&&!isRejectedFetchFirst){
-                if(ld3) ld3.innerHTML+='<span style="color:#fbbf24">💡 Local branch is behind remote (e.g. after git reset --hard).\n   Use Force Push to overwrite remote, or Pull to sync first.\n</span>';
-              }else{
-                if(ld3) ld3.innerHTML+='<span style="color:#fbbf24">💡 Remote has new commits. Pull first, then push.\n</span>';
-              }
+              // Detect whether the non-fast-forward is because we just rebased
+              var justRebased = isNonFastForward && !isRejectedFetchFirst &&
+                                _lastRebaseForcePushContext &&
+                                _lastRebaseForcePushContext.branch === branch;
+
+              // Default hint; will be overwritten by diverge-status check below
+              var hintMsgId = 'push-fail-hint-'+Date.now();
+              var hintHtml = justRebased
+                ? '<span style="color:#fbbf24">💡 Rebase rewrites commit history — Force Push is required.\n   Pulling would create duplicate commits. Do NOT pull.\n</span>'
+                : '<span style="color:#94a3b8" id="'+hintMsgId+'">🔍 Checking branch status...\n</span>';
+              if(ld3) ld3.innerHTML+=hintHtml;
+
+              // Pull & Retry — hidden/secondary when we just rebased (may be updated below)
               var pullRetryBtn=document.createElement('button');
-              pullRetryBtn.className='btn btn-success';
+              pullRetryBtn.className= justRebased ? 'btn btn-secondary' : 'btn btn-success';
               pullRetryBtn.textContent='⬇️ Pull & Retry Push';
+              if(justRebased){
+                pullRetryBtn.title=(L==='zh')
+                  ?'Rebase 后不应该 Pull，这会产生重复 commit。请使用 Force Push。'
+                  :'After a rebase you should NOT pull — it creates duplicate commits. Use Force Push instead.';
+              }
+
+              // Async diverge check — update hint + button styles when result arrives
+              if(!justRebased && isNonFastForward){
+                apiPost('/api/branch-diverge-status', {remote_branch: effectiveRemote !== branch ? effectiveRemote : null}, function(ds){
+                  var hintEl = document.getElementById(hintMsgId);
+                  if(!hintEl || !ds) return;
+                  if(ds.diverged){
+                    // Local was rewritten (rebase/resign/squash) — force push is the only safe answer.
+                    hintEl.style.color='#fbbf24';
+                    hintEl.textContent='💡 Branch is diverged: local has '+(ds.ahead||0)+' commit(s) remote doesn\'t, remote has '+(ds.behind||0)+' the local doesn\'t.\n'
+                      +'   This typically means a rebase / squash / resign changed local history.\n'
+                      +'   ⚠️ DO NOT Pull — `git pull --rebase` will silently drop your local rewrite via patch-id matching.\n'
+                      +'   ✅ Use Force Push (--force-with-lease) to update remote.\n'
+                      +(ds.ownCommits > 0 ? '   ✅ You have '+ds.ownCommits+' signed commit(s) of your own ready to push.\n' : '');
+                    // Promote Force Push, HARD-DISABLE Pull
+                    forceBtn.className='btn btn-warning';
+                    forceBtn.textContent=(L==='zh')?'🚀 Force Push（推荐）':'🚀 Force Push (recommended)';
+                    pullRetryBtn.className='btn btn-secondary';
+                    pullRetryBtn.disabled=true;
+                    pullRetryBtn.style.opacity='0.45';
+                    pullRetryBtn.style.cursor='not-allowed';
+                    pullRetryBtn.textContent=(L==='zh')
+                      ?'⬇️ Pull（已禁用，分支已分叉）'
+                      :'⬇️ Pull (disabled — branch diverged)';
+                    pullRetryBtn.title=(L==='zh')
+                      ?'分支已分叉：本地有 rewrite（squash/rebase/amend），Pull 会通过 patch-id 匹配把你的 squash commit 悄悄丢掉，回到远端 tip。请点 Force Push。'
+                      :'Branch diverged: local has a rewrite (squash/rebase/amend). Pulling would use patch-id matching to silently drop your squash commit and revert to the remote tip. Use Force Push instead.';
+                    // Re-order buttons: force first
+                    var parent = forceBtn.parentNode;
+                    if(parent){ parent.removeChild(forceBtn); parent.insertBefore(forceBtn, pullRetryBtn); }
+                  } else if(ds.onlyBehind){
+                    hintEl.style.color='#fbbf24';
+                    hintEl.textContent='💡 Remote has '+(ds.behind||0)+' new commit(s) your local branch doesn\'t have.\n'
+                      +'   Pull first to integrate remote changes, then push.\n';
+                  } else {
+                    hintEl.style.color='#fbbf24';
+                    hintEl.textContent='💡 Push rejected. Check remote for conflicts.\n';
+                  }
+                });
+              }
               pullRetryBtn.onclick=function(){
                 pullRetryBtn.disabled=true;pullRetryBtn.textContent='Pulling...';
                 var ld4=document.getElementById(logDivId);
+                // Pre-flight: check for active rebase or unmerged files before pulling
+                apiGet('/api/git-state',function(gs){
+                  if(gs && (gs.rebaseInProgress || gs.hasUnmerged)){
+                    var detail = gs.rebaseInProgress
+                      ? (L==='zh' ? '检测到进行中的 Rebase 状态' : 'An in-progress rebase was detected')
+                      : (L==='zh'
+                          ? '存在未解决的冲突文件：' + (gs.unmergedFiles||[]).slice(0,3).join(', ')
+                          : 'Unmerged conflict files: ' + (gs.unmergedFiles||[]).slice(0,3).join(', '));
+                    if(ld4) ld4.innerHTML+='<span style="color:#f87171">❌ Cannot pull: '+escapeHtml(detail)+'</span>\n';
+                    if(ld4) ld4.innerHTML+='<span style="color:#fbbf24">⏳ Aborting leftover rebase state first...\n</span>';
+                    apiPost('/api/conflict-reset',{},function(ar){
+                      if(ar&&ar.ok){
+                        if(ld4) ld4.innerHTML+='<span style="color:#4ade80">✅ Rebase state cleared. Retrying pull...\n</span>';
+                        _doPullAndRetry();
+                      } else {
+                        if(ld4) ld4.innerHTML+='<span style="color:#f87171">❌ Could not clear state: '+escapeHtml((ar&&ar.error)||'')+'</span>\n';
+                        if(ld4) ld4.innerHTML+='<span style="color:#fbbf24">👉 Go to Conflicts tab to resolve, then push manually.\n</span>';
+                        pullRetryBtn.disabled=false; pullRetryBtn.textContent='⬇️ Pull & Retry Push';
+                        checkConflicts(); loadConflicts();
+                      }
+                    });
+                    return;
+                  }
+                  _doPullAndRetry();
+                });
+                function _doPullAndRetry(){
                 apiGet('/api/has-uncommitted',function(hasData){
                   var shouldStash=!!(hasData&&hasData.hasChanges);
                   var doPullAndRetry=function(){
@@ -1975,8 +2227,9 @@ function doPush(credentials, force, remoteBranch){
                     if(ld4) ld4.innerHTML+='<span style="color:#4ade80">✅ Stashed local changes. Continue pulling...\n</span>';
                     doPullAndRetry();
                   });
-                });
-              };
+                }); // closes apiGet has-uncommitted
+              } // closes _doPullAndRetry
+              }; // closes pullRetryBtn.onclick
               var forceBtn=document.createElement('button');
               forceBtn.className='btn btn-warning';
               forceBtn.textContent='⚠️ Force Push';
@@ -2007,23 +2260,31 @@ function doPush(credentials, force, remoteBranch){
                   :'🛠 Rebuild from Rebase Base & Force Push';
                 rebuildBtn.onclick=function(){
                   var baseBranch=_lastRebaseForcePushContext.baseBranch;
-                  var warn=(L==='zh')
-                    ?'<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:12px 14px;margin-bottom:10px;color:#7f1d1d">'
-                      +'<b>⚠️ 将执行重写历史操作</b><br><br>'
-                      +'将按以下步骤自动执行：<br>'
+                                  var gpgOn=(document.getElementById('gpg-sign-toggle')||{}).checked;
+                                  var gpgNote=gpgOn
+                                    ?(L==='zh'
+                                      ?'<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;margin-top:8px;color:#166534;font-size:12px">🔏 GPG 签名已开启 — cherry-pick 会自动附加签名</div>'
+                                      :'<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;margin-top:8px;color:#166534;font-size:12px">🔏 GPG signing is ON — the cherry-picked commit will be signed automatically</div>')
+                                    :(L==='zh'
+                                      ?'<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:8px 12px;margin-top:8px;color:#92400e;font-size:12px">⚠️ GPG 签名未开启 — 如果远端要求签名验证，push 仍会被拒绝。请先在右上角打开 GPG 开关。</div>'
+                                      :'<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:8px 12px;margin-top:8px;color:#92400e;font-size:12px">⚠️ GPG signing is OFF — if the remote requires verified signatures, the push will still be rejected. Enable the GPG toggle first.</div>');
+                                  var warn=(L==='zh')
+                                    ?'<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:12px 14px;margin-bottom:10px;color:#7f1d1d">'
+                                      +'<b>⚠️ 将执行重写历史操作</b><br><br>'
+                                      +'将按以下步骤自动执行：<br>'
                       +'1) <code>git reset --hard '+escapeHtml(baseBranch)+'</code><br>'
-                      +'2) <code>git cherry-pick 原HEAD</code><br>'
+                                      +'2) <code>git cherry-pick 原HEAD</code><br>'
                       +'3) <code>git push --force-with-lease</code><br><br>'
-                      +'仅保留“当前顶部 commit”，其它本地新增 commit 会被移除。'
-                      +'</div>'
-                    :'<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:12px 14px;margin-bottom:10px;color:#7f1d1d">'
-                      +'<b>⚠️ This rewrites history</b><br><br>'
-                      +'It will run:<br>'
-                      +'1) <code>git reset --hard '+escapeHtml(baseBranch)+'</code><br>'
-                      +'2) <code>git cherry-pick previous HEAD</code><br>'
-                      +'3) <code>git push --force-with-lease</code><br><br>'
-                      +'Only the current top commit will be kept; other local extra commits are removed.'
-                      +'</div>';
+                                      +'仅保留"当前顶部 commit"，其它本地新增 commit 会被移除。'
+                                      +'</div>'+gpgNote
+                                    :'<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:12px 14px;margin-bottom:10px;color:#7f1d1d">'
+                                      +'<b>⚠️ This rewrites history</b><br><br>'
+                                      +'It will run:<br>'
+                                      +'1) <code>git reset --hard '+escapeHtml(baseBranch)+'</code><br>'
+                                      +'2) <code>git cherry-pick previous HEAD</code><br>'
+                                      +'3) <code>git push --force-with-lease</code><br><br>'
+                                      +'Only the current top commit will be kept; other local extra commits are removed.'
+                                      +'</div>'+gpgNote;
                   showModal(
                     (L==='zh')?'🛠 重建并强推':'🛠 Rebuild & Force Push',
                     warn,
@@ -2038,7 +2299,7 @@ function doPush(credentials, force, remoteBranch){
                         if(rr&&rr.ok){
                           addMsg((L==='zh')?'✅ 重建并强推成功':'✅ Rebuild + force push succeeded','success');
                           if(rr.stdout) addMsg('📋 '+rr.stdout,'info',{maxLines:16});
-                          loadLog(1); loadCurrentBranch(); loadFiles();
+                          _reloadLog(1); loadCurrentBranch(); loadFiles();
                         }else{
                           addMsg((L==='zh'?'❌ 重建并强推失败: ':'❌ Rebuild + force push failed: ')+((rr&&rr.error)||''),'error',{maxLines:16});
                           if(rr&&rr.stdout) addMsg('📋 '+rr.stdout,'info',{maxLines:16});
@@ -2049,8 +2310,16 @@ function doPush(credentials, force, remoteBranch){
                 };
                 btnsDiv2.appendChild(rebuildBtn);
               }
-              btnsDiv2.appendChild(forceBtn);
-              btnsDiv2.appendChild(pullRetryBtn);
+              if(justRebased){
+                // After rebase: Force Push is the correct action — place it first and highlight it
+                forceBtn.className='btn btn-warning';
+                forceBtn.textContent=(L==='zh')?'🚀 Force Push（推荐）':'🚀 Force Push (recommended)';
+                btnsDiv2.appendChild(forceBtn);
+                btnsDiv2.appendChild(pullRetryBtn);
+              } else {
+                btnsDiv2.appendChild(forceBtn);
+                btnsDiv2.appendChild(pullRetryBtn);
+              }
             }
           }
         } else {
@@ -2218,7 +2487,7 @@ function _startGitopStream(op, mode, onDone){
           checkConflicts();
           if(r.ok && op==='pull'){
             loadCurrentBranch();
-            loadLog(1);
+            _reloadLog(1);
             loadFiles();
           }
           if(onDone) onDone(r.ok);
@@ -2301,6 +2570,52 @@ function doFetch() {
 }
 
 function handlePullErr(err) {
+  // Divergence guard triggered on backend: local was rewritten (squash /
+  // rebase / amend) and pulling would silently drop it via patch-id matching.
+  // Show a dedicated modal that steers the user to Force Push.
+  if(err && (err.indexOf('Pull blocked: branch')>=0 || err.indexOf('diverged') >= 0 && err.indexOf('patch-id')>=0)){
+    var title=(L==='zh')?'⛔ Pull 已被拦截（分支已分叉）':'⛔ Pull blocked (branch diverged)';
+    var body=(L==='zh')
+      ? '<div style="font-size:13px;line-height:1.7">'
+        +'<b>你的本地分支有 rewrite（Squash / Rebase / Amend），如果 Pull 会被 <code>git pull --rebase</code> 通过 patch-id 匹配悄悄丢掉，回到远端 tip。</b><br><br>'
+        +'✅ 正确做法：点右上或每行的 <b>Force Push</b>（<code>--force-with-lease</code>）把本地 rewrite 推上去。<br><br>'
+        +'⚠️ 如果你 <b>确实</b> 想放弃本地 rewrite 用远端覆盖，可以点下面 "Pull Anyway"（会强制 Pull）。'
+        +'<pre style="background:#0f172a;color:#e2e8f0;padding:10px 12px;border-radius:6px;font-size:12px;max-height:180px;overflow:auto;white-space:pre-wrap;word-break:break-all;margin-top:10px">'
+        +escapeHtml(err)+'</pre></div>'
+      : '<div style="font-size:13px;line-height:1.7">'
+        +'<b>Your local branch has a rewrite (Squash / Rebase / Amend). Pulling now would let <code>git pull --rebase</code> patch-id-match your local commits and silently drop them back to the remote tip.</b><br><br>'
+        +'✅ Correct next step: click <b>Force Push</b> (<code>--force-with-lease</code>) to publish your local rewrite.<br><br>'
+        +'⚠️ If you <b>really</b> want to discard the local rewrite and reset onto remote, use "Pull Anyway" below.'
+        +'<pre style="background:#0f172a;color:#e2e8f0;padding:10px 12px;border-radius:6px;font-size:12px;max-height:180px;overflow:auto;white-space:pre-wrap;word-break:break-all;margin-top:10px">'
+        +escapeHtml(err)+'</pre></div>';
+    showModal(title, body, (L==='zh')?'知道了':'Got it', null);
+    var btnsDiv=document.getElementById('modal-btns');
+    if(btnsDiv){
+      var forceLink=document.createElement('button');
+      forceLink.className='btn btn-warning';
+      forceLink.textContent=(L==='zh')?'🚀 Force Push':'🚀 Force Push';
+      forceLink.onclick=function(){ closeModal(); doForcePush(); };
+      var pullAnyway=document.createElement('button');
+      pullAnyway.className='btn btn-danger';
+      pullAnyway.textContent=(L==='zh')?'⬇️ 强制 Pull（放弃本地 rewrite）':'⬇️ Pull Anyway (discard local rewrite)';
+      pullAnyway.onclick=function(){
+        closeModal();
+        addMsg((L==='zh')?'⬇️ 强制 Pull（force=true）...':'⬇️ Force pulling (force=true)...','info');
+        apiPost('/api/pull',{mode:'rebase',force:true},function(pd){
+          if(pd && pd.ok){
+            addMsg('✅ '+t('pull_ok'),'success');
+            _reloadLog(1); loadFiles(); loadCurrentBranch(); checkConflicts();
+          } else {
+            addMsg((L==='zh'?'❌ Pull 失败: ':'❌ Pull failed: ')+((pd&&(pd.error||pd.log))||''),'error',{maxLines:12});
+          }
+        });
+      };
+      btnsDiv.insertBefore(forceLink, btnsDiv.firstChild);
+      btnsDiv.appendChild(pullAnyway);
+    }
+    addMsg((L==='zh')?'⛔ Pull 被拦截：分支已分叉。请 Force Push，不要 Pull。':'⛔ Pull blocked: branch diverged. Force Push instead of Pull.','error',{maxLines:8});
+    return;
+  }
   if(err.indexOf('CONFLICT')>=0||err.indexOf('conflict')>=0||err.indexOf('Automatic merge failed')>=0){
     addMsg('⚠️ '+t('pull_conflict')+' — 请在 Conflicts 标签页中手动解决冲突','error');
     checkConflicts();
@@ -2820,7 +3135,7 @@ function checkoutBranch(branchName){
         var el=document.getElementById('branch-name');
         if(el) el.textContent=branchName;
         addMsg('✅ Switched to ' + branchName, 'success');
-        loadLog(1); loadFiles(); loadBranches(1);
+        _reloadLog(1); loadFiles(); loadBranches(1);
         setTimeout(function(){ window.location.reload(); }, 800);
       } else {
         var err = data.error || '';
@@ -3112,7 +3427,7 @@ function _doMerge(sourceBranch,curBranch,msg){
       +escapeHtml((data.log||'').trim())+'</div>';
     if(data.ok){
       addMsg('✅ Merged '+sourceBranch+' into '+curBranch,'success');
-      loadFiles();loadLog(1);checkConflicts();
+      loadFiles();_reloadLog(1);checkConflicts();
       showModalDouble(
         '✅ Merge succeeded',
         logBox+'<b>Push <code>'+escapeHtml(curBranch)+'</code> to remote now?</b>',
@@ -3172,6 +3487,92 @@ function _doMerge(sourceBranch,curBranch,msg){
 }
 
 function _doRebase(sourceBranch,curBranch){
+  // ── After rebase: check for unsigned commits, offer to squash, then push ──
+  function checkUnsignedAndPush(logBox){
+    apiGet('/api/unsigned-commit-list?base='+encodeURIComponent(sourceBranch),function(info){
+      var unsigned=(info&&info.unsigned)||[];
+      if(unsigned.length===0){ showForcePushPrompt(logBox); return; }
+
+      // ── Dialog 1: list unsigned commits and ask whether to squash ──
+      var rows='';
+      unsigned.slice(0,10).forEach(function(c){
+        rows+='<tr>'
+          +'<td style="font-family:monospace;color:#7c3aed;padding:2px 8px 2px 0;white-space:nowrap">'+escapeHtml(c.short)+'</td>'
+          +'<td style="color:#374151;padding:2px 0;line-height:1.4">'+escapeHtml(c.subject)+'</td>'
+          +'</tr>';
+      });
+      var extra=unsigned.length>10
+        ?'<tr><td colspan="2" style="color:#6b7280;font-style:italic;padding-top:4px">…and '+(unsigned.length-10)+' more</td></tr>':'';
+
+      var bodyHtml=
+        '<div style="background:#fef9c3;border:2px solid #fbbf24;border-radius:10px;padding:14px 16px;margin-bottom:12px">'
+        +'<div style="font-size:14px;font-weight:800;color:#92400e;margin-bottom:8px">🔓 '
+        +(L==='zh'
+          ?'Rebase 后检测到 <b>'+unsigned.length+'</b> 个未签名 commit'
+          :'Found <b>'+unsigned.length+'</b> unsigned commit(s) after rebase')
+        +'</div>'
+        +'<div style="font-size:13px;color:#78350f;margin-bottom:10px;line-height:1.6">'
+        +(L==='zh'
+          ?'以下 commit 缺少 GPG 签名。你可以将它们 <b>Squash</b> 成一个签名 commit，或直接跳过继续推送。'
+          :'The following commits are missing GPG signatures. You can <b>squash</b> them into one signed commit, or skip and push as-is.')
+        +'</div>'
+        +'<div style="overflow-x:auto;max-height:180px;overflow-y:auto"><table style="font-size:12px;width:100%;border-collapse:collapse">'
+        +rows+extra+'</table></div>'
+        +'</div>';
+
+      document.getElementById('modal-title').innerHTML='🔓 '+(L==='zh'?'发现未签名 Commits':'Unsigned Commits Detected');
+      document.getElementById('modal-msg').innerHTML=bodyHtml;
+      var btnsDiv=document.getElementById('modal-btns');
+      btnsDiv.innerHTML='';
+
+      var skipBtn=document.createElement('button');
+      skipBtn.className='btn btn-secondary';
+      skipBtn.textContent=L==='zh'?'跳过，直接推送':'Skip, push as-is';
+      skipBtn.onclick=function(){ closeModal(); showForcePushPrompt(logBox); };
+
+      var squashBtn=document.createElement('button');
+      squashBtn.className='btn btn-warning';
+      squashBtn.textContent=L==='zh'?'✅ Squash 未签名 Commits':'✅ Squash Unsigned Commits';
+      squashBtn.onclick=function(){
+        closeModal();
+        // ── Dialog 2: second confirmation before squashing ──
+        var confirmBody=
+          '<div style="font-size:14px;line-height:1.7;color:#1e293b">'
+          +(L==='zh'
+            ?'确认将当前分支 <b>'+escapeHtml(curBranch)+'</b> 上相对 <b>'+escapeHtml(sourceBranch)+'</b> 的所有 commit squash 成 <b>1 个签名 commit</b>？<br><br>'
+             +'<span style="color:#ef4444;font-size:12px">⚠️ 此操作将重写分支历史，无法撤销。</span>'
+            :'Confirm: squash all commits on <b>'+escapeHtml(curBranch)+'</b> above <b>'+escapeHtml(sourceBranch)+'</b> into <b>1 signed commit</b>?<br><br>'
+             +'<span style="color:#ef4444;font-size:12px">⚠️ This rewrites branch history and cannot be undone.</span>')
+          +'</div>';
+        showModalDouble(
+          L==='zh'?'⚠️ 确认 Squash':'⚠️ Confirm Squash',
+          confirmBody,
+          L==='zh'?'确认 Squash':'Confirm Squash',
+          function(){
+            addMsg(L==='zh'?'🔀 正在 squash 未签名 commits...':'🔀 Squashing unsigned commits...','info');
+            apiPost('/api/squash-unsigned',{base:sourceBranch},function(sq){
+              if(sq.ok){
+                addMsg((L==='zh'?'✅ Squash 完成: ':'✅ Squash done: ')+(sq.message||''),'success');
+                _reloadLog(1);
+                showForcePushPrompt(logBox);
+              }else{
+                addMsg((L==='zh'?'❌ Squash 失败: ':'❌ Squash failed: ')+(sq.error||''),'error');
+                showForcePushPrompt(logBox);
+              }
+            });
+          },
+          L==='zh'?'取消':'Cancel',
+          function(){ showForcePushPrompt(logBox); },
+          'btn-danger','btn-secondary'
+        );
+      };
+
+      btnsDiv.appendChild(skipBtn);
+      btnsDiv.appendChild(squashBtn);
+      document.getElementById('modal-bg').classList.add('show');
+    });
+  }
+
   function showForcePushPrompt(logBox){
     _lastRebaseForcePushContext = {
       baseBranch: sourceBranch,
@@ -3210,7 +3611,7 @@ function _doRebase(sourceBranch,curBranch){
         }
 
         addMsg(t('rebase_ok'),'success');
-        loadFiles();loadLog(1);checkConflicts();
+        loadFiles();_reloadLog(1);checkConflicts();
 
         if(stashedBeforeRebase){
           showModalDouble(
@@ -3226,7 +3627,7 @@ function _doRebase(sourceBranch,curBranch){
                 if(popData.ok){
                   addMsg(L==='zh'?'✅ Stash 已恢复':'✅ Stash restored','success');
                   loadFiles();
-                  showForcePushPrompt(logBox);
+                  checkUnsignedAndPush(logBox);
                   return;
                 }
                 var popErr=popData.error||'';
@@ -3241,13 +3642,13 @@ function _doRebase(sourceBranch,curBranch){
               });
             },
             L==='zh'?'稍后手动处理':'Later',
-            function(){ showForcePushPrompt(logBox); },
+            function(){ checkUnsignedAndPush(logBox); },
             'btn-primary','btn-secondary'
           );
           return;
         }
 
-        showForcePushPrompt(logBox);
+        checkUnsignedAndPush(logBox);
       }else if(data.hasConflict || data.rebaseInProgress){
         addMsg(t('rebase_conflict_title')+' '+sourceBranch,'error');
         if(stashedBeforeRebase){
@@ -3295,8 +3696,110 @@ function _doRebase(sourceBranch,curBranch){
     });
   }
 
-  apiGet('/api/has-uncommitted',function(hasData){
-    if(!(hasData&&hasData.hasChanges)){ runRebase(false); return; }
+  // ── Pre-flight: detect merge commits / foreign commits in branch history ──
+  function runWithPreflightCheck(){
+    addMsg(L==='zh'?'🔍 正在检查分支历史安全性...':'🔍 Checking branch history safety...','info');
+    apiPost('/api/rebase-preflight',{branch:sourceBranch},function(pf){
+      var hasRisk=(pf.hasMergeCommits||((pf.foreignCommits||[]).length>0));
+      if(!hasRisk){ checkUncommittedAndRebase(); return; }
+
+      // Build warning HTML
+      var foreignRows='';
+      (pf.foreignCommits||[]).slice(0,8).forEach(function(c){
+        foreignRows+='<tr><td style="font-family:monospace;color:#7c3aed;padding:2px 8px 2px 0">'+escapeHtml(c.hash)+'</td>'
+          +'<td style="color:#b91c1c;padding:2px 8px 2px 0">'+escapeHtml(c.author)+'</td>'
+          +'<td style="color:#374151">'+escapeHtml(c.subject)+'</td></tr>';
+      });
+      var extraRows=(pf.foreignCommits||[]).length>8
+        ?'<tr><td colspan="3" style="color:#6b7280;font-style:italic">… and '+((pf.foreignCommits||[]).length-8)+' more</td></tr>':'';
+
+      var warnHtml='<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:10px;padding:14px 16px;margin-bottom:12px">'
+        +'<div style="font-size:14px;font-weight:800;color:#b91c1c;margin-bottom:8px">⚠️ '
+        +(L==='zh'?'Rebase 风险：分支历史包含其他人的 commit':'Rebase Risk: Branch contains other authors\' commits')+'</div>'
+        +'<div style="font-size:13px;color:#7f1d1d;line-height:1.7;margin-bottom:10px">'
+        +(L==='zh'
+          ?'当前分支历史中包含 <b>'+((pf.foreignCommits||[]).length)+'</b> 个其他人的 commit（可能是之前执行过 <code>git merge</code> 导致的）。'
+           +'直接 Rebase 会把这些 commit <b>重新写入到本分支</b>，导致分支混入他人代码。<br><br>'
+           +'<b>推荐做法：</b>使用 <b>Rebuild & Force Push</b>，它会自动识别并只保留属于你的 commit。'
+          :'The branch history contains <b>'+((pf.foreignCommits||[]).length)+'</b> commit(s) from other authors '
+           +'(likely caused by a previous <code>git merge</code>). A plain rebase will <b>re-apply all of them</b> onto the new base, '
+           +'polluting this branch with other people\'s code.<br><br>'
+           +'<b>Recommended:</b> Use <b>Rebuild & Force Push</b> — it keeps only YOUR commits.')
+        +'</div>'
+        +(foreignRows?'<div style="overflow-x:auto;max-height:160px;overflow-y:auto"><table style="font-size:12px;width:100%;border-collapse:collapse">'
+          +foreignRows+extraRows+'</table></div>':'')
+        +(pf.hasMergeCommits?'<div style="margin-top:8px;font-size:12px;color:#7f1d1d">⚠️ '
+          +(L==='zh'?'检测到 merge commit，这是引发该问题的直接原因。':'Merge commit(s) detected in branch — this is the direct cause of the issue.')+'</div>':'')
+        +'</div>';
+
+      document.getElementById('modal-title').innerHTML='⚠️ '+(L==='zh'?'Rebase 安全警告':'Rebase Safety Warning');
+      document.getElementById('modal-msg').innerHTML=warnHtml;
+      var btnsDiv=document.getElementById('modal-btns');
+      btnsDiv.innerHTML='';
+
+      var cancelBtn2=document.createElement('button');
+      cancelBtn2.className='btn btn-secondary';
+      cancelBtn2.textContent='Cancel';
+      cancelBtn2.onclick=closeModal;
+
+      var forceBtn=document.createElement('button');
+      forceBtn.className='btn btn-danger';
+      forceBtn.textContent=L==='zh'?'⚠️ 仍然 Rebase（不推荐）':'⚠️ Rebase Anyway (not recommended)';
+      forceBtn.onclick=function(){ closeModal(); checkUncommittedAndRebase(); };
+
+      var rebuildBtn=document.createElement('button');
+      rebuildBtn.className='btn btn-warning';
+      rebuildBtn.textContent=L==='zh'?'✅ Rebuild & Force Push（推荐）':'✅ Rebuild & Force Push (recommended)';
+      rebuildBtn.onclick=function(){
+        closeModal();
+        var gpgOn=(document.getElementById('gpg-sign-toggle')||{}).checked;
+        var gpgNote=gpgOn
+          ?(L==='zh'
+            ?'<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;margin-top:10px;color:#166534;font-size:12px">🔏 GPG 签名已开启 — cherry-pick 会自动附加签名</div>'
+            :'<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;margin-top:10px;color:#166534;font-size:12px">🔏 GPG signing is ON — the cherry-picked commit will be signed automatically</div>')
+          :(L==='zh'
+            ?'<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:8px 12px;margin-top:10px;color:#92400e;font-size:12px">⚠️ GPG 签名未开启 — 如果远端要求签名验证，push 仍会被拒绝。建议先在右上角打开 GPG 开关再继续。</div>'
+            :'<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:8px 12px;margin-top:10px;color:#92400e;font-size:12px">⚠️ GPG signing is OFF — if the remote requires verified signatures the push will still be rejected. Enable the GPG toggle first.</div>');
+        var confirmBody=(L==='zh'
+          ?'<p style="margin:0 0 6px;font-size:13px;color:#374151">将执行以下操作，仅保留当前 HEAD commit：<br>'
+            +'<code>git reset --hard '+escapeHtml(sourceBranch)+'</code><br>'
+            +'<code>git cherry-pick HEAD</code><br>'
+            +'<code>git push --force-with-lease</code></p>'
+          :'<p style="margin:0 0 6px;font-size:13px;color:#374151">This will run:<br>'
+            +'<code>git reset --hard '+escapeHtml(sourceBranch)+'</code><br>'
+            +'<code>git cherry-pick HEAD</code><br>'
+            +'<code>git push --force-with-lease</code><br>'
+            +'Only the current HEAD commit is kept.</p>')
+          + gpgNote;
+        showModal(
+          L==='zh'?'🛠 确认 Rebuild & Force Push':'🛠 Confirm Rebuild & Force Push',
+          confirmBody,
+          L==='zh'?'确认执行':'Proceed',
+          function(){
+            closeModal();
+            addMsg(L==='zh'?'🔨 正在 Rebuild 分支...':'🔨 Rebuilding branch...','info');
+            apiPost('/api/rebase-rebuild-force-push',{base_branch:sourceBranch},function(rd){
+              if(rd.ok){
+                addMsg(L==='zh'?'✅ Rebuild & Force Push 成功，分支已清理干净':'✅ Rebuild & Force Push succeeded — branch is clean','success');
+                _reloadLog(1);loadFiles();
+              }else{
+                addMsg((L==='zh'?'❌ Rebuild 失败: ':'❌ Rebuild failed: ')+(rd.error||''),'error');
+              }
+            });
+          }
+        );
+      };
+
+      btnsDiv.appendChild(cancelBtn2);
+      btnsDiv.appendChild(forceBtn);
+      btnsDiv.appendChild(rebuildBtn);
+      document.getElementById('modal-bg').classList.add('show');
+    });
+  }
+
+  function checkUncommittedAndRebase(){
+    apiGet('/api/has-uncommitted',function(hasData){
+      if(!(hasData&&hasData.hasChanges)){ runRebase(false); return; }
     document.getElementById('modal-title').innerHTML=L==='zh'?'🔒 检测到本地未提交改动':'🔒 Local Changes Detected';
     document.getElementById('modal-msg').innerHTML='<div style="font-size:14px;line-height:1.7">'
       +(L==='zh'
@@ -3334,6 +3837,9 @@ function _doRebase(sourceBranch,curBranch){
     btnsDiv.appendChild(stashBtn);
     document.getElementById('modal-bg').classList.add('show');
   });
+  } // end checkUncommittedAndRebase
+
+  runWithPreflightCheck();
 }
 
 // ═══════════ Rebase failure quick actions ═══════════
@@ -3431,7 +3937,7 @@ function _rebaseAction(action){
     apiPost(endpoint, {}, function(data){
       if(data.ok){
         addMsg(t(okKey),'success');
-        loadFiles(); loadLog(1); checkConflicts(); loadCurrentBranch();
+        loadFiles(); _reloadLog(1); checkConflicts(); loadCurrentBranch();
         if(action==='continue') checkConflicts();
       }else{
         var errMsg=t(failKey)+(data.error||'');
@@ -3777,6 +4283,22 @@ function showStashDialog(paths, onSuccess) {
 // ═══════════ Log page ═══════════
 var logDebounceTimer=null;
 var logSortOrder='desc'; // 'desc' = newest first, 'asc' = oldest first
+
+function toggleUnsignedFilter(){
+  logUnsignedFilter=!logUnsignedFilter;
+  var btn=document.getElementById('log-unsigned-btn');
+  if(btn){
+    if(logUnsignedFilter){
+      btn.className='btn btn-sm btn-warning';
+      btn.textContent=L==='zh'?'🔓 仅显示未签名 ✕':'🔓 Unsigned Only ✕';
+    } else {
+      btn.className='btn btn-sm btn-secondary';
+      btn.textContent='🔓 Unsigned';
+    }
+  }
+  loadLog(1);
+}
+
 var prDebounceTimer=null;
 var prState='in_review';
 var currentPRData=null;
@@ -3841,26 +4363,102 @@ function _updatePRStateTabs(){
 
 function toggleLogSort(){
   logSortOrder=logSortOrder==='desc'?'asc':'desc';
+  _invalidateLogCache();
   loadLog(1);
 }
 
 function loadLog(page){
   page=page||1;
   switchPage('log');
-  document.getElementById('log-content').innerHTML='<div class="loading-bar"><span class="spinner"></span>Loading commits...</div>';
-  document.getElementById('log-pagination').innerHTML='';
-  var search=document.getElementById('log-search').value;
-  var _lpv=document.getElementById('log-per-page').value;var perPage=_lpv===''?10:parseInt(_lpv);
-  var url='/api/commits?page='+page+'&per_page='+perPage+'&order='+logSortOrder;
-  if(search)url+='&search='+encodeURIComponent(search);
-  apiGet(url,function(data){
-    if(!search.trim() && !((document.getElementById('log-code-search')||{value:''}).value||'').trim()){
-      _inDiffSearchMode=false;
-    }
+  var search=(document.getElementById('log-search')||{}).value||'';
+  var codeSearch=((document.getElementById('log-code-search')||{}).value||'').trim();
+  var _lpv=(document.getElementById('log-per-page')||{}).value;
+  var perPage=_lpv===''?10:parseInt(_lpv);
+  var logContent=document.getElementById('log-content');
+  var logPag=document.getElementById('log-pagination');
+
+  // Build network URL helper
+  function _buildUrl(pg){
+    var u='/api/commits?page='+pg+'&per_page='+perPage+'&order='+logSortOrder;
+    if(search)u+='&search='+encodeURIComponent(search);
+    if(logUnsignedFilter)u+='&unsigned_only=1';
+    return u;
+  }
+
+  function _applyData(data, fromCache){
+    if(!search.trim()&&!codeSearch){_inDiffSearchMode=false;}
     currentLogData=data;
     renderLog(data);
     renderPagination(data);
-    if(data.commits&&data.commits.length)showToast('Loaded '+data.commits.length+' commit(s)','ok',2000);
+    if(!fromCache&&data.commits&&data.commits.length){
+      showToast('Loaded '+data.commits.length+' commit(s)','ok',2000);
+    }
+  }
+
+  // Skip cache when searching or filtering
+  var useCache = !search.trim() && !codeSearch && !logUnsignedFilter;
+
+  if(!useCache){
+    logContent.innerHTML='<div class="loading-bar"><span class="spinner"></span>Loading commits...</div>';
+    logPag.innerHTML='';
+    apiGet(_buildUrl(page),function(data){_applyData(data,false);});
+    return;
+  }
+
+  // ── Cache path ──────────────────────────────────────────────────────────────
+  // Try to read cached page for current settings (branch known from cache or current)
+  var cachedBranch=_logCache.branch||'';
+  _tryRestoreLogCache(cachedBranch, perPage, logSortOrder);
+
+  var cachedPage=_logCache.pages[page];
+  if(cachedPage){
+    // Render immediately from cache — no spinner
+    var cachedData={
+      commits:cachedPage,
+      total:_logCache.total,
+      page:page,
+      per_page:perPage,
+      order:logSortOrder
+    };
+    _applyData(cachedData, true);
+    // Soft indicator that we're verifying freshness
+    var indicator=document.createElement('div');
+    indicator.id='log-cache-indicator';
+    indicator.style.cssText='font-size:11px;color:#888;text-align:right;padding:2px 8px;';
+    indicator.textContent='⚡ From cache — checking for updates...';
+    logContent.appendChild(indicator);
+  } else {
+    logContent.innerHTML='<div class="loading-bar"><span class="spinner"></span>Loading commits...</div>';
+    logPag.innerHTML='';
+  }
+
+  // Check HEAD hash — very cheap call
+  apiGet('/api/head-hash',function(hd){
+    var indicator=document.getElementById('log-cache-indicator');
+    var sameHead = hd && hd.hash && _logCache.headHash && hd.hash===_logCache.headHash;
+    var sameBranch = hd && hd.branch && hd.branch===_logCache.branch;
+
+    if(sameHead && sameBranch && cachedPage){
+      // HEAD unchanged — cache is fresh, done
+      if(indicator)indicator.remove();
+      return;
+    }
+
+    // HEAD changed or no cache — fetch from network
+    if(indicator)indicator.textContent='⟳ Updating commits...';
+    apiGet(_buildUrl(page),function(data){
+      _applyData(data,false);
+      // Update cache
+      _logCache.branch=hd?hd.branch:_logCache.branch;
+      _logCache.headHash=hd?hd.hash:null;
+      _logCache.total=data.total||0;
+      _logCache.perPage=perPage;
+      _logCache.order=logSortOrder;
+      // If branch changed, wipe old pages
+      if(!sameBranch) _logCache.pages={};
+      _logCache.pages[page]=data.commits;
+      _saveLogCache();
+    });
   });
 }
 
@@ -4057,7 +4655,11 @@ function openPRAIAnalysis(prNumber, headSha){
 
 function renderLog(data){
   var container=document.getElementById('log-content');
-  if(!data.commits||!data.commits.length){container.innerHTML='<div class="empty">'+t('no_match')+'</div>';return}
+  if(!data.commits||!data.commits.length){
+    container.innerHTML='<div class="empty">'+t('no_match')+'</div>';
+    renderSquashResultSection();
+    return;
+  }
   _logCommitMap={};
   var sortIcon=logSortOrder==='desc'?' ↓':' ↑';
   var sortTip=logSortOrder==='desc'?'Newest first — click for oldest first':'Oldest first — click for newest first';
@@ -4097,6 +4699,17 @@ function renderLog(data){
         +'color:#fff;border:none;border-radius:12px;font-weight:600;cursor:pointer;'
         +'box-shadow:0 1px 4px rgba(79,70,229,.35);margin-left:2px">⬆ Push</button>';
     }
+    // ── GPG signature badge ────────────────────────────────────────────────
+    var gpg=c.gpg_status||'';
+    var gpgBadge='';
+    if(gpg==='G'||gpg==='U'||gpg==='X'||gpg==='Y'||gpg==='R'){
+      gpgBadge='<span title="GPG signed and verified" style="display:inline-flex;align-items:center;font-size:11px;font-weight:600;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;border-radius:20px;padding:2px 8px;margin-left:4px;white-space:nowrap;cursor:default">🔐 Signed</span>';
+    } else if(gpg==='E'){
+      gpgBadge='<span title="GPG signed — public key not in local keyring, cannot verify locally" style="display:inline-flex;align-items:center;font-size:11px;font-weight:600;background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd;border-radius:20px;padding:2px 8px;margin-left:4px;white-space:nowrap;cursor:default">🔏 Signed*</span>';
+    } else if(gpg==='N'||gpg==='B'){
+      gpgBadge='<span title="No GPG signature" style="display:inline-flex;align-items:center;font-size:11px;font-weight:600;background:#fef9c3;color:#92400e;border:1px solid #fcd34d;border-radius:20px;padding:2px 8px;margin-left:4px;white-space:nowrap;cursor:default">🔓 Unsigned</span>';
+    }
+    if(gpgBadge) statusCell+=' '+gpgBadge;
     if(releaseInfo){
       statusCell+='<div class="log-release-info">'+releaseInfo+'</div>';
     }
@@ -4119,6 +4732,7 @@ function renderLog(data){
   html+='</tbody></table>';
   container.innerHTML=html;
   updateSquashBar();
+  renderSquashResultSection();
 }
 
 function _renderCommitMessageCell(message,id,badgeHtml){
@@ -5226,8 +5840,134 @@ function filterCommitDiffs(){
 }
 
 function updateSquashBar(){
-  var bar=document.getElementById('squash-bar');
-  bar.style.display=Object.keys(squashSelected).length>=2?'flex':'none';
+  var panel=document.getElementById('squash-panel');
+  var keys=Object.keys(squashSelected);
+  if(!keys.length){panel.style.display='none';return;}
+  panel.style.display='block';
+
+  // Count label
+  var countEl=document.getElementById('squash-panel-count');
+  if(countEl) countEl.textContent=keys.length+(L==='zh'?' 个已选':' selected');
+
+  // Build ordered list of selected commits (by log order if available)
+  var orderedHashes=[];
+  if(currentLogData&&currentLogData.commits){
+    currentLogData.commits.forEach(function(c){if(squashSelected[c.hash])orderedHashes.push(c.hash);});
+  }
+  // Append any selected commits not in current page
+  keys.forEach(function(h){if(orderedHashes.indexOf(h)<0)orderedHashes.push(h);});
+
+  // Detect non-adjacent: find gaps in the log order
+  var logHashes=(currentLogData&&currentLogData.commits)?currentLogData.commits.map(function(c){return c.hash;}):[];
+  var selPositions=logHashes.map(function(h,i){return squashSelected[h]?i:-1;}).filter(function(i){return i>=0;});
+  var nonAdj=false;
+  for(var i=1;i<selPositions.length;i++){
+    if(selPositions[i]-selPositions[i-1]>1){nonAdj=true;break;}
+  }
+  var noteEl=document.getElementById('squash-panel-nonadj-note');
+  if(noteEl) noteEl.style.display=nonAdj?'block':'none';
+
+  // Squash button state
+  var doBtn=document.getElementById('squash-do-btn');
+  if(doBtn){
+    if(keys.length<2){
+      doBtn.disabled=true;
+      doBtn.title=L==='zh'?'至少选 2 个 commit':'Select at least 2 commits';
+      doBtn.style.opacity='0.45';
+    } else {
+      doBtn.disabled=false;
+      doBtn.title='';
+      doBtn.style.opacity='';
+    }
+  }
+
+  // Render commit rows
+  var listEl=document.getElementById('squash-panel-list');
+  if(!listEl) return;
+  var html='';
+  orderedHashes.forEach(function(hash){
+    var c=squashCommitCache[hash]||_logCommitMap[hash]||{hash:hash,short_hash:hash.substr(0,7),author:'',message:'',gpg_status:''};
+    var gpg=c.gpg_status||'';
+    var gpgBadge='';
+    if(gpg==='G'||gpg==='U'||gpg==='X'||gpg==='Y'||gpg==='R'){
+      gpgBadge='<span class="sp-gpg" title="Signed & verified" style="font-size:10px;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;border-radius:12px;padding:1px 6px">🔐</span>';
+    } else if(gpg==='E'){
+      gpgBadge='<span class="sp-gpg" title="Signed — key not in local keyring" style="font-size:10px;background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd;border-radius:12px;padding:1px 6px">🔏</span>';
+    } else if(gpg==='N'||gpg==='B'){
+      gpgBadge='<span class="sp-gpg" title="No GPG signature" style="font-size:10px;background:#fef9c3;color:#92400e;border:1px solid #fcd34d;border-radius:12px;padding:1px 6px">🔓</span>';
+    }
+    html+='<div class="squash-panel-item">'
+      +'<button class="sp-remove" onclick="removeFromSquash(\''+escapeAttr(hash)+'\')" title="Remove from squash">✕</button>'
+      +'<span class="sp-hash">'+escapeHtml(c.short_hash||hash.substr(0,7))+'</span>'
+      +gpgBadge
+      +'<span class="sp-author">'+escapeHtml(c.author||'')+'</span>'
+      +'<span class="sp-msg" title="'+escapeAttr(c.message||'')+'">'+escapeHtml(c.message||'')+'</span>'
+      +'</div>';
+  });
+  if(!html) html='<div style="padding:10px 14px;color:#94a3b8;font-size:12px">'+(L==='zh'?'无选中 commit':'No commits selected')+'</div>';
+  listEl.innerHTML=html;
+}
+
+function renderSquashResultSection(){
+  var panel=document.getElementById('squash-result-panel');
+  if(!panel) return;
+  if(!lastSquashResult || !lastSquashResult.hash){
+    panel.style.display='none';
+    panel.innerHTML='';
+    return;
+  }
+  var hash=lastSquashResult.hash||'';
+  var shortHash=hash?hash.substring(0,12):'—';
+  var msg=lastSquashResult.message||'';
+  var n=lastSquashResult.selectedCount||0;
+  var html='<div class="squash-result">'
+    +'<div class="squash-result-head">✂️ '+t('squash_result_title')
+    +'<span class="squash-result-badge">'+t('squash_result_ready')+'</span></div>'
+    +'<div class="squash-result-grid">'
+    +'<div class="squash-result-key">'+t('squash_result_hash')+'</div>'
+    +'<div class="squash-result-hash" title="'+escapeAttr(hash)+'">'+escapeHtml(shortHash)+'</div>'
+    +'<div class="squash-result-key">'+t('squash_result_msg')+'</div>'
+    +'<div>'+escapeHtml(msg||('- '+n+' commit(s) squashed -'))+'</div>'
+    +'</div>'
+    +'<div class="squash-result-actions">'
+    +'<button class="btn btn-sm btn-secondary" onclick="focusSquashCommitInLog()">'+t('squash_result_focus_btn')+'</button>'
+    +'<button class="btn btn-sm btn-danger" onclick="doForcePush()">'+t('squash_result_push_btn')+'</button>'
+    +'<button class="btn btn-sm btn-secondary" onclick="clearSquashResultSection()">'+t('squash_result_clear_btn')+'</button>'
+    +'</div></div>';
+  panel.innerHTML=html;
+  panel.style.display='block';
+}
+
+function setSquashResult(hash, message, selectedCount, selectedHashes){
+  if(!hash){
+    clearSquashResultSection();
+    return;
+  }
+  lastSquashResult={
+    hash:(hash||''),
+    message:(message||''),
+    selectedCount:(selectedCount||0),
+    selectedHashes:(Array.isArray(selectedHashes)?selectedHashes.slice():[])
+  };
+  renderSquashResultSection();
+}
+
+function clearSquashResultSection(){
+  lastSquashResult=null;
+  renderSquashResultSection();
+}
+
+function focusSquashCommitInLog(){
+  if(!lastSquashResult||!lastSquashResult.hash) return;
+  var searchEl=document.getElementById('log-search');
+  var searchBtn=document.getElementById('log-search-btn');
+  if(searchEl){
+    searchEl.value=lastSquashResult.hash.substring(0,12);
+  }
+  if(searchBtn){
+    searchBtn.style.display='inline-block';
+  }
+  loadLog(1);
 }
 function toggleHash(el){
   var full = el.getAttribute('data-full');
@@ -5238,10 +5978,31 @@ function toggleHash(el){
 function toggleSquashSelect(cb){
   if(cb.disabled)return;
   var hash=cb.dataset.hash;
-  if(cb.checked)squashSelected[hash]=true;else delete squashSelected[hash];
+  if(cb.checked){
+    squashSelected[hash]=true;
+    // Cache commit data now so it's available even after page change
+    if(_logCommitMap[hash]) squashCommitCache[hash]=_logCommitMap[hash];
+  } else {
+    delete squashSelected[hash];
+    delete squashCommitCache[hash];
+  }
   updateSquashBar();
 }
-function cancelSquash(){squashSelected={};updateSquashBar();document.getElementById('squash-msg').value='';if(currentLogData)renderLog(currentLogData)}
+function removeFromSquash(hash){
+  delete squashSelected[hash];
+  delete squashCommitCache[hash];
+  var cb=document.querySelector('.squash-cb[data-hash="'+hash+'"]');
+  if(cb) cb.checked=false;
+  updateSquashBar();
+}
+function cancelSquash(){
+  squashSelected={};
+  squashCommitCache={};
+  updateSquashBar();
+  var msgEl=document.getElementById('squash-msg');
+  if(msgEl) msgEl.value='';
+  document.querySelectorAll('.squash-cb').forEach(function(cb){cb.checked=false;});
+}
 // ═══════════ Protected Branch Guard ═══════════
 // Config loaded from server — refreshed every time loadBranches() runs
 var _protExact = [];    // exact-match names
@@ -5285,21 +6046,75 @@ function doSquash(){
   if(keys.length<2){addMsg(t('select_2_commits'),'error');return}
   var msg=document.getElementById('squash-msg').value.trim();
   if(!msg){addMsg(t('enter_squash_msg'),'error');return}
+
+  // Collect hashes ordered by log (current page first, then any cross-page selections)
   var hashes=[];
-  if(currentLogData&&currentLogData.commits){currentLogData.commits.forEach(function(c){if(squashSelected[c.hash])hashes.push(c.hash)})}
-  if(hashes.length<2)return;
-  var fromHash=hashes[hashes.length-1],toHash=hashes[0];
-  _warnProtectedThenDo('protected_branch_squash', function(){
-    showModal('Squash',tf('squash_confirm',L,{n:hashes.length})+'<br>From: '+fromHash.substr(0,7)+' To: '+toHash.substr(0,7),'Squash',function(){
-      apiPost('/api/squash',{from:fromHash,to:toHash,message:msg},function(data){
-        if(data.ok){
-          squashSelected={};loadLog(1);loadFiles();
-          // Squash rewrites history — offer force push immediately
-          doForcePush();
-        }
-        else addMsg(t('squash_fail')+(data.error||''),'error');
-      });
+  var seen={};
+  // First pass: in-page order from currentLogData
+  if(currentLogData&&currentLogData.commits){
+    currentLogData.commits.forEach(function(c){
+      if(squashSelected[c.hash]){hashes.push(c.hash);seen[c.hash]=true;}
     });
+  }
+  // Second pass: cross-page commits from cache (order by date desc from cache)
+  keys.forEach(function(h){if(!seen[h])hashes.push(h);});
+
+  if(hashes.length<2){addMsg(t('select_2_commits'),'error');return;}
+
+  var gpgOn=(document.getElementById('gpg-sign-toggle')||{}).checked;
+
+  _warnProtectedThenDo('protected_branch_squash', function(){
+    showModal('Squash',
+      tf('squash_confirm',L,{n:hashes.length}),
+      'Squash',function(){
+        clearSquashResultSection();
+        addMsg(L==='zh'?'🔀 正在 Squash...':'🔀 Squashing...','info');
+        apiPost('/api/squash-selected',{hashes:hashes,message:msg,gpg_sign:!!gpgOn},function(data){
+          var ver=(data&&data.backend_version)||'';
+          if(!ver){
+            addMsg((L==='zh')
+              ? '⚠️ 后端返回缺少 backend_version 字段，你可能没有重启 GitAutoManageBoard 服务。请重启 python 服务后再试。'
+              : '⚠️ Backend response missing backend_version. Your GitAutoManageBoard service is likely running stale code. Please restart it and retry.',
+              'error',{maxLines:6});
+          }
+          if(data.ok){
+            var sqHash=(data&&data.squash_commit_hash)||'';
+            var pre=(data&&data.pre_head)||'';
+            var post=(data&&data.post_head)||'';
+            if(pre && post && pre===post){
+              clearSquashResultSection();
+              addMsg((L==='zh'?'❌ Squash 未生效：HEAD 没有移动。pre_head=':'❌ Squash did not take effect: HEAD did not move. pre_head=')
+                +pre.substring(0,12)+'  post_head='+post.substring(0,12),
+                'error',{maxLines:6});
+              return;
+            }
+            if(sqHash){
+              setSquashResult(sqHash, msg, hashes.length, hashes);
+              addMsg((L==='zh'?'ℹ️ HEAD 已从 ':'ℹ️ HEAD moved from ')
+                +(pre||'?').substring(0,12)+(L==='zh'?' 移动到 ':' to ')+(post||'?').substring(0,12),
+                'info');
+            } else {
+              clearSquashResultSection();
+              addMsg('⚠️ '+t('squash_result_missing_hash'),'error');
+            }
+            _purgeAllLogCaches();
+            squashSelected={};squashCommitCache={};_reloadLog(1);loadFiles();
+            addMsg(data.message||t('squash_ok'),'success');
+          } else {
+            clearSquashResultSection();
+            if(data.rebaseInProgress){
+              var title=(L==='zh')?'⚠️ Squash 被 Rebase 阻塞':'⚠️ Squash blocked by existing rebase';
+              var body='<div style="background:#0f172a;color:#e2e8f0;font-family:monospace;font-size:12px;line-height:1.5;'
+                +'padding:12px 14px;border-radius:8px;max-height:220px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;'
+                +'border:1px solid #1e293b">'+escapeHtml(data.error||'')+'</div>';
+              _showRebaseFailureModal(title, body, false);
+              return;
+            }
+            addMsg(t('squash_fail')+(data.error||''),'error');
+          }
+        });
+      }
+    );
   });
 }
 
@@ -5316,13 +6131,13 @@ function showRevertModal(hash,shortHash){
   showModalDouble('Revert / Drop '+shortHash,t('revert_or_drop_desc'),
     'Revert',function(){
       apiPost('/api/revert',{commit:hash},function(data){
-        if(data.ok){addMsg(t('revert_ok'),'success');loadLog(1);loadFiles()}
+        if(data.ok){addMsg(t('revert_ok'),'success');_reloadLog(1);loadFiles()}
         else addMsg(t('revert_fail')+(data.error||''),'error');
       });
     },
     'Drop',function(){
       apiPost('/api/drop_commit',{commit:hash},function(data){
-        if(data.ok){addMsg(t('drop_ok'),'success');loadLog(1);loadFiles()}
+        if(data.ok){addMsg(t('drop_ok'),'success');_reloadLog(1);loadFiles()}
         else addMsg(t('drop_fail')+(data.error||''),'error');
       });
     },
@@ -5331,14 +6146,35 @@ function showRevertModal(hash,shortHash){
 }
 function doReset(hash,mode){
   apiPost('/api/reset',{commit:hash,mode:mode},function(data){
-    if(data.ok){addMsg(tf('reset_ok',L,{mode:mode}),'success');loadLog(1);loadFiles();loadCurrentBranch()}
+    if(data.ok){
+      addMsg(tf('reset_ok',L,{mode:mode}),'success');
+      _reloadLog(1);loadFiles();loadCurrentBranch();
+      if(mode==='hard'){
+        var branch=(document.getElementById('branch-name')||{}).textContent||'current branch';
+        var warn='<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:10px 14px;font-size:13px;color:#92400e;margin-bottom:8px">'
+          +(L==='zh'
+            ?'⚠️ 这个操作会改写历史。若该分支已推送过，请使用 <b>Force Push</b> 更新远端。'
+            :'⚠️ This operation rewrites history. If this branch was already pushed, use <b>Force Push</b> to update remote.')
+          +'</div>';
+        showModalDouble(
+          t('reset_hard_push_title'),
+          warn+tf('reset_hard_push_desc',L,{branch:escapeHtml(branch)}),
+          t('reset_hard_force_btn'),
+          function(){ doPushForce(); },
+          t('push_later_btn'),
+          null,
+          'btn-warning',
+          'btn-secondary'
+        );
+      }
+    }
     else addMsg(t('reset_fail')+(data.error||''),'error');
   });
 }
 function abortMerge(){
   showModal(t('conflict_reset_title'),t('conflict_reset_desc'),'Reset',function(){
     apiPost('/api/abort',{},function(data){
-      if(data.ok){addMsg(t('conflict_reset_ok'),'success');loadFiles();checkConflicts();loadLog(1)}
+      if(data.ok){addMsg(t('conflict_reset_ok'),'success');loadFiles();checkConflicts();_reloadLog(1)}
       else addMsg(t('no_conflict_abort')+(data.error||''),'info');
     });
   });
@@ -5924,7 +6760,7 @@ function showMergeCommitDialog(defaultMsg){
       if(data.ok){
         addMsg('✅ '+t('merge_commit_ok'),'success');
         checkConflicts();   // clear the conflict tab badge
-        loadLog(1);         // navigate to log tab and show the new commit
+        _reloadLog(1);         // navigate to log tab and show the new commit
         loadFiles();loadCurrentBranch();
         if(thenPush) setTimeout(function(){ doPush(); },400);
       }else{
@@ -6233,7 +7069,8 @@ function saveGitSettings() {
   });
 }
 
-document.getElementById('git-settings-modal').addEventListener('click', function(e) {
+var _gitSettingsModal=document.getElementById('git-settings-modal');
+if(_gitSettingsModal) _gitSettingsModal.addEventListener('click', function(e) {
   if (e.target === this) closeGitSettingsModal();
 });
 

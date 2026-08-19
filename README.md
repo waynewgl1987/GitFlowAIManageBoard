@@ -57,10 +57,10 @@ No frameworks, no npm, no Docker. Just Python 3 and a modern browser.
 | **Branches** | View local & remote branches, create branches, switch branches, delete local/remote branches (with safety guards), fuzzy search, pagination, sort. |
 | **Compare** | Side-by-side branch comparison — visual diff, file-by-file navigation, swap branches, one-click merge. |
 | **Merge** | Squash-merge any branch into the current branch with a custom commit message and conflict warnings. |
-| **Commit Log** | Browse full history. Search by hash / author / message / code-in-diffs. Soft/Hard reset, revert, squash commits. Restore individual files to any historical version. |
+| **Commit Log** | Browse full history. Search by hash / author / message / code-in-diffs. Soft/Hard reset, revert, squash commits. After squash, a dedicated result section shows the new commit and offers one-click force push. Restore individual files to any historical version. |
 | **Conflicts** | Visual conflict resolution with collapsible context blocks, resolved banners, step-by-step dialogs to commit and push after resolution. |
 | **Stash** | List, inspect, pop, or drop stash entries. Pagination support. |
-| **Remote** | Fetch, Pull, Push — all with live streaming log popups. Force push with `--force-with-lease`. Auto SSH/HTTPS switching. |
+| **Remote** | Fetch, Pull, Push — all with live streaming log popups. Fetch auto-recovers local `cannot lock ref`/OID mismatch issues (local cleanup + retry, remote untouched), including case-colliding branch names on case-insensitive filesystems via local-only fetch excludes. Force push with `--force-with-lease`. Auto SSH/HTTPS switching. |
 | **🤖 AI Assistant** | Floating AI chat panel — ask anything about your repo. Auto-injects live page context. **Chat mode** quick actions: analyze conflicts, accept ours/theirs/both, abort merge, suggest commits, explain diffs, recent commits, analyze branch, stash help, clean suggestions. **Diff mode**: per-file code diff with inline Analyze buttons and AI suggestion panel. Supports Claude, GPT-5, Gemini, DeepSeek, Qwen, Ollama. |
 | **Config** | Customise app name and version via `config.ini`. |
 
@@ -609,10 +609,10 @@ For the AI Assistant, paste your API key in the ⚙️ settings panel.
 | **分支 (Branches)** | 查看本地和远端分支、创建分支、切换分支、删除本地/远端分支（带安全防护）、模糊搜索、分页、排序。 |
 | **对比 (Compare)** | 左右对比任意两个分支 — 可视化 diff、逐文件导航、交换分支、一键合并。 |
 | **合并 (Merge)** | 将任意分支 Squash-merge 到当前分支，支持自定义提交信息和冲突警告。 |
-| **提交日志 (Commit Log)** | 浏览完整历史。按 hash / 作者 / 消息 / 代码内容搜索。Soft/Hard Reset、Revert、Squash 合并提交。将单个文件还原到任意历史版本。 |
+| **提交日志 (Commit Log)** | 浏览完整历史。按 hash / 作者 / 消息 / 代码内容搜索。Soft/Hard Reset、Revert、Squash 合并提交。Squash 后会显示独立结果区（新 commit + 一键 Force Push）。将单个文件还原到任意历史版本。 |
 | **冲突 (Conflicts)** | 可视化冲突解决，上下文默认收缩、已解决标记横幅、逐步弹窗引导 commit 和 push。 |
 | **暂存 (Stash)** | 列出、查看、Pop 或删除 stash 条目。支持分页。 |
-| **远端 (Remote)** | Fetch、Pull、Push — 全部支持实时流式日志弹窗。Force Push（`--force-with-lease`）。自动 SSH/HTTPS 切换。 |
+| **远端 (Remote)** | Fetch、Pull、Push — 全部支持实时流式日志弹窗。Fetch 会自动修复本地 `cannot lock ref`/OID 不一致问题（仅清理本地并重试，不改远端）；若遇到大小写仅不同的分支名冲突（大小写不敏感文件系统），会自动做本地排除后重试。Force Push（`--force-with-lease`）。自动 SSH/HTTPS 切换。 |
 | **🤖 AI 助手** | 浮动 AI 聊天面板 — 直接对话布置任务。自动注入当前页面实时上下文。**聊天模式**快速操作：分析冲突、接受我方/他方/双方、中止合并、建议提交、解释变更、最近提交、分析分支、Stash 帮助、清理建议。**Diff 模式**：逐文件 diff 视图 + 内联 Analyze 按钮 + AI 建议面板。支持 Claude、GPT-5、Gemini、DeepSeek、Qwen、Ollama。 |
 | **配置 (Config)** | 通过 `config.ini` 自定义应用名称和版本号。 |
 
