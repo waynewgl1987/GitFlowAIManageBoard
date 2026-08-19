@@ -134,7 +134,7 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",sans-s
 .cb-wrap{display:flex;align-items:center;gap:8px}
 input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:var(--color-primary);flex-shrink:0}
 .cb-wrap input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:var(--color-primary)}
-.diff-block{background:#ffffff;border-radius:10px;padding:0;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;line-height:1.55;white-space:normal;word-break:normal;max-height:600px;overflow:auto;border:1px solid #e2e8f0;box-shadow:none}
+.diff-block{background:#f8fbff;border-radius:10px;padding:0;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;line-height:1.55;white-space:normal;word-break:normal;max-height:600px;overflow:auto;border:1px solid #dbe3f1;box-shadow:none}
 .diff-block.expanded-full{max-height:none;overflow-y:visible}
 .diff-block.diff-block--bare{background:transparent;border:none;border-radius:0;box-shadow:none;padding:0}
 .diff-table{width:100%;border-collapse:collapse}
@@ -146,8 +146,8 @@ input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:var(--
 .diff-rem{background:#fff1f2;color:#be123c;font-weight:600}
 .diff-meta{background:#f7faff;color:#6b7280;font-style:italic}
 .diff-file-card{border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;overflow:hidden;background:#fff;box-shadow:none}
-.diff-file-header{display:flex;align-items:center;padding:8px 10px;background:#fbfbfd;cursor:pointer;border-bottom:1px solid #ececf1;gap:8px}
-.diff-file-header:hover{background:#f2f2f7}
+.diff-file-header{display:flex;align-items:center;padding:8px 10px;background:#f3f7ff;cursor:pointer;border-bottom:1px solid #dfe7f5;gap:8px}
+.diff-file-header:hover{background:#eaf2ff}
 .diff-file-title{color:#1d4ed8;flex:1;margin-left:2px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .diff-file-meta{font-size:10px;color:#64748b;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:1px 6px;font-variant-numeric:tabular-nums}
 .diff-file-body{background:#fff;padding:0;margin:8px 10px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}

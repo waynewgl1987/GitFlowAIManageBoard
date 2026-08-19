@@ -4954,8 +4954,8 @@ function _renderAIDiffSections(diffText, idPrefix, forcedTitle){
     var sec=sections[i];
     var bodyId=idPrefix+'-sec-'+i;
     var count=(sec.lines||[]).length;
-    html+='<div style="border:1px solid #e5e7eb;border-radius:8px;background:#fff;overflow:hidden;margin-bottom:8px">';
-    html+='<div style="display:flex;align-items:center;padding:8px 10px;background:#f8fafc;cursor:pointer" onclick="toggleDiffFile(\''+bodyId+'\',this)">';
+    html+='<div style="border:1px solid #dbe3f1;border-radius:8px;background:#fbfdff;overflow:hidden;margin-bottom:8px">';
+    html+='<div style="display:flex;align-items:center;padding:8px 10px;background:#f3f7ff;cursor:pointer" onclick="toggleDiffFile(\''+bodyId+'\',this)">';
     html+='<span class="file-toggle" id="'+bodyId+'-toggle">▶</span>';
     html+='<b style="margin-left:8px;color:#1d4ed8;flex:1;font-size:12px">'+escapeHtml(sec.title||_aiCmpText('未命名文件','Unnamed file'))+'</b>';
     html+='<span style="font-size:11px;color:#94a3b8">'+count+' '+_aiCmpText('行','lines')+'</span>';
@@ -5018,14 +5018,14 @@ function _renderAIDiffComparisonSections(st){
     var curText=currMap[title]||'';
     var oldText=histMap[title]||'';
     var bodyId='commit-ai-cmp-sec-'+k;
-    html+='<div style="border:1px solid #e5e7eb;border-radius:8px;background:#fff;overflow:hidden;margin-bottom:8px">';
-    html+='<div style="display:flex;align-items:center;padding:8px 10px;background:#f8fafc;cursor:pointer" onclick="toggleDiffFile(\''+bodyId+'\',this)">';
+    html+='<div style="border:1px solid #dbe3f1;border-radius:8px;background:#fbfdff;overflow:hidden;margin-bottom:8px">';
+    html+='<div style="display:flex;align-items:center;padding:8px 10px;background:#f3f7ff;cursor:pointer" onclick="toggleDiffFile(\''+bodyId+'\',this)">';
     html+='<span class="file-toggle" id="'+bodyId+'-toggle">▶</span>';
     html+='<b style="margin-left:8px;color:#1d4ed8;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">'+escapeHtml(title)+'</b>';
     html+='<span style="flex-shrink:0;font-size:10px;color:#64748b;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:1px 6px;margin-right:4px">'+_aiCmpText('当前 ','Current ')+(curText?curText.split('\n').length:0)+'</span>';
     html+='<span style="flex-shrink:0;font-size:10px;color:#64748b;background:#ecfeff;border:1px solid #a5f3fc;border-radius:10px;padding:1px 6px">'+_aiCmpText('历史 ','History ')+(oldText?oldText.split('\n').length:0)+'</span>';
     html+='</div>';
-    html+='<div id="'+bodyId+'" style="display:none;padding:8px 10px;background:#fff;overflow:auto">';
+    html+='<div id="'+bodyId+'" style="display:none;padding:8px 10px;background:#fbfdff;overflow:auto">';
     html+='<div style="font-size:11px;color:#0f766e;margin-bottom:6px;font-weight:700">'+_aiCmpText('当前提交','Current Commit')+'</div>';
     html+=(curText?('<div class="diff-block">'+highlightDiff(curText)+'</div>'):('<div style="padding:8px;color:#94a3b8;font-size:12px">'+_aiCmpText('当前提交该 section 无改动','No changes in this section for current commit')+'</div>'));
     html+='<div style="height:8px"></div>';
