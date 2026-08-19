@@ -2361,6 +2361,83 @@ def squash_commits(from_h, to_h, msg):
     return _run(["git", "commit", "-m", msg])
 
 
+def squash_conflict_check(hashes):
+    """Fast pre-selection check for non-adjacent squash file conflicts.
+
+    Returns a dict:
+      {conflict: False}
+      {conflict: True, files: [...sorted...], suggested_uncheck: hash_str}
+
+    `suggested_uncheck` is the most-recently-added (last in log order) selected
+    commit that contributes to the conflict — a sensible default for the UI to
+    auto-deselect when the user confirms the warning.
+    """
+    if not hashes or len(hashes) < 2:
+        return {"conflict": False}
+
+    selected_set = set(h.strip() for h in hashes)
+
+    log_out, _, rc = _run(["git", "log", "--format=%H", "HEAD"])
+    if rc != 0:
+        return {"conflict": False}
+    all_hashes = list(reversed([h.strip() for h in log_out.strip().splitlines() if h.strip()]))
+
+    present = [h for h in all_hashes if h in selected_set]
+    if len(present) < 2:
+        return {"conflict": False}
+
+    oldest_selected = present[0]
+    mb_out, _, mb_rc = _run(["git", "rev-parse", oldest_selected + "^"])
+    if mb_rc != 0:
+        return {"conflict": False}
+    rebase_base = mb_out.strip()
+
+    range_out, _, _ = _run(["git", "log", "--format=%H", f"{rebase_base}..HEAD"])
+    range_hashes = list(reversed([h.strip() for h in range_out.strip().splitlines() if h.strip()]))
+
+    selected_in_range = [h for h in range_hashes if h in selected_set]
+    if len(selected_in_range) < 2:
+        return {"conflict": False}
+
+    first_pos = range_hashes.index(selected_in_range[0])
+    last_pos  = range_hashes.index(selected_in_range[-1])
+    is_adjacent = all(h in selected_set for h in range_hashes[first_pos:last_pos + 1])
+    if is_adjacent:
+        return {"conflict": False}
+
+    def _files_for(h):
+        out, _, _ = _run(["git", "diff-tree", "--no-commit-id", "-r", "--name-only", h])
+        return set(out.strip().splitlines()) if out.strip() else set()
+
+    interleaved = [h for h in range_hashes[first_pos:last_pos + 1] if h not in selected_set]
+    interleaved_files = set()
+    for h in interleaved:
+        interleaved_files |= _files_for(h)
+
+    if not interleaved_files:
+        return {"conflict": False}
+
+    # For each extra selected commit, find which ones overlap with interleaved
+    conflict_files = set()
+    offenders = []  # selected commits (excl. oldest) that cause conflicts
+    for h in selected_in_range[1:]:
+        overlap = _files_for(h) & interleaved_files
+        if overlap:
+            conflict_files |= overlap
+            offenders.append(h)
+
+    if not conflict_files:
+        return {"conflict": False}
+
+    # Suggest unchecking the newest offender (last in log = most recent commit)
+    suggested = offenders[-1] if offenders else selected_in_range[-1]
+    return {
+        "conflict": True,
+        "files": sorted(conflict_files),
+        "suggested_uncheck": suggested,
+    }
+
+
 def squash_selected_commits(hashes, msg, gpg_sign=False):
     """Squash a specific set of commits (may be non-adjacent) into one commit.
 
@@ -2482,6 +2559,46 @@ def squash_selected_commits(hashes, msg, gpg_sign=False):
     last_pos  = range_hashes.index(selected_in_range[-1])
     is_adjacent = all(h in selected_set for h in range_hashes[first_pos:last_pos + 1])
     touches_head = (last_pos == len(range_hashes) - 1)
+
+    # ── Non-adjacent preflight: detect file overlap ───────────────────────
+    # When commits are non-adjacent, the rebase must move selected commits out
+    # of their original position.  If any selected commit touches the same file
+    # as an intervening non-selected commit, git will produce a merge conflict.
+    # Detect this upfront and return a clear error instead of leaving the repo
+    # in a mid-rebase state.
+    if not is_adjacent:
+        def _files_for(h):
+            out, _, _ = _run(["git", "diff-tree", "--no-commit-id", "-r", "--name-only", h])
+            return set(out.strip().splitlines()) if out.strip() else set()
+
+        # Collect files touched by each intervening (non-selected) commit
+        # that sits between the first and last selected commit.
+        interleaved_non_selected = [
+            h for h in range_hashes[first_pos:last_pos + 1]
+            if h not in selected_set
+        ]
+        interleaved_files = set()
+        for h in interleaved_non_selected:
+            interleaved_files |= _files_for(h)
+
+        if interleaved_files:
+            # Check whether any selected commit (except oldest, which stays in
+            # place) touches files also touched by the intervening commits.
+            conflict_files = set()
+            for h in selected_in_range[1:]:
+                conflict_files |= _files_for(h) & interleaved_files
+            if conflict_files:
+                sample = sorted(conflict_files)[:5]
+                more = f" (+{len(conflict_files)-5} more)" if len(conflict_files) > 5 else ""
+                return False, (
+                    "Cannot squash: the selected commits cannot be reordered without conflicts.\n"
+                    "The commits you selected are separated by other commits that modify the same files.\n\n"
+                    f"Conflicting files: {', '.join(sample)}{more}\n\n"
+                    "💡 To squash these commits:\n"
+                    "  • Select only adjacent commits (no gaps), or\n"
+                    "  • Also select the intervening commits between them, or\n"
+                    "  • Cherry-pick the target commits onto a clean topic branch and squash there."
+                ), ""
 
     # `reset --soft rebase_base` only preserves "selected-only squash" when
     # the selected adjacent block reaches HEAD. Otherwise it would also include
