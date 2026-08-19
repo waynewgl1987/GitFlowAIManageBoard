@@ -4580,7 +4580,7 @@ function togglePRDiff(prNumber, idx, headSha){
   diffEl.innerHTML='<div class="loading-bar"><span class="spinner"></span>'+(L==='zh'?'正在加载 PR 代码改动...':'Loading PR diff...')+'</div>';
   var key=''+prNumber;
   if(_prDiffCache[key]){
-    diffEl.innerHTML='<div class="diff-block">'+highlightPRDiffFiles(_prDiffCache[key],headSha,prNumber)+'</div>';
+    diffEl.innerHTML='<div class="diff-block diff-block--bare">'+highlightPRDiffFiles(_prDiffCache[key],headSha,prNumber)+'</div>';
     return;
   }
   apiGet('/api/pull-request-diff?number='+encodeURIComponent(prNumber),function(data){
@@ -4589,7 +4589,7 @@ function togglePRDiff(prNumber, idx, headSha){
       return;
     }
     _prDiffCache[key]=data.diff||'';
-    diffEl.innerHTML='<div class="diff-block">'+highlightPRDiffFiles(data.diff||'',headSha,prNumber)+'</div>';
+    diffEl.innerHTML='<div class="diff-block diff-block--bare">'+highlightPRDiffFiles(data.diff||'',headSha,prNumber)+'</div>';
   });
 }
 
@@ -4835,7 +4835,7 @@ function toggleCommitDiff(hash,idx){
   if(diffEl.innerHTML)return;
   diffEl.innerHTML='<div class="loading-bar"><span class="spinner"></span>Loading diff...</div>';
   apiGet('/api/commit-diff?commit='+hash,function(data){
-    diffEl.innerHTML='<div class="diff-block">'+highlightDiffFiles(data.diff, hash)+'</div>';
+    diffEl.innerHTML='<div class="diff-block diff-block--bare">'+highlightDiffFiles(data.diff, hash)+'</div>';
   });
 }
 
