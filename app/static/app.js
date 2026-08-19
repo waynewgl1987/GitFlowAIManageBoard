@@ -4507,7 +4507,7 @@ function renderPullRequests(data){
     var merged=(pr.state==='merged')||(prState==='merged');
     var closed=(pr.state==='closed')||(prState==='closed');
     var statusCell=
-      '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;'
+      '<span class="pr-status-pill" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;'
       +(merged
         ?'background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;'
         :(closed
@@ -4531,7 +4531,7 @@ function renderPullRequests(data){
     }
     html+='<td class="log-author"><div>'+escapeHtml(authorMain)+'</div>'+authorSub+'</td>';
     html+='<td class="log-date">'+escapeHtml(date||'')+'</td>';
-    html+='<td class="log-msg"><div class="commit-msg-box"><div>'+escapeHtml(pr.title||'')+'</div><div style="margin-top:4px;font-size:11px;color:#64748b">'+escapeHtml((pr.head_ref||'')+' → '+(pr.base_ref||''))+'</div></div></td>';
+    html+='<td class="log-msg">'+_renderCommitMessageCell(pr.title||'','pr-msg-'+idx,'')+'<div style="margin-top:4px;font-size:11px;color:#64748b">'+escapeHtml((pr.head_ref||'')+' → '+(pr.base_ref||''))+'</div></td>';
     html+='<td class="log-status">'+statusCell+'</td>';
     html+='<td class="log-actions">'
       +'<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();window.open(\''+escapeJS(pr.url||'')+'\',\'_blank\')">'+t('prs_view')+'</button>'
