@@ -4625,7 +4625,7 @@ function highlightPRDiffFiles(text, headSha, prNumber){
     html+='<div class="diff-file-header" onclick="toggleDiffFile(\''+fileId+'\',this)">';
     html+='<span class="file-toggle" id="'+fileId+'-toggle">▶</span>';
     html+='<b class="diff-file-title">'+escapeHtml(sec.file)+'</b>';
-    html+='<span class="diff-file-meta">'+_aiCmpText('当前 ','Current ')+sec.lines.length+'</span>';
+    html+='<span class="diff-file-meta">'+_aiCmpText('改动行数: ','Changed lines: ')+sec.lines.length+'</span>';
     html+='</div>';
     html+='<div id="'+fileId+'" class="diff-file-body" style="display:none">';
     html+='<div class="diff-current-label">'+_aiCmpText('当前提交','Current Commit')+'</div>';
@@ -4882,7 +4882,7 @@ function highlightDiffFiles(text, commitHash){
     html+='<div class="diff-file-header" onclick="toggleDiffFile(\''+fileId+'\',this)">';
     html+='<span class="file-toggle" id="'+fileId+'-toggle">▶</span>';
     html+='<b class="diff-file-title">'+escapeHtml(sec.file)+'</b>';
-    html+='<span class="diff-file-meta">'+_aiCmpText('当前 ','Current ')+sec.lines.length+'</span>';
+    html+='<span class="diff-file-meta">'+_aiCmpText('改动行数: ','Changed lines: ')+sec.lines.length+'</span>';
     html+='</div>';
     html+='<div id="'+fileId+'" class="diff-file-body" style="display:none">';
     html+='<div class="diff-current-label">'+_aiCmpText('当前提交','Current Commit')+'</div>';
