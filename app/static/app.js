@@ -5022,7 +5022,7 @@ function _renderAIDiffComparisonSections(st){
     var curText=currMap[title]||'';
     var oldText=histMap[title]||'';
     var bodyId='commit-ai-cmp-sec-'+k;
-    html+='<div style="border:1px solid #dbe3f1;border-radius:8px;background:#fbfdff;overflow:hidden;margin-bottom:8px">';
+    html+='<div style="border:1px solid #dbe3f1;border-radius:8px;background:#fbfdff;overflow:hidden;margin-bottom:8px;box-shadow:none">';
     html+='<div style="display:flex;align-items:center;padding:8px 10px;background:#f3f7ff;cursor:pointer" onclick="toggleDiffFile(\''+bodyId+'\',this)">';
     html+='<span class="file-toggle" id="'+bodyId+'-toggle">▶</span>';
     html+='<b style="margin-left:8px;color:#1d4ed8;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">'+escapeHtml(title)+'</b>';

@@ -868,16 +868,16 @@
 }
 
 .diff-file-section {
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  background: #f8fafc;
+  border: 1px solid #edf2f7;
+  border-radius: 4px;
+  background: #fbfdff;
   overflow: hidden;
   box-shadow: none !important;
   filter: none !important;
   flex-shrink: 0; /* prevent flex parent from squishing sections, which hides text */
 }
 .diff-file-section.open {
-  border-color: #d1d5db;
+  border-color: #dbe3f1;
   box-shadow: none !important;
 }
 .diff-file-section.analyzing {
@@ -903,9 +903,9 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 11px 12px;
+  padding: 8px 10px;
   cursor: pointer;
-  background: #f3f4f6;
+  background: #f5f7fa;
 }
 .diff-file-header:hover {
   background: #eaf4ff;
