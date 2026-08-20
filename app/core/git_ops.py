@@ -2468,6 +2468,105 @@ def drop_commit(hash):
     return _run(["git", "rebase", "--onto", hash + "^", hash])
 
 
+def remove_files_from_commit(commit_hash, file_list):
+    """Remove specific files from a commit, restoring their changes to working tree.
+
+    For HEAD commit: git reset <parent> -- <files>, then git commit --amend --no-edit.
+    For older commits: git rebase -i with exec commands to amend the target commit.
+
+    Returns (ok: bool, message: str).
+    """
+    import tempfile, stat as _stat
+
+    if not file_list:
+        return False, "No files specified"
+
+    if is_rebase_in_progress():
+        return False, "Another rebase is already in progress. Please finish or abort it first."
+
+    # Resolve full hash
+    full_hash_out, _, rc = _run(["git", "rev-parse", "--verify", commit_hash])
+    if rc != 0:
+        return False, f"Commit not found: {commit_hash}"
+    full_hash = full_hash_out.strip()
+
+    # Get parent commit
+    parent_out, _, rc = _run(["git", "rev-parse", full_hash + "^"])
+    if rc != 0:
+        return False, "Cannot remove files from root commit (no parent)"
+    parent = parent_out.strip()
+
+    # Check if this is the HEAD commit
+    head_out, _, _ = _run(["git", "rev-parse", "HEAD"])
+    is_head = head_out.strip() == full_hash
+
+    if is_head:
+        # Simple path: reset files to parent state in index (leaves working tree as-is), then amend
+        for f in file_list:
+            out, err, rc2 = _run(["git", "reset", parent, "--", f])
+            if rc2 != 0:
+                return False, f"Failed to reset '{f}': {err or out}"
+        out, err, rc2 = _run(["git", "commit", "--amend", "--no-edit"])
+        if rc2 != 0:
+            return False, f"Failed to amend commit: {err or out}"
+        return True, f"Removed {len(file_list)} file(s) from HEAD commit"
+
+    # Non-HEAD: use rebase -i with exec to amend the target commit
+    files_repr = repr(list(file_list))
+    target_repr = repr(full_hash)
+
+    seq_script = (
+        "#!/usr/bin/env python3\n"
+        "import sys, re, shlex\n"
+        f"target = {target_repr}\n"
+        f"files  = {files_repr}\n"
+        "def match(todo_h, full_h):\n"
+        "    return full_h.startswith(todo_h) or todo_h.startswith(full_h[:12])\n"
+        "lines = open(sys.argv[1]).readlines()\n"
+        "out = []\n"
+        "for ln in lines:\n"
+        "    out.append(ln)\n"
+        "    m = re.match(r'^pick(\\s+)(\\S+)(.*)', ln.rstrip())\n"
+        "    if m and match(m.group(2), target):\n"
+        "        for f in files:\n"
+        "            out.append('exec git reset HEAD~1 -- ' + shlex.quote(f) + '\\n')\n"
+        "        out.append('exec git commit --amend --no-edit\\n')\n"
+        "open(sys.argv[1], 'w').writelines(out)\n"
+    )
+
+    seq_f = tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, prefix="git_rmf_seq_")
+    seq_editor_path = seq_f.name
+    seq_f.write(seq_script)
+    seq_f.close()
+    os.chmod(seq_editor_path, os.stat(seq_editor_path).st_mode | _stat.S_IEXEC | _stat.S_IXGRP | _stat.S_IXOTH)
+
+    # Auto-stash uncommitted changes so rebase doesn't refuse to start
+    stash_out, _, stash_rc = _run(["git", "stash", "push", "--include-untracked", "-m", "gitboard-rmfiles-autostash"])
+    did_stash = stash_rc == 0 and "No local changes" not in stash_out
+
+    try:
+        env = {"GIT_SEQUENCE_EDITOR": seq_editor_path}
+        out, err, rc = _run(["git", "rebase", "-i", parent], env=env, timeout=180)
+        if rc != 0:
+            _run(["git", "rebase", "--abort"])
+            if did_stash:
+                _run(["git", "stash", "pop"])
+            return False, err or out or "Rebase failed"
+        if did_stash:
+            _run(["git", "stash", "pop"])
+        return True, f"Removed {len(file_list)} file(s) from commit {full_hash[:7]}"
+    except Exception as e:
+        _run(["git", "rebase", "--abort"])
+        if did_stash:
+            _run(["git", "stash", "pop"])
+        return False, str(e)
+    finally:
+        try:
+            os.unlink(seq_editor_path)
+        except Exception:
+            pass
+
+
 def squash_commits(from_h, to_h, msg):
     """Squash commits from from_h to to_h into a single commit with msg."""
     _, _, rc = _run(["git", "rev-parse", "--verify", from_h + "^"])

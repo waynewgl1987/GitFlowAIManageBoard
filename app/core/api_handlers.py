@@ -38,7 +38,7 @@ from core.git_ops import (
     resolve_conflict, get_file_commits,
     get_uncommitted_changes, get_commit_log, get_pull_requests,
     is_valid_commit_path,
-    reset_to, revert_commit, drop_commit, squash_commits, squash_selected_commits, squash_conflict_check, abort_merge_or_rebase,
+    reset_to, revert_commit, drop_commit, remove_files_from_commit, squash_commits, squash_selected_commits, squash_conflict_check, abort_merge_or_rebase,
     rebase_abort, rebase_skip, rebase_continue,
     worktree_list, worktree_add, worktree_remove, worktree_prune,
     get_git_graph,
@@ -1236,6 +1236,19 @@ def handle_post(path, data, send_json):
             send_json({"ok": True, "stdout": stdout})
         else:
             send_json({"ok": False, "error": stderr or stdout}, 400)
+        return True
+
+    elif path == "/api/remove-files-from-commit":
+        commit = data.get("commit", "")
+        files = data.get("files", [])
+        if not commit or not files:
+            send_json({"ok": False, "error": "Missing commit or files"}, 400)
+            return True
+        ok, msg = remove_files_from_commit(commit, files)
+        if ok:
+            send_json({"ok": True, "message": msg})
+        else:
+            send_json({"ok": False, "error": msg}, 400)
         return True
 
     elif path == "/api/drop_commit":
