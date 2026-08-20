@@ -4506,8 +4506,16 @@ function renderPullRequests(data){
     var date=(pr.merged_at||'')||(pr.updated_at||pr.created_at||'');
     var merged=(pr.state==='merged')||(prState==='merged');
     var closed=(pr.state==='closed')||(prState==='closed');
+    var risk=(pr&&pr.risk)||{};
+    var riskHints=[];
+    if(risk.main_entry_changed) riskHints.push(_aiCmpText('主入口改动','Main entry changed'));
+    if(risk.too_many_files) riskHints.push(_aiCmpText('改动文件 '+Number(risk.files_changed||0),'Files changed '+Number(risk.files_changed||0)));
+    var riskTitle='';
+    if(risk.main_entry_files && risk.main_entry_files.length){
+      riskTitle=' · '+risk.main_entry_files.join(', ');
+    }
     var statusCell=
-      '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;'
+      '<span class="pr-status-pill" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;'
       +(merged
         ?'background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;'
         :(closed
@@ -4517,7 +4525,13 @@ function renderPullRequests(data){
       +(merged?('✅ '+t('prs_merged')):(closed?('⚪ '+t('prs_closed')):('🟡 '+t('prs_open'))))
       +(pr.is_draft?(' · '+t('prs_draft')):'')
       +'</span>';
-    html+='<tr style="cursor:pointer" onclick="togglePRDiff('+Number(pr.number||0)+','+idx+',\''+escapeAttr(pr.head_sha||'')+'\')">';
+    if(risk.is_risky){
+      statusCell+='<div class="pr-risk-pill" title="'+escapeAttr(_aiCmpText('风险提示：','Risk: ')+(riskHints.join(' · ')||_aiCmpText('请重点关注','Needs attention'))+riskTitle)+'">⚠️ '+_aiCmpText('RISK','RISK')+'</div>';
+      if(riskHints.length){
+        statusCell+='<div class="pr-risk-note">'+escapeHtml(riskHints.join(' · '))+'</div>';
+      }
+    }
+    html+='<tr class="'+(risk.is_risky?'pr-risk-row':'')+'" style="cursor:pointer" onclick="togglePRDiff('+Number(pr.number||0)+','+idx+',\''+escapeAttr(pr.head_sha||'')+'\')">';
     html+='<td><span class="log-hash">#'+escapeHtml(String(pr.number||''))+'</span></td>';
     var authorMain=(pr.author_name||pr.author_display||pr.author_login||pr.author||'');
     var authorId=(pr.author_login||pr.author||'').trim();
@@ -4531,7 +4545,7 @@ function renderPullRequests(data){
     }
     html+='<td class="log-author"><div>'+escapeHtml(authorMain)+'</div>'+authorSub+'</td>';
     html+='<td class="log-date">'+escapeHtml(date||'')+'</td>';
-    html+='<td class="log-msg"><div class="commit-msg-box"><div>'+escapeHtml(pr.title||'')+'</div><div style="margin-top:4px;font-size:11px;color:#64748b">'+escapeHtml((pr.head_ref||'')+' → '+(pr.base_ref||''))+'</div></div></td>';
+    html+='<td class="log-msg">'+_renderCommitMessageCell(pr.title||'','pr-msg-'+idx,'')+'<div style="margin-top:4px;font-size:11px;color:#64748b">'+escapeHtml((pr.head_ref||'')+' → '+(pr.base_ref||''))+'</div></td>';
     html+='<td class="log-status">'+statusCell+'</td>';
     html+='<td class="log-actions">'
       +'<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();window.open(\''+escapeJS(pr.url||'')+'\',\'_blank\')">'+t('prs_view')+'</button>'
@@ -4539,7 +4553,7 @@ function renderPullRequests(data){
       +'</td>';
     html+='<td style="text-align:center"><span class="file-toggle" id="pr-toggle-'+idx+'">▶</span></td>';
     html+='</tr>';
-    html+='<tr id="pr-diff-row-'+idx+'" style="display:none"><td colspan="7" style="padding:0"><div id="pr-diff-'+idx+'" style="padding:12px 16px;max-height:600px;overflow-y:auto"></div></td></tr>';
+    html+='<tr id="pr-diff-row-'+idx+'" class="log-diff-row" style="display:none"><td colspan="7" class="log-diff-cell"><div id="pr-diff-'+idx+'" class="log-diff-panel"></div></td></tr>';
   });
   html+='</tbody></table>';
   container.innerHTML=html;
@@ -4566,7 +4580,7 @@ function togglePRDiff(prNumber, idx, headSha){
   diffEl.innerHTML='<div class="loading-bar"><span class="spinner"></span>'+(L==='zh'?'正在加载 PR 代码改动...':'Loading PR diff...')+'</div>';
   var key=''+prNumber;
   if(_prDiffCache[key]){
-    diffEl.innerHTML='<div class="diff-block">'+highlightPRDiffFiles(_prDiffCache[key],headSha,prNumber)+'</div>';
+    diffEl.innerHTML='<div class="diff-block diff-block--bare">'+highlightPRDiffFiles(_prDiffCache[key],headSha,prNumber)+'</div>';
     return;
   }
   apiGet('/api/pull-request-diff?number='+encodeURIComponent(prNumber),function(data){
@@ -4575,7 +4589,7 @@ function togglePRDiff(prNumber, idx, headSha){
       return;
     }
     _prDiffCache[key]=data.diff||'';
-    diffEl.innerHTML='<div class="diff-block">'+highlightPRDiffFiles(data.diff||'',headSha,prNumber)+'</div>';
+    diffEl.innerHTML='<div class="diff-block diff-block--bare">'+highlightPRDiffFiles(data.diff||'',headSha,prNumber)+'</div>';
   });
 }
 
@@ -4607,16 +4621,18 @@ function highlightPRDiffFiles(text, headSha, prNumber){
     if(headSha){
       _commitFileDiffStore[_commitDiffStoreKey(headSha, sec.file)] = fileDiffText;
     }
-    html+='<div style="border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;overflow:hidden">';
-    html+='<div style="display:flex;align-items:center;padding:8px 14px;background:#f9fafb;cursor:pointer" onclick="toggleDiffFile(\''+fileId+'\',this)">';
+    html+='<div class="diff-file-card">';
+    html+='<div class="diff-file-header" onclick="toggleDiffFile(\''+fileId+'\',this)">';
     html+='<span class="file-toggle" id="'+fileId+'-toggle">▶</span>';
-    html+='<b style="color:#2563eb;flex:1;margin-left:8px">'+escapeHtml(sec.file)+'</b>';
-    html+='<span style="font-size:11px;color:#9ca3af">'+sec.lines.length+' lines</span>';
+    html+='<b class="diff-file-title">'+escapeHtml(sec.file)+'</b>';
+    html+='<span class="diff-file-meta">'+_aiCmpText('改动行数: ','Changed lines: ')+sec.lines.length+'</span>';
     html+='</div>';
-    html+='<div id="'+fileId+'" style="display:none">'+highlightDiff(fileDiffText)+'</div>';
-    html+='<div style="padding:4px 14px;border-top:1px solid #e5e7eb;background:#fafafa">';
+    html+='<div id="'+fileId+'" class="diff-file-body" style="display:none">';
+    html+='<div class="diff-current-label">'+_aiCmpText('当前提交','Current Commit')+'</div>';
+    html+='<div class="diff-block diff-block--bare">'+highlightDiff(fileDiffText)+'</div>';
+    html+='<div class="diff-file-actions">';
     html+='<button class="btn btn-sm btn-primary" title="'+escapeAttr(_aiCmpText('分析此文件改动','Analyze this file changes'))+'" onclick="event.stopPropagation();openPRAICompareFile(\''+escapeAttr(sec.file)+'\',\''+escapeAttr(headSha||'')+'\',\''+escapeAttr(prNumber)+'\')">🤖 AI Compare</button>';
-    html+='</div></div>';
+    html+='</div></div></div>';
   });
   return html;
 }
@@ -4728,7 +4744,7 @@ function renderLog(data){
     html+='</td>';
     html+='<td style="text-align:center"><span class="file-toggle" id="log-toggle-'+idx+'">▶</span></td>';
     html+='</tr>';
-    html+='<tr id="commit-diff-row-'+idx+'" style="display:none"><td colspan="8" style="padding:0"><div id="commit-diff-'+idx+'" style="padding:12px 16px;max-height:600px;overflow-y:auto"></div></td></tr>';
+    html+='<tr id="commit-diff-row-'+idx+'" class="log-diff-row" style="display:none"><td colspan="8" class="log-diff-cell"><div id="commit-diff-'+idx+'" class="log-diff-panel"></div></td></tr>';
   });
   html+='</tbody></table>';
   container.innerHTML=html;
@@ -4821,7 +4837,7 @@ function toggleCommitDiff(hash,idx){
   if(diffEl.innerHTML)return;
   diffEl.innerHTML='<div class="loading-bar"><span class="spinner"></span>Loading diff...</div>';
   apiGet('/api/commit-diff?commit='+hash,function(data){
-    diffEl.innerHTML='<div class="diff-block">'+highlightDiffFiles(data.diff, hash)+'</div>';
+    diffEl.innerHTML='<div class="diff-block diff-block--bare">'+highlightDiffFiles(data.diff, hash)+'</div>';
   });
 }
 
@@ -4852,8 +4868,7 @@ function highlightDiffFiles(text, commitHash){
       +'<div style="font-size:12px;color:#475569;margin-bottom:6px">No per-file patch blocks in this commit view. Loading changed-file list…</div>'
       +'<div id="'+fallbackId+'" style="font-size:12px;color:#64748b">Loading files…</div>'
       +'</div>';
-    for(var j=0;j<lines.length;j++)
-      h+=diffLine(lines[j]);
+    h+=highlightDiff(text);
     setTimeout(function(){ _loadCommitAIEntryFiles(commitHash,fallbackId); },0);
     return h;
   }
@@ -4863,31 +4878,21 @@ function highlightDiffFiles(text, commitHash){
     var fileId='diff-file-'+si+'-'+commitHash.substr(0,7);
     var fileDiffText=(sec.lines||[]).join('\n');
     _commitFileDiffStore[_commitDiffStoreKey(commitHash, sec.file)] = fileDiffText;
-    html+='<div style="border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;overflow:hidden">';
-    html+='<div style="display:flex;align-items:center;padding:8px 14px;background:#f9fafb;cursor:pointer" onclick="toggleDiffFile(\''+fileId+'\',this)">';
+    html+='<div class="diff-file-card">';
+    html+='<div class="diff-file-header" onclick="toggleDiffFile(\''+fileId+'\',this)">';
     html+='<span class="file-toggle" id="'+fileId+'-toggle">▶</span>';
-    html+='<b style="color:#2563eb;flex:1;margin-left:8px">'+escapeHtml(sec.file)+'</b>';
-    html+='<span style="font-size:11px;color:#9ca3af">'+sec.lines.length+' lines</span>';
+    html+='<b class="diff-file-title">'+escapeHtml(sec.file)+'</b>';
+    html+='<span class="diff-file-meta">'+_aiCmpText('改动行数: ','Changed lines: ')+sec.lines.length+'</span>';
     html+='</div>';
-    html+='<div id="'+fileId+'" style="display:none">';
-    for(var k=0;k<sec.lines.length;k++)
-      html+=diffLine(sec.lines[k]);
-    html+='</div>';
-    html+='<div style="padding:4px 14px;border-top:1px solid #e5e7eb;background:#fafafa">';
+    html+='<div id="'+fileId+'" class="diff-file-body" style="display:none">';
+    html+='<div class="diff-current-label">'+_aiCmpText('当前提交','Current Commit')+'</div>';
+    html+='<div class="diff-block diff-block--bare">'+highlightDiff(fileDiffText)+'</div>';
+    html+='<div class="diff-file-actions">';
     html+='<button class="btn btn-sm btn-secondary restore-file-btn" title="Restore this file to a specific commit — choose from commit history" data-file="'+escapeAttr(sec.file)+'" onclick="event.stopPropagation();openRestorePage(this.getAttribute(\'data-file\'))">📂 Restore to commit...</button>';
     html+=' <button class="btn btn-sm btn-primary" title="Open AI compare panel for this file" onclick="event.stopPropagation();openCommitAICompare(\''+escapeAttr(sec.file)+'\',\''+escapeAttr(commitHash)+'\')">🤖 AI Compare</button>';
-    html+='</div></div>';
+    html+='</div></div></div>';
   });
   return html;
-  
-  function diffLine(line){
-    var s='<div style="font-family:monospace;font-size:12px;line-height:1.6;white-space:pre-wrap;padding:1px 8px;';
-    if(line.charAt(0)==='+')s+='background:#e6ffed;color:#059664';
-    else if(line.charAt(0)==='-')s+='background:#ffeef0;color:#dc2626';
-    else if(/^(@@|diff|index|commit|Author:|Date:)/.test(line))s+='color:#6b7280';
-    s+='">'+escapeHtml(line)+'</div>';
-    return s;
-  }
 }
 
 function _loadCommitAIEntryFiles(commitHash,targetId){
@@ -4953,13 +4958,13 @@ function _renderAIDiffSections(diffText, idPrefix, forcedTitle){
     var sec=sections[i];
     var bodyId=idPrefix+'-sec-'+i;
     var count=(sec.lines||[]).length;
-    html+='<div style="border:1px solid #e5e7eb;border-radius:8px;background:#fff;overflow:hidden;margin-bottom:8px">';
-    html+='<div style="display:flex;align-items:center;padding:8px 10px;background:#f8fafc;cursor:pointer" onclick="toggleDiffFile(\''+bodyId+'\',this)">';
+    html+='<div style="border:1px solid #dbe3f1;border-radius:8px;background:#fbfdff;overflow:hidden;margin-bottom:8px">';
+    html+='<div style="display:flex;align-items:center;padding:8px 10px;background:#f3f7ff;cursor:pointer" onclick="toggleDiffFile(\''+bodyId+'\',this)">';
     html+='<span class="file-toggle" id="'+bodyId+'-toggle">▶</span>';
     html+='<b style="margin-left:8px;color:#1d4ed8;flex:1;font-size:12px">'+escapeHtml(sec.title||_aiCmpText('未命名文件','Unnamed file'))+'</b>';
     html+='<span style="font-size:11px;color:#94a3b8">'+count+' '+_aiCmpText('行','lines')+'</span>';
     html+='</div>';
-    html+='<div id="'+bodyId+'" style="display:none">'+highlightDiff((sec.lines||[]).join('\n'))+'</div>';
+    html+='<div id="'+bodyId+'" style="display:none"><div class="diff-block">'+highlightDiff((sec.lines||[]).join('\n'))+'</div></div>';
     html+='</div>';
   }
   return html;
@@ -5017,19 +5022,19 @@ function _renderAIDiffComparisonSections(st){
     var curText=currMap[title]||'';
     var oldText=histMap[title]||'';
     var bodyId='commit-ai-cmp-sec-'+k;
-    html+='<div style="border:1px solid #e5e7eb;border-radius:8px;background:#fff;overflow:hidden;margin-bottom:8px">';
-    html+='<div style="display:flex;align-items:center;padding:8px 10px;background:#f8fafc;cursor:pointer" onclick="toggleDiffFile(\''+bodyId+'\',this)">';
+    html+='<div style="border:1px solid #dbe3f1;border-radius:8px;background:#fbfdff;overflow:hidden;margin-bottom:8px;box-shadow:none">';
+    html+='<div style="display:flex;align-items:center;padding:8px 10px;background:#f3f7ff;cursor:pointer" onclick="toggleDiffFile(\''+bodyId+'\',this)">';
     html+='<span class="file-toggle" id="'+bodyId+'-toggle">▶</span>';
-    html+='<b style="margin-left:8px;color:#1d4ed8;flex:1;font-size:12px">'+escapeHtml(title)+'</b>';
-    html+='<span style="font-size:10px;color:#64748b;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:1px 6px;margin-right:4px">C '+(curText?curText.split('\n').length:0)+'</span>';
-    html+='<span style="font-size:10px;color:#64748b;background:#ecfeff;border:1px solid #a5f3fc;border-radius:10px;padding:1px 6px">H '+(oldText?oldText.split('\n').length:0)+'</span>';
+    html+='<b style="margin-left:8px;color:#1d4ed8;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">'+escapeHtml(title)+'</b>';
+    html+='<span style="flex-shrink:0;font-size:10px;color:#64748b;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:1px 6px;margin-right:4px">'+_aiCmpText('当前 ','Current ')+(curText?curText.split('\n').length:0)+'</span>';
+    html+='<span style="flex-shrink:0;font-size:10px;color:#64748b;background:#ecfeff;border:1px solid #a5f3fc;border-radius:10px;padding:1px 6px">'+_aiCmpText('历史 ','History ')+(oldText?oldText.split('\n').length:0)+'</span>';
     html+='</div>';
-    html+='<div id="'+bodyId+'" style="display:none;padding:8px 10px;background:#fff">';
+    html+='<div id="'+bodyId+'" style="display:none;padding:8px 10px;background:#fbfdff;overflow:auto">';
     html+='<div style="font-size:11px;color:#0f766e;margin-bottom:6px;font-weight:700">'+_aiCmpText('当前提交','Current Commit')+'</div>';
-    html+=(curText?highlightDiff(curText):('<div style="padding:8px;color:#94a3b8;font-size:12px">'+_aiCmpText('当前提交该 section 无改动','No changes in this section for current commit')+'</div>'));
+    html+=(curText?('<div class="diff-block">'+highlightDiff(curText)+'</div>'):('<div style="padding:8px;color:#94a3b8;font-size:12px">'+_aiCmpText('当前提交该 section 无改动','No changes in this section for current commit')+'</div>'));
     html+='<div style="height:8px"></div>';
     html+='<div style="font-size:11px;color:#0369a1;margin-bottom:6px;font-weight:700">'+_aiCmpText('历史提交','Historical Commit')+'</div>';
-    html+=(oldText?highlightDiff(oldText):('<div style="padding:8px;color:#94a3b8;font-size:12px">'+_aiCmpText('历史提交该 section 无改动','No changes in this section for historical commit')+'</div>'));
+    html+=(oldText?('<div class="diff-block">'+highlightDiff(oldText)+'</div>'):('<div style="padding:8px;color:#94a3b8;font-size:12px">'+_aiCmpText('历史提交该 section 无改动','No changes in this section for historical commit')+'</div>'));
     html+='</div></div>';
   }
   return html;
@@ -5165,7 +5170,7 @@ function _openCommitAIComparePanel(opts){
           +(cInfo.date?('<div style="margin-top:4px">'+_aiCmpText('日期: ','Date: ')+escapeHtml(cInfo.date)+'</div>'):'')
           +'<div id="commit-ai-compare-target" style="margin-top:4px">'+_aiCmpText('对比历史: 未选择','Comparing with: not selected')+'</div>'
         +'</div>'
-        +'<div id="commit-ai-current-diff" style="flex:1;overflow-y:auto;padding:10px;background:#fafafa">'
+        +'<div id="commit-ai-current-diff" style="flex:1;overflow:auto;padding:10px;background:#fafafa">'
           +'<div id="commit-ai-compare-sections"></div>'
         +'</div>'
         +'<div style="padding:8px 12px;border-top:1px solid #f1f5f9;background:#f8fafc">'
