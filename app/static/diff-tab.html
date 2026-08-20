@@ -115,31 +115,32 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 
 /* ── AI bubble code blocks ── */
 .ai-bubble pre {
-  background: #1e1e2e; color: #cdd6f4; border-radius: 8px;
+  background: #0f172a; color: #e2e8f0; border-radius: 12px;
   padding: 0; overflow-x: auto; font-size: 11.5px; margin: 8px 0;
-  border: 1px solid rgba(255,255,255,.08);
+  border: 1px solid rgba(148,163,184,.18); box-shadow: 0 10px 24px rgba(15,23,42,.10);
 }
 .ai-bubble pre .code-block-header {
   display: flex; align-items: center; gap: 8px;
-  padding: 5px 10px; background: rgba(255,255,255,.06);
-  border-bottom: 1px solid rgba(255,255,255,.08);
-  border-radius: 8px 8px 0 0; font-size: 10px;
+  padding: 6px 12px; background: rgba(255,255,255,.04);
+  border-bottom: 1px solid rgba(148,163,184,.16);
+  border-radius: 12px 12px 0 0; font-size: 10px; color: #cbd5e1;
 }
 .ai-bubble pre .code-block-lang {
-  color: #89b4fa; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  color: #93c5fd; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
 }
 .ai-bubble pre .code-block-body {
   display: block; padding: 10px 12px; overflow-x: auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  white-space: pre; line-height: 1.55;
+  white-space: pre; line-height: 1.55; word-break: normal;
 }
 /* Light theme AI bubble */
-.ai-section.theme-light .ai-bubble pre { background: #f6f8fa; color: #24292f; border: 1px solid #d0d7de; }
-.ai-section.theme-light .ai-bubble pre .code-block-header { background: rgba(0,0,0,.04); border-bottom: 1px solid #d0d7de; }
-.ai-section.theme-light .ai-bubble pre .code-block-lang { color: #0550ae; }
+.ai-section.theme-light .ai-bubble pre { background: #f8fafc; color: #0f172a; border: 1px solid #dbe4f0; }
+.ai-section.theme-light .ai-bubble pre .code-block-header { background: rgba(15,23,42,.04); border-bottom: 1px solid #dbe4f0; }
+.ai-section.theme-light .ai-bubble pre .code-block-lang { color: #2563eb; }
+.ai-section.theme-light .ai-bubble code { background: rgba(37,99,235,.08); color: #1d4ed8; }
 .ai-bubble code {
-  background: rgba(99,102,241,.1); color: #4f46e5;
-  padding: 1px 5px; border-radius: 4px; font-size: 12px;
+  background: rgba(148,163,184,.14); color: #e2e8f0;
+  padding: 1px 5px; border-radius: 6px; font-size: 12px;
 }
 .ai-bubble strong { color: #1e293b; }
 /* Progress thinking block */
