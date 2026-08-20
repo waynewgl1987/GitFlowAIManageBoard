@@ -1189,11 +1189,11 @@ function _syntaxHighlight(rawText, lang, isDark) {
   if (rawText.length > 500) return _escHtml(rawText);
 
   var C = isDark ? {
-    kw: '#569cd6', str: '#ce9178', cmt: '#6a9955', num: '#b5cea8',
-    type: '#4ec9b0', fn: '#dcdcaa', prop: '#9cdcfe', dec: '#c586c0', op: '#d4d4d4'
+    kw: '#7aa2f7', str: '#a6da95', cmt: '#6b7280', num: '#f5d76e',
+    type: '#8bd5ca', fn: '#c6a0f6', prop: '#7dd3fc', dec: '#f5a97f', op: '#cbd5e1'
   } : {
-    kw: '#9b2393', str: '#c41a16', cmt: '#5c6e74', num: '#1c00cf',
-    type: '#3a60a0', fn: '#5c1a8a', prop: '#0b4f79', dec: '#826900', op: '#555555'
+    kw: '#2563eb', str: '#0f766e', cmt: '#6b7280', num: '#b45309',
+    type: '#0f766e', fn: '#7c3aed', prop: '#0284c7', dec: '#a16207', op: '#475569'
   };
 
   var kwSet = {};
