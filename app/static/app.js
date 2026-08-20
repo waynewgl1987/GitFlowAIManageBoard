@@ -4873,13 +4873,21 @@ function highlightDiffFiles(text, commitHash){
     return h;
   }
   
-  var html='';
+  var toolbarId='rmfc-toolbar-'+commitHash.substr(0,7);
+  var isZhL=(L==='zh');
+  var html='<div id="'+toolbarId+'" class="rmfc-toolbar" style="display:none;margin-bottom:8px;padding:6px 10px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;align-items:center;gap:8px">'
+    +'<span style="font-size:13px;color:#92400e">'+(isZhL?'已选 ':'Selected ')+'<b id="'+toolbarId+'-count">0</b>'+(isZhL?' 个文件':' file(s)')+'</span>'
+    +'<button class="btn btn-sm btn-danger" onclick="doRemoveFilesFromCommit(\''+escapeAttr(commitHash)+'\')">'
+    +(isZhL?'✂️ 从此 Commit 移除并还原到工作区':'✂️ Remove from commit &amp; restore to working tree')
+    +'</button></div>';
   sections.forEach(function(sec, si){
     var fileId='diff-file-'+si+'-'+commitHash.substr(0,7);
+    var cbId='rmfc-cb-'+si+'-'+commitHash.substr(0,7);
     var fileDiffText=(sec.lines||[]).join('\n');
     _commitFileDiffStore[_commitDiffStoreKey(commitHash, sec.file)] = fileDiffText;
     html+='<div class="diff-file-card">';
-    html+='<div class="diff-file-header" onclick="toggleDiffFile(\''+fileId+'\',this)">';
+    html+='<div class="diff-file-header" onclick="toggleDiffFile(\''+fileId+'\',this)" style="display:flex;align-items:center;gap:6px">';
+    html+='<input type="checkbox" id="'+cbId+'" class="rmfc-cb" data-commit="'+escapeAttr(commitHash)+'" data-file="'+escapeAttr(sec.file)+'" onclick="event.stopPropagation();_updateRmfcToolbar(\''+escapeAttr(commitHash)+'\')" style="cursor:pointer;width:14px;height:14px;flex-shrink:0;margin:0">';
     html+='<span class="file-toggle" id="'+fileId+'-toggle">▶</span>';
     html+='<b class="diff-file-title">'+escapeHtml(sec.file)+'</b>';
     html+='<span class="diff-file-meta">'+_aiCmpText('改动行数: ','Changed lines: ')+sec.lines.length+'</span>';
@@ -4917,6 +4925,73 @@ function _loadCommitAIEntryFiles(commitHash,targetId){
 
 function _commitDiffStoreKey(commitHash, filePath){
   return (commitHash||'')+'::'+(filePath||'');
+}
+
+function _updateRmfcToolbar(commitHash){
+  var shortHash=commitHash.substr(0,7);
+  var toolbarId='rmfc-toolbar-'+shortHash;
+  var toolbar=document.getElementById(toolbarId);
+  if(!toolbar)return;
+  var cbs=document.querySelectorAll('.rmfc-cb[data-commit="'+commitHash+'"]:checked');
+  var count=cbs.length;
+  var countEl=document.getElementById(toolbarId+'-count');
+  if(countEl)countEl.textContent=count;
+  toolbar.style.display=count>0?'flex':'none';
+}
+
+function doRemoveFilesFromCommit(commitHash){
+  var cbs=document.querySelectorAll('.rmfc-cb[data-commit="'+commitHash+'"]:checked');
+  if(!cbs.length)return;
+  var files=[];
+  for(var i=0;i<cbs.length;i++)files.push(cbs[i].getAttribute('data-file'));
+  var isZh=(L==='zh');
+  var fileList=files.map(function(f){return'<li style="word-break:break-all">'+escapeHtml(f)+'</li>';}).join('');
+  // First confirmation dialog
+  showConfirmDialog({
+    title:'✂️ '+(isZh?'从 Commit 移除文件':'Remove Files from Commit'),
+    message:(isZh
+      ?'将以下 <b>'+files.length+'</b> 个文件从 commit <code>'+escapeHtml(commitHash.substr(0,7))+'</code> 中移除，文件改动将还原到工作区：'
+      :'Remove <b>'+files.length+'</b> file(s) from commit <code>'+escapeHtml(commitHash.substr(0,7))+'</code>. Their changes will be restored to the working tree:')
+      +'<ul style="margin:8px 0 0 16px;text-align:left;font-size:12px;color:#374151">'+fileList+'</ul>',
+    confirmText:isZh?'继续':'Continue',
+    confirmClass:'btn-warning',
+    onConfirm:function(){
+      // Second (final) confirmation dialog
+      showConfirmDialog({
+        title:'⚠️ '+(isZh?'确认重写 Git 历史？':'Confirm Git History Rewrite?'),
+        message:(isZh
+          ?'这将<b>修改 Git 历史</b>（amend commit）。<br><br>如果该 commit 已推送到远端，之后需要 <b>Force Push</b>。<br><br>确定要继续吗？'
+          :'This will <b>rewrite Git history</b> (amend the commit).<br><br>If this commit was already pushed to remote, you will need to <b>Force Push</b> afterwards.<br><br>Are you absolutely sure?'),
+        confirmText:isZh?'确认执行':'Yes, Remove',
+        confirmClass:'btn-danger',
+        onConfirm:function(){
+          _execRemoveFilesFromCommit(commitHash,files);
+        }
+      });
+    }
+  });
+}
+
+function _execRemoveFilesFromCommit(commitHash,files){
+  var isZh=(L==='zh');
+  addMsg(isZh?'⏳ 正在从 commit 移除文件…':'⏳ Removing files from commit…','info');
+  apiPost('/api/remove-files-from-commit',{commit:commitHash,files:files},function(data){
+    if(data.ok){
+      addMsg(isZh?'✅ 已成功移除 '+files.length+' 个文件，改动已还原到工作区':'✅ Removed '+files.length+' file(s) from commit. Changes restored to working tree.','success');
+      // Reload the diff block in-place if still visible, then refresh log
+      var toolbar=document.getElementById('rmfc-toolbar-'+commitHash.substr(0,7));
+      var diffBlock=toolbar&&toolbar.closest?toolbar.closest('.diff-block--bare'):null;
+      if(diffBlock){
+        diffBlock.innerHTML='<div class="loading-bar"><span class="spinner"></span>'+(isZh?'重新加载 diff…':'Reloading diff…')+'</div>';
+        apiGet('/api/commit-diff?commit='+encodeURIComponent(commitHash),function(d){
+          diffBlock.innerHTML=highlightDiffFiles(d.diff,commitHash);
+        });
+      }
+      loadLog();
+    }else{
+      addMsg((isZh?'❌ 移除失败: ':'❌ Remove failed: ')+(data.error||''),'error');
+    }
+  });
 }
 
 function _parseDiffSectionsForAI(diffText){
