@@ -687,12 +687,12 @@ def handle_get(path, params, send_json, send_stream=None):
         return True
 
     elif path == "/api/latest-commit-diff":
-        from git_ops import get_latest_commit_diff
+        from core.git_ops import get_latest_commit_diff
         send_json(get_latest_commit_diff())
         return True
 
     elif path == "/api/commit-diff-compare":
-        from git_ops import get_commit_diff_compare
+        from core.git_ops import get_commit_diff_compare
         base_hash = params.get("base", [""])[0].strip()
         head_hash = params.get("head", ["HEAD"])[0].strip() or "HEAD"
         if not base_hash:
