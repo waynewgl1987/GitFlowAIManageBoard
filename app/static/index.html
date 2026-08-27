@@ -122,7 +122,19 @@
       <input type="checkbox" id="select-all-cb"> <span data-i18n="select_all">Select / Deselect All</span>
     </label>
   </div>
+  <div class="log-controls" id="main-files-controls" style="margin-bottom:10px;display:none">
+    <select id="main-files-per-page" onchange="onMainFilesPerPageChange()">
+      <option value="10" selected>10/pg</option><option value="20">20/pg</option><option value="50">50/pg</option><option value="100">100/pg</option>
+    </select>
+    <span id="main-files-total" class="page-info">Total 0</span>
+  </div>
+  <div id="main-batch-progress" class="inline-progress" style="display:none">
+    <div class="inline-progress-head"><span id="main-batch-progress-text">Processing 0/0 (0%)</span></div>
+    <div class="inline-progress-track"><span id="main-batch-progress-bar" class="inline-progress-fill"></span></div>
+  </div>
+  <div id="main-files-pagination-top" class="pagination"></div>
   <div id="file-list"></div>
+  <div id="main-files-pagination" class="pagination"></div>
   <div class="toolbar" id="toolbar" style="display:none">
     <!-- Row 1: Commit message + primary actions -->
     <div class="toolbar-row toolbar-row--primary">
@@ -326,7 +338,6 @@
 </div>
 
 <div id="toast"></div>
-<div id="global-spinner"><span class="spinner"></span><span id="spinner-msg">Loading...</span></div>
 </div>
 
 <!-- ═══════════ Modal ═══════════ -->
