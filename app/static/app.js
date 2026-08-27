@@ -515,8 +515,24 @@ function _renderSmartPaginationHTML(section) {
 
 function _togglePagExpand(section) {
   _pagExpanded[section] = !_pagExpanded[section];
-  var pag = document.getElementById(section+'-pagination');
-  if (pag) pag.innerHTML = _renderSmartPaginationHTML(section);
+  _renderPagSection(section);
+}
+
+function _renderPagSection(section){
+  var html=_renderSmartPaginationHTML(section);
+  var ids=[section+'-pagination', section+'-pagination-top'];
+  for(var i=0;i<ids.length;i++){
+    var el=document.getElementById(ids[i]);
+    if(el) el.innerHTML=html;
+  }
+}
+
+function _clearPagSection(section){
+  var ids=[section+'-pagination', section+'-pagination-top'];
+  for(var i=0;i<ids.length;i++){
+    var el=document.getElementById(ids[i]);
+    if(el) el.innerHTML='';
+  }
 }
 
 function _setSmartPagination(section, totalPages, cur, loadFn, totalItems) {
@@ -525,10 +541,13 @@ function _setSmartPagination(section, totalPages, cur, loadFn, totalItems) {
     infoHtml: totalItems ? '<span class="page-info">Total '+totalItems+'</span>' : ''
   };
   if (_pagExpanded[section] === undefined) _pagExpanded[section] = false;
-  var pag = document.getElementById(section+'-pagination');
-  if (!pag) return;
-  if (totalPages <= 1) { pag.innerHTML = ''; return; }
-  pag.innerHTML = _renderSmartPaginationHTML(section);
+  var hasAny=document.getElementById(section+'-pagination')||document.getElementById(section+'-pagination-top');
+  if (!hasAny) return;
+  if (totalPages <= 1) {
+    _renderPagSection(section);
+    return;
+  }
+  _renderPagSection(section);
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -765,12 +784,11 @@ function _formatAIFixError(data, fallback){
 var _spinnerCount=0;
 function _showSpinner(msg){
   _spinnerCount++;
-  var s=document.getElementById('global-spinner');
-  if(s){document.getElementById('spinner-msg').textContent=msg||'Loading...';s.classList.add('show')}
+  // intentionally no-op: global top spinner removed in favor of inline progress+skeleton states
 }
 function _hideSpinner(){
   _spinnerCount=Math.max(0,_spinnerCount-1);
-  if(!_spinnerCount){var s=document.getElementById('global-spinner');if(s)s.classList.remove('show')}
+  // intentionally no-op
 }
 function showToast(msg, type, duration) {
   type=type||'info'; duration=duration||3500;
@@ -793,6 +811,114 @@ function onPerPageChange(sel, section){
 function escapeHtml(s){s=s==null?'':String(s);return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function escapeAttr(s){s=s==null?'':String(s);return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function escapeJS(s){return escapeAttr(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
+
+function _rememberContainerHeight(el){
+  if(!el)return;
+  var h=Math.round((el.getBoundingClientRect&&el.getBoundingClientRect().height)||0);
+  if(h>=80) el.dataset.lastContentHeight=String(h);
+}
+
+function _rememberContainerHeightById(id){
+  var el=document.getElementById(id);
+  if(!el)return;
+  requestAnimationFrame(function(){_rememberContainerHeight(el);});
+}
+
+function _setLoadingState(target, msg){
+  var el=(typeof target==='string')?document.getElementById(target):target;
+  if(!el)return;
+  _rememberContainerHeight(el);
+  el.innerHTML='<div class="loading-bar">'+escapeHtml(msg||'Loading...')+'</div>';
+  var bar=el.firstElementChild;
+  if(bar && bar.classList && bar.classList.contains('loading-bar')){
+    var known=parseInt(el.dataset.lastContentHeight||'0',10);
+    if(known>0){
+      bar.style.minHeight=Math.max(known,112)+'px';
+    }
+  }
+}
+
+function _chunkedAppendHTML(el, chunks, onDone){
+  var idx=0;
+  function step(){
+    if(!el||!el.isConnected)return;
+    var start=(typeof performance!=='undefined'&&performance.now)?performance.now():Date.now();
+    while(idx<chunks.length){
+      el.insertAdjacentHTML('beforeend', chunks[idx++]);
+      var now=(typeof performance!=='undefined'&&performance.now)?performance.now():Date.now();
+      if(now-start>12)break;
+    }
+    if(idx<chunks.length){
+      requestAnimationFrame(step);
+    }else if(typeof onDone==='function'){
+      onDone();
+    }
+  }
+  requestAnimationFrame(step);
+}
+
+function _enhanceLoadingBar(el){
+  if(!el||el.dataset.loadingEnhanced==='1')return;
+  var txt=(el.textContent||'Loading...').trim();
+  var label=txt||'Loading...';
+  var targetH=parseInt(el.style.minHeight||'0',10);
+  if(!(targetH>0)){
+    var b=(el.getBoundingClientRect&&el.getBoundingClientRect())||null;
+    targetH=Math.round((b&&b.height)||0);
+  }
+  if(!(targetH>0)) targetH=224;
+  var headAndTrack=46;
+  var rowH=42; // close to commits table row height
+  var rowCount=Math.max(3,Math.floor((targetH-headAndTrack)/rowH));
+  var rowsHtml='';
+  for(var i=0;i<rowCount;i++){
+    var cls='w-100';
+    if(i%4===1) cls='w-92';
+    else if(i%4===2) cls='w-78';
+    else if(i%4===3) cls='w-86';
+    rowsHtml+='<span class="skeleton-line '+cls+'"></span>';
+  }
+  el.dataset.loadingEnhanced='1';
+  el.innerHTML=
+    '<div class="loading-live-head">'
+      +'<span class="loading-live-label">'+escapeHtml(label)+'</span>'
+      +'<span class="loading-live-percent">0%</span>'
+    +'</div>'
+    +'<div class="loading-live-track"><span class="loading-live-fill"></span></div>'
+    +'<div class="skeleton-stack">'
+      +rowsHtml
+    +'</div>';
+  var pct=0;
+  var pctEl=el.querySelector('.loading-live-percent');
+  var fillEl=el.querySelector('.loading-live-fill');
+  var timer=setInterval(function(){
+    if(!el.isConnected){clearInterval(timer);return;}
+    pct=Math.min(94,pct+Math.max(1,Math.floor((100-pct)/9)));
+    if(fillEl)fillEl.style.width=pct+'%';
+    if(pctEl)pctEl.textContent=pct+'%';
+  },180);
+  el._loadingTimer=timer;
+}
+
+function _observeLoadingBars(){
+  function scan(root){
+    if(!root)return;
+    if(root.classList&&root.classList.contains('loading-bar'))_enhanceLoadingBar(root);
+    if(root.querySelectorAll){
+      var bars=root.querySelectorAll('.loading-bar');
+      for(var i=0;i<bars.length;i++)_enhanceLoadingBar(bars[i]);
+    }
+  }
+  scan(document.body);
+  var mo=new MutationObserver(function(muts){
+    muts.forEach(function(m){
+      if(m.addedNodes){
+        for(var i=0;i<m.addedNodes.length;i++)scan(m.addedNodes[i]);
+      }
+    });
+  });
+  mo.observe(document.body,{childList:true,subtree:true});
+}
 
 function addMsg(msg, cls, opts) {
   cls=cls||'info';
@@ -1308,22 +1434,68 @@ function highlightDiff(text) {
 }
 
 // ═══════════ Main page ═══════════
-function renderFiles(files) {
+var _filesCache = [];
+var _filesPage = 1;
+
+function _getMainFilesPerPage(){
+  var el=document.getElementById('main-files-per-page');
+  if(!el)return 10;
+  var v=parseInt(el.value,10);
+  if(!isFinite(v)||v<=0)return 10;
+  return v;
+}
+
+function onMainFilesPerPageChange(){
+  _filesPage=1;
+  renderFilesPage(1);
+}
+
+function renderFilesPage(page){
+  _filesPage=Math.max(1,parseInt(page,10)||1);
+  renderFiles(_filesCache,true);
+}
+
+function renderFiles(files, fromCache) {
+  if(!fromCache)_filesCache=Array.isArray(files)?files:[];
+  files=_filesCache;
   var list=document.getElementById('file-list');
   var allBar=document.getElementById('select-all-bar');
+  var controls=document.getElementById('main-files-controls');
+  var perPage=_getMainFilesPerPage();
+  var total=files.length;
+  var totalPages=Math.max(1,Math.ceil(total/perPage));
+  if(_filesPage>totalPages)_filesPage=totalPages;
+  var start=(_filesPage-1)*perPage;
+  var pageFiles=files.slice(start,start+perPage);
+  var totalEl=document.getElementById('main-files-total');
+  if(totalEl)totalEl.textContent=tf('files_pending',L,{n:total});
+
+  _pagData['main-files']={
+    totalPages:totalPages,
+    cur:_filesPage,
+    loadFn:'renderFilesPage',
+    infoHtml:'<span class="page-info">Total '+total+'</span>'
+  };
+  if(_pagExpanded['main-files']===undefined)_pagExpanded['main-files']=false;
+  _renderPagSection('main-files');
+
   if(!files.length){
     list.innerHTML='<div class="empty">🎉 '+t('no_files')+'</div>';
     document.getElementById('toolbar').style.display='none';
     allBar.style.display='none';
+    if(controls)controls.style.display='none';
+    _clearPagSection('main-files');
     return;
   }
   document.getElementById('toolbar').style.display='flex';
   allBar.style.display='block';
+  if(controls)controls.style.display='flex';
   var allCb=document.getElementById('select-all-cb');
   var allChecked=files.every(function(f){return checkedPaths[f.path]});
   allCb.checked=allChecked;
-  var html='';
-  files.forEach(function(f,idx){
+  list.innerHTML='';
+  var chunks=[],chunk='';
+  pageFiles.forEach(function(f,idx){
     var safePath=escapeHtml(f.path),attrPath=escapeAttr(f.path);
     var diffHtml=highlightDiff(f.diff);
     var checked=checkedPaths[f.path]?' checked':'';
@@ -1332,27 +1504,33 @@ function renderFiles(files) {
     var bodyCls=expanded?' file-body expanded':' file-body';
     var lineCount=f.diff?f.diff.split('\n').length:0;
     var isLargeDiff = lineCount > 80;
-    html+='<div class="file-card" data-index="'+idx+'"><div class="file-header">';
-    html+='<span class="cb-wrap"><input type="checkbox" data-path="'+attrPath+'" class="file-cb"'+checked+'></span>';
-    html+='<span class="'+toggleCls+'">▶</span>';
-    html+='<span class="file-path">'+safePath+'</span>';
-    html+='<span style="color:#9ca3af;font-size:12px">('+lineCount+' '+t('lines')+')</span>';
-    html+='<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();ignoreFile(\''+attrPath+'\')" title="Discard changes for this file">Ignore</button>';
-    html+='</div>';
+    var row='';
+    row+='<div class="file-card" data-index="'+(start+idx)+'"><div class="file-header">';
+    row+='<span class="cb-wrap"><input type="checkbox" data-path="'+attrPath+'" class="file-cb"'+checked+'></span>';
+    row+='<span class="'+toggleCls+'">▶</span>';
+    row+='<span class="file-path">'+safePath+'</span>';
+    row+='<span style="color:#9ca3af;font-size:12px">('+lineCount+' '+t('lines')+')</span>';
+    row+='<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();ignoreFile(\''+attrPath+'\')" title="Discard changes for this file">Ignore</button>';
+    row+='</div>';
     if(diffHtml){
-      var blockId='diff-block-'+idx;
-      html+='<div class="'+bodyCls+'">';
-      html+='<div class="diff-block" id="'+blockId+'">'+diffHtml+'</div>';
+      var blockId='diff-block-'+(start+idx);
+      row+='<div class="'+bodyCls+'">';
+      row+='<div class="diff-block" id="'+blockId+'">'+diffHtml+'</div>';
       if(isLargeDiff){
-        html+='<div style="text-align:center;padding:4px 0 8px">'
+        row+='<div style="text-align:center;padding:4px 0 8px">'
           +'<button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="toggleDiffExpand(\''+blockId+'\',this)">⇕ Show full diff ('+lineCount+' lines)</button>'
           +'</div>';
       }
-      html+='</div>';
+      row+='</div>';
     }
-    html+='</div>';
+    row+='</div>';
+    chunk+=row;
+    if((idx+1)%12===0){chunks.push(chunk);chunk='';}
   });
-  list.innerHTML=html;
+  if(chunk)chunks.push(chunk);
+  _chunkedAppendHTML(list,chunks,function(){
+    _rememberContainerHeightById('file-list');
+  });
 }
 
 var _filesPollInterval = (function() {
@@ -1364,11 +1542,17 @@ var _filesPollTimer = null;
 var _filesLastJson = '';
 
 function loadFiles(silent){
+  if(!silent){
+    _setLoadingState('file-list','Loading files...');
+  }
   apiGet('/api/files', function(data) {
     var json = JSON.stringify(data.files);
     if (json !== _filesLastJson) {
       _filesLastJson = json;
-      renderFiles(data.files);
+      _filesCache=Array.isArray(data.files)?data.files:[];
+      renderFiles(_filesCache,true);
+    }else if(!silent){
+      renderFiles(_filesCache,true);
     }
   }, silent ? {silent:true} : null);
 }
@@ -2754,7 +2938,7 @@ function loadBranches(page){
   switchPage('branches');
   _initBranchTab();
   _updateBranchTabUI();
-  document.getElementById('branches-content').innerHTML='<div class="loading-bar"><span class="spinner"></span>Loading branches...</div>';
+  _setLoadingState('branches-content','Loading branches...');
   document.getElementById('branches-pagination').innerHTML='';
   var _bpv=document.getElementById('branches-per-page').value;var perPage=_bpv===''?20:parseInt(_bpv);
   // Always fetch all — enables client-side tab pagination and correct counts
@@ -2873,6 +3057,7 @@ function _renderBranchesByTab(data,page,perPage){
   }
 
   container.innerHTML=html;
+  _rememberContainerHeightById('branches-content');
   var infoLabel=(isLocal?'Local':'Remote')+': '+(search?filtered.length+' match(es)':total+' total');
   _pagData['branches']={
     totalPages:totalPages, cur:page, loadFn:'renderBranchPage',
@@ -4183,24 +4368,31 @@ function toggleCompareDiff(id){
 function loadStash(page){
   page=page||1;
   switchPage('stash');
-  document.getElementById('stash-content').innerHTML='<div class="loading-bar"><span class="spinner"></span>Loading stash...</div>';
+  _setLoadingState('stash-content','Loading stash...');
   document.getElementById('stash-pagination').innerHTML='';
   var _spv=document.getElementById('stash-per-page').value;var perPage=_spv===''?10:parseInt(_spv);
   apiGet('/api/stash-list?page='+page+'&per_page='+perPage,function(data){
     var container=document.getElementById('stash-content');
     if(!data.stashes||!data.stashes.length){container.innerHTML='<div class="empty">'+t('no_stash')+'</div>';return}
-    var html='';
+    container.innerHTML='';
+    var chunks=[],chunk='';
     data.stashes.forEach(function(s,idx){
       var globalIdx = (data.page-1)*data.per_page + idx;
-      html+='<div class="stash-item" style="flex-wrap:wrap;cursor:pointer" onclick="toggleStashDiff('+globalIdx+')">';
-      html+='<span class="file-toggle" id="stash-toggle-'+globalIdx+'">▶</span>';
-      html+='<span class="name">'+escapeHtml(s)+'</span>';
-      html+='<button class="btn btn-sm btn-success" onclick="event.stopPropagation();popStash('+globalIdx+')">Pop</button>';
-      html+='<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();dropStash('+globalIdx+')">Drop</button>';
-      html+='</div>';
-      html+='<div class="file-body" id="stash-body-'+globalIdx+'"><div id="stash-diff-'+globalIdx+'" style="padding:12px 16px"></div></div>';
+      var row='';
+      row+='<div class="stash-item" style="flex-wrap:wrap;cursor:pointer" onclick="toggleStashDiff('+globalIdx+')">';
+      row+='<span class="file-toggle" id="stash-toggle-'+globalIdx+'">▶</span>';
+      row+='<span class="name">'+escapeHtml(s)+'</span>';
+      row+='<button class="btn btn-sm btn-success" onclick="event.stopPropagation();popStash('+globalIdx+')">Pop</button>';
+      row+='<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();dropStash('+globalIdx+')">Drop</button>';
+      row+='</div>';
+      row+='<div class="file-body" id="stash-body-'+globalIdx+'"><div id="stash-diff-'+globalIdx+'" style="padding:12px 16px"></div></div>';
+      chunk+=row;
+      if((idx+1)%20===0){chunks.push(chunk);chunk='';}
     });
-    container.innerHTML=html;
+    if(chunk)chunks.push(chunk);
+    _chunkedAppendHTML(container,chunks,function(){
+      _rememberContainerHeightById('stash-content');
+    });
     // Pagination
     var totalPages=data.per_page>0?Math.ceil(data.total/data.per_page):1;
     _setSmartPagination('stash', totalPages, data.page, 'loadStash', data.total);
@@ -4376,7 +4568,6 @@ function loadLog(page){
   var _lpv=(document.getElementById('log-per-page')||{}).value;
   var perPage=_lpv===''?10:parseInt(_lpv);
   var logContent=document.getElementById('log-content');
-  var logPag=document.getElementById('log-pagination');
 
   // Build network URL helper
   function _buildUrl(pg){
@@ -4400,8 +4591,8 @@ function loadLog(page){
   var useCache = !search.trim() && !codeSearch && !logUnsignedFilter;
 
   if(!useCache){
-    logContent.innerHTML='<div class="loading-bar"><span class="spinner"></span>Loading commits...</div>';
-    logPag.innerHTML='';
+    _setLoadingState(logContent,'Loading commits...');
+    _clearPagSection('log');
     apiGet(_buildUrl(page),function(data){_applyData(data,false);});
     return;
   }
@@ -4429,8 +4620,8 @@ function loadLog(page){
     indicator.textContent='⚡ From cache — checking for updates...';
     logContent.appendChild(indicator);
   } else {
-    logContent.innerHTML='<div class="loading-bar"><span class="spinner"></span>Loading commits...</div>';
-    logPag.innerHTML='';
+    _setLoadingState(logContent,'Loading commits...');
+    _clearPagSection('log');
   }
 
   // Check HEAD hash — very cheap call
@@ -4467,7 +4658,7 @@ function loadPullRequests(page){
   page=page||1;
   switchPage('prs');
   _updatePRStateTabs();
-  document.getElementById('prs-content').innerHTML='<div class="loading-bar"><span class="spinner"></span>'+(L==='zh'?'正在加载拉取请求...':'Loading pull requests...')+'</div>';
+  _setLoadingState('prs-content',(L==='zh'?'正在加载拉取请求...':'Loading pull requests...'));
   document.getElementById('prs-pagination').innerHTML='';
   var search=document.getElementById('prs-search').value;
   var ppv=document.getElementById('prs-per-page').value;
@@ -4492,9 +4683,11 @@ function renderPullRequests(data){
   var container=document.getElementById('prs-content');
   var list=(data&&data.pull_requests)||[];
   if(!list.length){container.innerHTML='<div class="empty">'+t('prs_no_match')+'</div>';return}
-  var html='<table class="log-table"><thead><tr>';
-  html+='<th>PR</th><th>Author</th><th>Date</th><th>Message</th><th>Status</th><th>Actions</th><th style="width:20px"></th>';
-  html+='</tr></thead><tbody>';
+  container.innerHTML='<table class="log-table"><thead><tr>'
+    +'<th>PR</th><th>Author</th><th>Date</th><th>Message</th><th>Status</th><th>Actions</th><th style="width:20px"></th>'
+    +'</tr></thead><tbody id="prs-tbody"></tbody></table>';
+  var tbody=document.getElementById('prs-tbody');
+  var chunks=[],chunk='';
   list.forEach(function(pr,idx){
     if(pr.head_sha){
       _logCommitMap[pr.head_sha]={
@@ -4531,8 +4724,9 @@ function renderPullRequests(data){
         statusCell+='<div class="pr-risk-note">'+escapeHtml(riskHints.join(' · '))+'</div>';
       }
     }
-    html+='<tr class="'+(risk.is_risky?'pr-risk-row':'')+'" style="cursor:pointer" onclick="togglePRDiff('+Number(pr.number||0)+','+idx+',\''+escapeAttr(pr.head_sha||'')+'\')">';
-    html+='<td><span class="log-hash">#'+escapeHtml(String(pr.number||''))+'</span></td>';
+    var row='';
+    row+='<tr class="'+(risk.is_risky?'pr-risk-row':'')+'" style="cursor:pointer" onclick="togglePRDiff('+Number(pr.number||0)+','+idx+',\''+escapeAttr(pr.head_sha||'')+'\')">';
+    row+='<td><span class="log-hash">#'+escapeHtml(String(pr.number||''))+'</span></td>';
     var authorMain=(pr.author_name||pr.author_display||pr.author_login||pr.author||'');
     var authorId=(pr.author_login||pr.author||'').trim();
     var authorSub='';
@@ -4543,20 +4737,24 @@ function renderPullRequests(data){
         authorSub='<div style="margin-top:2px;font-size:11px;color:#64748b">@'+escapeHtml(authorId)+'</div>';
       }
     }
-    html+='<td class="log-author"><div>'+escapeHtml(authorMain)+'</div>'+authorSub+'</td>';
-    html+='<td class="log-date">'+escapeHtml(date||'')+'</td>';
-    html+='<td class="log-msg">'+_renderCommitMessageCell(pr.title||'','pr-msg-'+idx,'')+'<div style="margin-top:4px;font-size:11px;color:#64748b">'+escapeHtml((pr.head_ref||'')+' → '+(pr.base_ref||''))+'</div></td>';
-    html+='<td class="log-status">'+statusCell+'</td>';
-    html+='<td class="log-actions">'
+    row+='<td class="log-author"><div>'+escapeHtml(authorMain)+'</div>'+authorSub+'</td>';
+    row+='<td class="log-date">'+escapeHtml(date||'')+'</td>';
+    row+='<td class="log-msg">'+_renderCommitMessageCell(pr.title||'','pr-msg-'+idx,'')+'<div style="margin-top:4px;font-size:11px;color:#64748b">'+escapeHtml((pr.head_ref||'')+' → '+(pr.base_ref||''))+'</div></td>';
+    row+='<td class="log-status">'+statusCell+'</td>';
+    row+='<td class="log-actions">'
       +'<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();window.open(\''+escapeJS(pr.url||'')+'\',\'_blank\')">'+t('prs_view')+'</button>'
       +'<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();openPRAIAnalysis('+Number(pr.number||0)+',\''+escapeAttr(pr.head_sha||'')+'\')">🤖 '+_aiCmpText('AI 分析','AI Analysis')+'</button>'
       +'</td>';
-    html+='<td style="text-align:center"><span class="file-toggle" id="pr-toggle-'+idx+'">▶</span></td>';
-    html+='</tr>';
-    html+='<tr id="pr-diff-row-'+idx+'" class="log-diff-row" style="display:none"><td colspan="7" class="log-diff-cell"><div id="pr-diff-'+idx+'" class="log-diff-panel"></div></td></tr>';
+    row+='<td style="text-align:center"><span class="file-toggle" id="pr-toggle-'+idx+'">▶</span></td>';
+    row+='</tr>';
+    row+='<tr id="pr-diff-row-'+idx+'" class="log-diff-row" style="display:none"><td colspan="7" class="log-diff-cell"><div id="pr-diff-'+idx+'" class="log-diff-panel"></div></td></tr>';
+    chunk+=row;
+    if((idx+1)%15===0){chunks.push(chunk);chunk='';}
   });
-  html+='</tbody></table>';
-  container.innerHTML=html;
+  if(chunk)chunks.push(chunk);
+  _chunkedAppendHTML(tbody,chunks,function(){
+    _rememberContainerHeightById('prs-content');
+  });
 }
 
 function renderPRPagination(data){
@@ -4680,12 +4878,15 @@ function renderLog(data){
   _logCommitMap={};
   var sortIcon=logSortOrder==='desc'?' ↓':' ↑';
   var sortTip=logSortOrder==='desc'?'Newest first — click for oldest first':'Oldest first — click for newest first';
-  var html='<table class="log-table"><thead><tr>';
-  html+='<th style="width:20px"></th>';
-  html+='<th>Hash</th><th>Author</th>';
-  html+='<th style="cursor:pointer;user-select:none;white-space:nowrap" onclick="toggleLogSort()" title="'+sortTip+'">Date'+sortIcon+'</th>';
-  html+='<th>Message</th><th>Status</th><th>Actions</th><th style="width:20px"></th>';
-  html+='</tr></thead><tbody>';
+  var tableHtml='<table class="log-table"><thead><tr>'
+    +'<th style="width:20px"></th>'
+    +'<th>Hash</th><th>Author</th>'
+    +'<th style="cursor:pointer;user-select:none;white-space:nowrap" onclick="toggleLogSort()" title="'+sortTip+'">Date'+sortIcon+'</th>'
+    +'<th>Message</th><th>Status</th><th>Actions</th><th style="width:20px"></th>'
+    +'</tr></thead><tbody id="log-tbody"></tbody></table>';
+  container.innerHTML=tableHtml;
+  var tbody=document.getElementById('log-tbody');
+  var chunks=[],chunk='';
   data.commits.forEach(function(c,idx){
     _logCommitMap[c.hash]=c;
     var checked=squashSelected[c.hash]?' checked':'';
@@ -4731,25 +4932,30 @@ function renderLog(data){
       statusCell+='<div class="log-release-info">'+releaseInfo+'</div>';
     }
 
-    html+='<tr style="cursor:pointer" onclick="toggleCommitDiff(\''+c.hash+'\','+idx+')"><td><input type="checkbox" class="squash-cb" data-hash="'+c.hash+'"'+checked+cbDisabled+' onclick="event.stopPropagation();toggleSquashSelect(this)"></td>';
-    html+='<td>'+_renderLogHashCell(c)+'</td>';
-    html+='<td class="log-author">'+escapeHtml(c.author)+'</td>';
-    html+='<td class="log-date">'+c.date+'</td>';
-    html+='<td class="log-msg">'+_renderCommitMessageCell(c.message,'log-msg-'+idx,rootBadge)+'</td>';
-    html+='<td class="log-status" onclick="event.stopPropagation()">'+statusCell+'</td>';
-    html+='<td class="log-actions">';
-    html+='<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();showResetModal(\''+c.hash+'\',\''+c.short_hash+'\')">Reset</button>';
-    html+='<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();showRevertModal(\''+c.hash+'\',\''+c.short_hash+'\')">Revert</button>';
-    html+='<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();openCommitAIAnalysis(\''+escapeAttr(c.hash)+'\')" title="'+escapeAttr(_aiCmpText('分析这个 commit 的全部代码改动','Analyze all code changes in this commit'))+'">🤖 '+_aiCmpText('AI 分析','AI Analysis')+'</button>';
-    html+='</td>';
-    html+='<td style="text-align:center"><span class="file-toggle" id="log-toggle-'+idx+'">▶</span></td>';
-    html+='</tr>';
-    html+='<tr id="commit-diff-row-'+idx+'" class="log-diff-row" style="display:none"><td colspan="8" class="log-diff-cell"><div id="commit-diff-'+idx+'" class="log-diff-panel"></div></td></tr>';
+    var row='';
+    row+='<tr style="cursor:pointer" onclick="toggleCommitDiff(\''+c.hash+'\','+idx+')"><td><input type="checkbox" class="squash-cb" data-hash="'+c.hash+'"'+checked+cbDisabled+' onclick="event.stopPropagation();toggleSquashSelect(this)"></td>';
+    row+='<td>'+_renderLogHashCell(c)+'</td>';
+    row+='<td class="log-author">'+escapeHtml(c.author)+'</td>';
+    row+='<td class="log-date">'+c.date+'</td>';
+    row+='<td class="log-msg">'+_renderCommitMessageCell(c.message,'log-msg-'+idx,rootBadge)+'</td>';
+    row+='<td class="log-status" onclick="event.stopPropagation()">'+statusCell+'</td>';
+    row+='<td class="log-actions">';
+    row+='<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();showResetModal(\''+c.hash+'\',\''+c.short_hash+'\')">Reset</button>';
+    row+='<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();showRevertModal(\''+c.hash+'\',\''+c.short_hash+'\')">Revert</button>';
+    row+='<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();openCommitAIAnalysis(\''+escapeAttr(c.hash)+'\')" title="'+escapeAttr(_aiCmpText('分析这个 commit 的全部代码改动','Analyze all code changes in this commit'))+'">🤖 '+_aiCmpText('AI 分析','AI Analysis')+'</button>';
+    row+='</td>';
+    row+='<td style="text-align:center"><span class="file-toggle" id="log-toggle-'+idx+'">▶</span></td>';
+    row+='</tr>';
+    row+='<tr id="commit-diff-row-'+idx+'" class="log-diff-row" style="display:none"><td colspan="8" class="log-diff-cell"><div id="commit-diff-'+idx+'" class="log-diff-panel"></div></td></tr>';
+    chunk+=row;
+    if((idx+1)%15===0){chunks.push(chunk);chunk='';}
   });
-  html+='</tbody></table>';
-  container.innerHTML=html;
-  updateSquashBar();
-  renderSquashResultSection();
+  if(chunk)chunks.push(chunk);
+  _chunkedAppendHTML(tbody,chunks,function(){
+    updateSquashBar();
+    renderSquashResultSection();
+    _rememberContainerHeightById('log-content');
+  });
 }
 
 function _renderCommitMessageCell(message,id,badgeHtml){
@@ -5736,7 +5942,7 @@ function openRestorePage(file){
 
 function loadRestoreCommits(page){
   page=page||1;
-  document.getElementById('restore-commits-content').innerHTML='<div class="loading-bar"><span class="spinner"></span>Loading commit history for this file...</div>';
+  _setLoadingState('restore-commits-content','Loading commit history for this file...');
   document.getElementById('restore-pagination').innerHTML='';
   var perPage=20;
   apiGet('/api/file-commits?file='+encodeURIComponent(_restoreFile)+'&page='+page+'&per_page='+perPage,function(data){
@@ -5745,25 +5951,32 @@ function loadRestoreCommits(page){
       container.innerHTML='<div class="empty">No commit history found for this file.</div>';
       return;
     }
-    var html='<table class="log-table"><thead><tr>';
-    html+='<th style="width:20px"></th>';
-    html+='<th>Hash</th><th>Author</th><th>Date</th><th>Message</th><th>Action</th>';
-    html+='</tr></thead><tbody>';
+    container.innerHTML='<table class="log-table"><thead><tr>'
+      +'<th style="width:20px"></th>'
+      +'<th>Hash</th><th>Author</th><th>Date</th><th>Message</th><th>Action</th>'
+      +'</tr></thead><tbody id="restore-tbody"></tbody></table>';
+    var tbody=document.getElementById('restore-tbody');
+    var chunks=[],chunk='';
     data.commits.forEach(function(c,idx){
-      html+='<tr style="cursor:pointer" onclick="toggleRestoreDiff(\''+escapeAttr(c.hash)+'\','+idx+')">';
-      html+='<td style="text-align:center"><span class="file-toggle" id="restore-toggle-'+idx+'">▶</span></td>';
-      html+='<td><span class="log-hash">'+escapeHtml(c.short_hash)+'</span></td>';
-      html+='<td class="log-author">'+escapeHtml(c.author)+'</td>';
-      html+='<td class="log-date">'+escapeHtml(c.date)+'</td>';
-      html+='<td class="log-msg">'+_renderCommitMessageCell(c.message,'restore-msg-'+idx,'')+'</td>';
-      html+='<td><button class="btn btn-sm btn-warning" onclick="event.stopPropagation();doRestoreFile(\''+escapeAttr(_restoreFile)+'\',\''+escapeAttr(c.hash)+'\',\''+escapeAttr(c.short_hash)+'\')">Restore to this</button></td>';
-      html+='</tr>';
-      html+='<tr id="restore-diff-row-'+idx+'" style="display:none"><td colspan="6" style="padding:0">';
-      html+='<div id="restore-diff-'+idx+'" style="padding:12px 16px;max-height:600px;overflow-y:auto;background:#fafafa;border-top:1px solid #e5e7eb"></div>';
-      html+='</td></tr>';
+      var row='';
+      row+='<tr style="cursor:pointer" onclick="toggleRestoreDiff(\''+escapeAttr(c.hash)+'\','+idx+')">';
+      row+='<td style="text-align:center"><span class="file-toggle" id="restore-toggle-'+idx+'">▶</span></td>';
+      row+='<td><span class="log-hash">'+escapeHtml(c.short_hash)+'</span></td>';
+      row+='<td class="log-author">'+escapeHtml(c.author)+'</td>';
+      row+='<td class="log-date">'+escapeHtml(c.date)+'</td>';
+      row+='<td class="log-msg">'+_renderCommitMessageCell(c.message,'restore-msg-'+idx,'')+'</td>';
+      row+='<td><button class="btn btn-sm btn-warning" onclick="event.stopPropagation();doRestoreFile(\''+escapeAttr(_restoreFile)+'\',\''+escapeAttr(c.hash)+'\',\''+escapeAttr(c.short_hash)+'\')">Restore to this</button></td>';
+      row+='</tr>';
+      row+='<tr id="restore-diff-row-'+idx+'" style="display:none"><td colspan="6" style="padding:0">';
+      row+='<div id="restore-diff-'+idx+'" style="padding:12px 16px;max-height:600px;overflow-y:auto;background:#fafafa;border-top:1px solid #e5e7eb"></div>';
+      row+='</td></tr>';
+      chunk+=row;
+      if((idx+1)%15===0){chunks.push(chunk);chunk='';}
     });
-    html+='</tbody></table>';
-    container.innerHTML=html;
+    if(chunk)chunks.push(chunk);
+    _chunkedAppendHTML(tbody,chunks,function(){
+      _rememberContainerHeightById('restore-commits-content');
+    });
     var totalPages=data.per_page>0?Math.ceil(data.total/data.per_page):1;
     _setSmartPagination('restore', totalPages, data.page, 'loadRestoreCommits', data.total);
   });
@@ -5822,7 +6035,7 @@ function onBranchSearchInput(){
     if(_allBranchesCache){
       _renderBranchesByTab(_allBranchesCache,1,perPage);
     }else{
-      document.getElementById('branches-content').innerHTML='<div class="loading-bar"><span class="spinner"></span>Searching...</div>';
+      _setLoadingState('branches-content','Searching...');
       apiGet('/api/branches?page=1&per_page=0',function(data){
         _allBranchesCache=data;
         _updateBranchTabCounts(data);
@@ -5902,18 +6115,23 @@ function filterCommitDiffs(){
   }
   _diffSearchTimer=setTimeout(function(){
     _inDiffSearchMode=true;
-    document.getElementById('log-content').innerHTML='<div class="loading-bar"><span class="spinner"></span>Searching diffs for "'+escapeHtml(search)+'"...</div>';
-    document.getElementById('log-pagination').innerHTML='';
+    _setLoadingState('log-content','Searching diffs for "'+search+'"...');
+    _clearPagSection('log');
     apiGet('/api/search-diff?pattern='+encodeURIComponent(search),function(data){
       if(data.error){addMsg('Diff search error: '+escapeHtml(data.error),'error');return;}
       var fakeData={commits:data.commits,total:data.total,page:1,per_page:data.total||1};
       renderLog(fakeData);
       var pag=document.getElementById('log-pagination');
+      var pagTop=document.getElementById('log-pagination-top');
       if(data.total===0){
-        pag.innerHTML='<span class="page-info">No results for "'+escapeHtml(search)+'"</span>';
+        var msg='<span class="page-info">No results for "'+escapeHtml(search)+'"</span>';
+        if(pag)pag.innerHTML=msg;
+        if(pagTop)pagTop.innerHTML=msg;
         showToast('No diff matches found','err',2500);
       }else{
-        pag.innerHTML='<span class="page-info">Diff search: <b>'+data.total+'</b> commit(s) matched "'+escapeHtml(search)+'"</span>';
+        var info='<span class="page-info">Diff search: <b>'+data.total+'</b> commit(s) matched "'+escapeHtml(search)+'"</span>';
+        if(pag)pag.innerHTML=info;
+        if(pagTop)pagTop.innerHTML=info;
         showToast('Found '+data.total+' commit(s) matching diff','ok',2500);
       }
     });
@@ -6241,7 +6459,6 @@ function doSquash(){
 }
 
 function renderPagination(data){
-  var pag=document.getElementById('log-pagination');
   var totalPages=data.per_page>0?Math.ceil(data.total/data.per_page):1;
   _setSmartPagination('log', totalPages, data.page, 'loadLog', data.total);
 }
@@ -7009,24 +7226,69 @@ document.addEventListener('click',function(e){
 });
 
 // ═══════════ Select All ═══════════
+function _updateBatchProgress(done,total,label){
+  var wrap=document.getElementById('main-batch-progress');
+  var bar=document.getElementById('main-batch-progress-bar');
+  var txt=document.getElementById('main-batch-progress-text');
+  if(!wrap||!bar||!txt)return;
+  var pct=total>0?Math.floor((done/total)*100):100;
+  wrap.style.display='block';
+  bar.style.width=pct+'%';
+  txt.textContent=(label||'Processing')+' '+done+'/'+total+' ('+pct+'%)';
+}
+
+function _finishBatchProgress(){
+  var wrap=document.getElementById('main-batch-progress');
+  if(!wrap)return;
+  setTimeout(function(){wrap.style.display='none';},500);
+}
+
+function _runTogglePaths(paths, action, doneCb){
+  var i=0,active=0,done=0,failed=false;
+  var total=paths.length;
+  var concurrency=8;
+  _updateBatchProgress(0,total,action==='add'?(L==='zh'?'正在全选':'Selecting'):(L==='zh'?'正在取消选择':'Deselecting'));
+  function pump(){
+    while(active<concurrency && i<total){
+      (function(path){
+        active++;
+        apiPost('/api/toggle',{path:path,action:action},function(data){
+          active--;
+          done++;
+          if(!data||!data.ok)failed=true;
+          _updateBatchProgress(done,total,action==='add'?(L==='zh'?'正在全选':'Selecting'):(L==='zh'?'正在取消选择':'Deselecting'));
+          if(done>=total){
+            _finishBatchProgress();
+            doneCb(failed);
+            return;
+          }
+          pump();
+        });
+      })(paths[i++]);
+    }
+  }
+  if(!total){doneCb(false);return;}
+  pump();
+}
+
 document.getElementById('select-all-cb').addEventListener('change',function(){
   var selectAll=this.checked;
-  var allCbs=document.querySelectorAll('.file-cb');
-  var done=0,total=allCbs.length,failed=false;
-  if(!total)return;
+  var files=_filesCache||[];
+  var paths=files.map(function(f){return f.path;});
+  if(!paths.length)return;
   function finalize(){
-    if(!failed)addMsg(selectAll?t('all_selected'):t('all_deselected'),'success');
+    if(!finalize._failed)addMsg(selectAll?t('all_selected'):t('all_deselected'),'success');
     else addMsg(t('partial_fail'),'error');
     _filesLastJson=''; // force re-render so individual checkboxes reflect new state
     loadFiles();
   }
-  for(var i=0;i<allCbs.length;i++){
-    (function(cb,path){
-      var action=selectAll?'add':'reset';
-      if(selectAll)checkedPaths[path]=true;else delete checkedPaths[path];
-      apiPost('/api/toggle',{path:path,action:action},function(data){if(!data.ok)failed=true;done++;if(done===total)finalize()});
-    })(allCbs[i],allCbs[i].dataset.path);
+  for(var p=0;p<paths.length;p++){
+    if(selectAll)checkedPaths[paths[p]]=true;else delete checkedPaths[paths[p]];
   }
+  _runTogglePaths(paths,selectAll?'add':'reset',function(failed){
+    finalize._failed=failed;
+    finalize();
+  });
 });
 
 // ═══════════ Commit page stash button ═══════════
@@ -7078,10 +7340,14 @@ document.getElementById('commit-btn').addEventListener('click',function(){
 
 // ═══════════ Reset all ═══════════
 document.getElementById('reset-btn').addEventListener('click',function(){
-  var allCbs=document.querySelectorAll('.file-cb'),failed=false,done=0;
-  for(var i=0;i<allCbs.length;i++){
-    apiPost('/api/toggle',{path:allCbs[i].dataset.path,action:'reset'},function(data){if(!data.ok)failed=true;done++;if(done===allCbs.length){checkedPaths={};if(!failed){addMsg(t('all_deselected'),'success');loadFiles()}else addMsg(t('partial_fail'),'error')}});
-  }
+  var files=_filesCache||[];
+  var paths=files.map(function(f){return f.path;});
+  if(!paths.length)return;
+  _runTogglePaths(paths,'reset',function(failed){
+    checkedPaths={};
+    if(!failed){addMsg(t('all_deselected'),'success');loadFiles();}
+    else addMsg(t('partial_fail'),'error');
+  });
 });
 
 // ═══════════ GPG Sign Toggle ═══════════
@@ -7102,6 +7368,7 @@ function loadGpgSign() {
 }
 
 // ═══════════ Init ═══════════
+_observeLoadingBars();
 loadCurrentBranch();
 loadProjectName();
 loadWorktreeLabel();
