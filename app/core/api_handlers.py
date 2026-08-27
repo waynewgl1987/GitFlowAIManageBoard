@@ -5,38 +5,371 @@ api_handlers.py — API endpoint handlers for Git Manage Board.
 Dispatches GET and POST API requests to git_ops functions.
 """
 
-import os, json, re
+import os, json, re, threading, time, shlex
+from uuid import uuid4 as _uuid4
 from ai_module.ai_provider import (
     test_provider as ai_test_provider,
     start_chat_job, get_job_status,
+    call_llm,
 )
-from git_ops import (
+from core.git_ops import (
     PORT, set_project_path, _MSGLOG, _MSGLOG_LOCK, _PUSH_JOBS, _PUSH_JOBS_LOCK,
     _run, _run_push_streaming, _run_gitop_streaming,
+    _write_local_log,
     current_branch, display_branch, get_project_info,
     get_project_path, get_protected_config, is_branch_protected,
     get_network_timeout, save_network_timeout,
     get_gpg_sign, save_gpg_sign,
-    check_unsigned_commits, resign_branch_commits, resign_branch_commits_with_autostash,
+    check_unsigned_commits, get_unsigned_commit_list, squash_unsigned_commits,
+    resign_branch_commits, resign_branch_commits_with_autostash,
+    detect_base_branch,
     _ref_exists, _resolve_ref_for_compare,
-    get_branches, has_uncommitted, stash_changes,
+    get_branches, has_uncommitted, get_git_state, get_branch_diverge_status, stash_changes,
     stash_list, stash_diff, commit_diff, commit_files, search_diff_code,
     stash_pop, stash_drop, file_commit_diff,
     pull_request_diff,
     checkout_branch, create_branch,
     delete_branch_local, delete_branch_remote, rename_branch,
     fetch, pull_current, set_upstream, push_set_upstream,
-    rebase_current_onto, is_rebase_in_progress,
+    rebase_current_onto, is_rebase_in_progress, rebase_rebuild_keep_head_and_force_push,
+    check_rebase_safety,
     get_conflicts, get_conflict_detail,
     _get_merge_type, _get_merge_default_msg,
     resolve_conflict, get_file_commits,
     get_uncommitted_changes, get_commit_log, get_pull_requests,
     is_valid_commit_path,
-    reset_to, revert_commit, drop_commit, squash_commits, abort_merge_or_rebase,
+    reset_to, revert_commit, drop_commit, remove_files_from_commit, squash_commits, squash_selected_commits, squash_conflict_check, abort_merge_or_rebase,
     rebase_abort, rebase_skip, rebase_continue,
     worktree_list, worktree_add, worktree_remove, worktree_prune,
     get_git_graph,
 )
+
+_AI_AUTOFIX_JOBS = {}
+_AI_AUTOFIX_LOCK = threading.Lock()
+_AI_AUTOFIX_TIMEOUT = 180
+_ALLOWED_GIT_SUBCOMMANDS = {
+    "fetch", "pull", "push", "rebase", "merge", "checkout", "switch",
+    "branch", "reset", "restore", "clean", "stash", "remote", "config",
+    "add", "commit", "cherry-pick", "revert", "update-ref"
+}
+
+
+def _set_autofix_job(job_id, patch):
+    with _AI_AUTOFIX_LOCK:
+        cur = dict(_AI_AUTOFIX_JOBS.get(job_id, {}))
+        cur.update(patch)
+        _AI_AUTOFIX_JOBS[job_id] = cur
+        return dict(cur)
+
+
+def _get_autofix_job(job_id):
+    with _AI_AUTOFIX_LOCK:
+        d = _AI_AUTOFIX_JOBS.get(job_id)
+        return dict(d) if d else None
+
+
+def _extract_json_object(text):
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    if "```" in raw:
+        raw = re.sub(r"^```[a-zA-Z0-9_-]*\n?", "", raw)
+        raw = re.sub(r"\n?```$", "", raw)
+    try:
+        return json.loads(raw)
+    except Exception:
+        pass
+    m = re.search(r"\{[\s\S]*\}", raw)
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(0))
+    except Exception:
+        return None
+
+
+def _sanitize_ai_commands(cmds):
+    safe = []
+    for item in cmds or []:
+        cmd_str = (item.get("cmd") if isinstance(item, dict) else item) or ""
+        reason = item.get("reason", "") if isinstance(item, dict) else ""
+        cmd_str = str(cmd_str).strip()
+        if not cmd_str:
+            continue
+        # Never run shell-composed commands
+        if any(x in cmd_str for x in ["&&", "||", ";", "|", "$(", "`", ">", "<"]):
+            continue
+        try:
+            parts = shlex.split(cmd_str)
+        except Exception:
+            continue
+        if len(parts) < 2:
+            continue
+        if parts[0] != "git":
+            continue
+        if parts[1] not in _ALLOWED_GIT_SUBCOMMANDS:
+            continue
+        safe.append({
+            "cmd": cmd_str,
+            "parts": parts,
+            "reason": str(reason or "").strip()
+        })
+    return safe
+
+
+def _collect_autofix_context(op_name, err_text):
+    status_out, status_err, _ = _run(["git", "status", "--short", "--branch"])
+    branch_out, _, _ = _run(["git", "branch", "--show-current"])
+    remote_out, _, _ = _run(["git", "remote", "-v"])
+    rebase_out, _, _ = _run(["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+    return {
+        "operation": op_name or "",
+        "error": err_text or "",
+        "branch": branch_out.strip(),
+        "status": status_out.strip() or status_err.strip(),
+        "remote": remote_out.strip(),
+        "upstream": rebase_out.strip(),
+        "project_path": get_project_path(),
+    }
+
+
+def _build_autofix_prompt(ctx, ui_lang):
+    lang = "Simplified Chinese" if ui_lang == "zh" else "English"
+    return (
+        "You are an expert Git fixer. Analyze the failure and propose SAFE git-only fix commands.\n"
+        "Rules:\n"
+        "1) Output JSON only.\n"
+        "2) Commands must be executable one-by-one and start with `git`.\n"
+        "3) Never output shell chaining, redirection, or non-git commands.\n"
+        "4) Prefer minimal-risk recovery first.\n"
+        "5) Keep summary in " + lang + ".\n"
+        "JSON schema:\n"
+        "{\n"
+        '  "summary": "short explanation",\n'
+        '  "commands": [{"cmd":"git ...","reason":"why"}],\n'
+        '  "post_check": "what should be true after fix"\n'
+        "}\n"
+        "Context:\n"
+        + json.dumps(ctx, ensure_ascii=False, indent=2)
+    )
+
+
+def _build_lock_ref_fallback_plan(err_text):
+    txt = err_text or ""
+    low = txt.lower()
+    is_lock_ref = ("cannot lock ref" in low) or ("unable to update local ref" in low)
+    if not is_lock_ref:
+        return None
+    refs = set(re.findall(r"refs/remotes/[A-Za-z0-9._/\-]+", txt))
+    short_refs = re.findall(r"'(origin/[A-Za-z0-9._/\-]+)'", txt)
+    for sr in short_refs:
+        refs.add("refs/remotes/" + sr)
+    refs = sorted(refs)
+    commands = [{
+        "cmd": "git remote prune origin",
+        "reason": "Clean stale remote-tracking refs that can block updates",
+    }]
+    for ref in refs[:5]:
+        commands.append({
+            "cmd": f"git update-ref -d {ref}",
+            "reason": "Delete problematic local tracking ref so fetch can recreate it",
+        })
+    commands.append({
+        "cmd": "git fetch origin --prune --verbose",
+        "reason": "Re-sync remote-tracking refs after cleanup",
+    })
+    summary = (
+        "Detected stale/locked remote-tracking refs. "
+        "This fallback will clean lock files, prune stale refs, delete problematic tracking refs, then fetch again."
+    )
+    post_check = "Fetch should complete without cannot lock ref / expected OID mismatch errors."
+    return {"summary": summary, "post_check": post_check, "commands": commands, "lock_refs": refs}
+
+
+def _cleanup_remote_ref_lock_files(refs):
+    """Remove .git/refs/remotes/... lock files for the extracted refs."""
+    project = get_project_path()
+    git_dir = os.path.abspath(os.path.join(project, ".git"))
+    deleted = []
+    not_found = []
+    failed = []
+    for ref in refs or []:
+        if not isinstance(ref, str) or not ref.startswith("refs/remotes/"):
+            continue
+        rel_lock = ref + ".lock"
+        lock_path = os.path.abspath(os.path.join(git_dir, rel_lock))
+        if not lock_path.startswith(git_dir + os.sep):
+            failed.append(f"{ref}: invalid path")
+            continue
+        try:
+            if os.path.exists(lock_path):
+                os.remove(lock_path)
+                deleted.append(lock_path)
+            else:
+                not_found.append(lock_path)
+        except Exception as e:
+            failed.append(f"{lock_path}: {e}")
+    return deleted, not_found, failed
+
+
+def _autofix_analyze_job(job_id, provider, api_key, base_url, model, op_name, err_text, ui_lang):
+    try:
+        _set_autofix_job(job_id, {"phase": "analyzing", "progress": 20, "message": "Collecting context..."})
+        ctx = _collect_autofix_context(op_name, err_text)
+        prompt = _build_autofix_prompt(ctx, ui_lang)
+        _set_autofix_job(job_id, {"progress": 45, "message": "Asking AI for a fix plan..."})
+        ok, text = call_llm(
+            provider,
+            api_key,
+            base_url,
+            model,
+            [
+                {"role": "system", "content": "You output strict JSON only."},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        if not ok:
+            _set_autofix_job(job_id, {
+                "done": True, "ok": False, "phase": "failed", "progress": 100,
+                "error": text or "AI planning failed",
+            })
+            return
+        payload = _extract_json_object(text)
+        if not payload:
+            _set_autofix_job(job_id, {
+                "done": True, "ok": False, "phase": "failed", "progress": 100,
+                "error": "AI response is not valid JSON",
+                "raw": text[:1200],
+            })
+            return
+        commands = _sanitize_ai_commands(payload.get("commands", []))
+        if not commands:
+            fallback = _build_lock_ref_fallback_plan(err_text)
+            if fallback:
+                commands = _sanitize_ai_commands(fallback.get("commands", []))
+                if commands:
+                    _set_autofix_job(job_id, {
+                        "done": True,
+                        "ok": True,
+                        "phase": "await_confirm",
+                        "progress": 100,
+                        "summary": fallback.get("summary", ""),
+                        "post_check": fallback.get("post_check", ""),
+                        "commands": [{"cmd": c["cmd"], "reason": c["reason"]} for c in commands],
+                        "_command_parts": [c["parts"] for c in commands],
+                        "_lock_refs": fallback.get("lock_refs", []),
+                        "context": ctx,
+                        "message": "Fallback lock-ref plan ready",
+                        "raw": text[:1200],
+                    })
+                    return
+            _set_autofix_job(job_id, {
+                "done": True, "ok": False, "phase": "failed", "progress": 100,
+                "error": "No safe git commands found in AI plan",
+                "summary": payload.get("summary", ""),
+                "raw": text[:1200],
+            })
+            return
+        _set_autofix_job(job_id, {
+            "done": True,
+            "ok": True,
+            "phase": "await_confirm",
+            "progress": 100,
+            "summary": payload.get("summary", ""),
+            "post_check": payload.get("post_check", ""),
+            "commands": [{"cmd": c["cmd"], "reason": c["reason"]} for c in commands],
+            "_command_parts": [c["parts"] for c in commands],
+            "context": ctx,
+            "message": "AI plan ready",
+        })
+    except Exception as e:
+        _set_autofix_job(job_id, {
+            "done": True, "ok": False, "phase": "failed", "progress": 100,
+            "error": f"Internal autofix analyze error: {e}",
+        })
+
+
+def _autofix_apply_job(job_id):
+    job = _get_autofix_job(job_id)
+    if not job:
+        return False, "Job not found"
+    parts_list = job.get("_command_parts") or []
+    if not parts_list:
+        _set_autofix_job(job_id, {
+            "done": True, "ok": False, "phase": "failed", "progress": 100,
+            "error": "No commands to apply",
+        })
+        return False, "No commands to apply"
+    _set_autofix_job(job_id, {
+        "done": False, "ok": False, "phase": "applying", "progress": 10,
+        "message": "Applying AI fix...",
+        "apply_logs": [],
+    })
+    logs = []
+    lock_refs = job.get("_lock_refs") or []
+    if lock_refs:
+        deleted, not_found, failed = _cleanup_remote_ref_lock_files(lock_refs)
+        lock_msg = {
+            "cmd": "[internal] cleanup ref lock files",
+            "ok": len(failed) == 0,
+            "stdout": (
+                f"deleted={len(deleted)}, missing={len(not_found)}"
+                + (f"\n{chr(10).join(deleted[:10])}" if deleted else "")
+            ),
+            "stderr": "\n".join(failed[:10]) if failed else "",
+        }
+        logs.append(lock_msg)
+        _set_autofix_job(job_id, {
+            "progress": 20,
+            "apply_logs": logs,
+            "message": "Cleaned lock files",
+        })
+        if failed:
+            _set_autofix_job(job_id, {
+                "done": True,
+                "ok": False,
+                "phase": "failed",
+                "progress": 100,
+                "error": "Failed to clean one or more lock files",
+                "apply_logs": logs,
+            })
+            return True, ""
+
+    total = len(parts_list)
+    for i, parts in enumerate(parts_list):
+        cmd_str = " ".join(parts)
+        out, err, rc = _run(parts, timeout=_AI_AUTOFIX_TIMEOUT)
+        logs.append({
+            "cmd": cmd_str,
+            "ok": rc == 0,
+            "stdout": out[:2000],
+            "stderr": err[:2000],
+        })
+        progress = min(95, int(((i + 1) / total) * 100))
+        _set_autofix_job(job_id, {
+            "progress": progress,
+            "apply_logs": logs,
+            "message": f"Applying step {i + 1}/{total}",
+        })
+        if rc != 0:
+            _set_autofix_job(job_id, {
+                "done": True,
+                "ok": False,
+                "phase": "failed",
+                "progress": 100,
+                "error": err or out or f"Command failed: {cmd_str}",
+                "apply_logs": logs,
+            })
+            return True, ""
+    _set_autofix_job(job_id, {
+        "done": True,
+        "ok": True,
+        "phase": "applied",
+        "progress": 100,
+        "message": "AI fix applied",
+        "apply_logs": logs,
+    })
+    return True, ""
 
 
 def json_result(rc, stdout="", stderr="", extra=None):
@@ -87,9 +420,18 @@ def handle_get(path, params, send_json, send_stream=None):
         send_json({"gpg_sign": get_gpg_sign()})
         return True
 
+    elif path == "/api/detect-base":
+        send_json({"ok": True, "base": detect_base_branch()})
+        return True
+
     elif path == "/api/unsigned-commits":
-        base = params.get("base", ["develop"])[0]
+        base = params.get("base", [None])[0] or detect_base_branch()
         send_json(check_unsigned_commits(base))
+        return True
+
+    elif path == "/api/unsigned-commit-list":
+        base = params.get("base", [None])[0] or detect_base_branch()
+        send_json(get_unsigned_commit_list(base))
         return True
 
     elif path == "/api/protected-branches":
@@ -109,6 +451,15 @@ def handle_get(path, params, send_json, send_stream=None):
 
     elif path == "/api/has-uncommitted":
         send_json({"hasChanges": has_uncommitted()})
+        return True
+
+    elif path == "/api/git-state":
+        send_json(get_git_state())
+        return True
+
+    elif path == "/api/branch-diverge-status":
+        remote_branch = data.get("remote_branch", "").strip() or None
+        send_json(get_branch_diverge_status(remote_branch))
         return True
 
     elif path == "/api/unpushed-count":
@@ -160,12 +511,22 @@ def handle_get(path, params, send_json, send_stream=None):
         })
         return True
 
+    elif path == "/api/head-hash":
+        branch = current_branch()
+        head_out, _, _ = _run(["git", "rev-parse", "HEAD"])
+        head_hash = head_out.strip() if head_out else ""
+        count_out, _, _ = _run(["git", "rev-list", "--count", branch])
+        total = int(count_out.strip()) if count_out.strip().isdigit() else 0
+        send_json({"branch": branch, "hash": head_hash, "total": total})
+        return True
+
     elif path == "/api/commits":
         page = int(params.get("page", ["1"])[0])
         per_page = int(params.get("per_page", ["10"])[0])
         search = params.get("search", [""])[0]
         order = params.get("order", ["desc"])[0]
-        send_json(get_commit_log(page, per_page, search, order))
+        unsigned_only = params.get("unsigned_only", ["0"])[0] == "1"
+        send_json(get_commit_log(page, per_page, search, order, unsigned_only))
         return True
 
     elif path == "/api/pull-requests":
@@ -180,6 +541,60 @@ def handle_get(path, params, send_json, send_stream=None):
         pattern = params.get("pattern", [""])[0]
         max_count = int(params.get("max_count", ["200"])[0])
         send_json(search_diff_code(pattern, max_count))
+        return True
+
+    elif path == "/api/head-reflog":
+        limit = 40
+        try:
+            limit = max(5, min(200, int(params.get("limit", ["40"])[0])))
+        except Exception:
+            pass
+        # Prefer `git reflog HEAD` for a decoded view; fall back to raw file.
+        out, err, rc = _run(["git", "reflog", "HEAD", f"-n{limit}", "--date=iso"], timeout=15)
+        if rc != 0 or not (out or "").strip():
+            try:
+                gd = _resolve_git_dir()
+                p = os.path.join(gd, "logs", "HEAD")
+                with open(p, "r", encoding="utf-8", errors="replace") as f:
+                    lines = f.read().splitlines()
+                out = "\n".join(lines[-limit:])
+            except Exception as e:
+                out = ""
+                err = err or str(e)
+        head_out, _, _ = _run(["git", "rev-parse", "HEAD"], timeout=10)
+        br_out, _, _ = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], timeout=10)
+        send_json({
+            "ok": True,
+            "head": (head_out or "").strip(),
+            "branch": (br_out or "").strip(),
+            "reflog": out or "",
+            "error": err or "",
+        })
+        return True
+
+    elif path == "/api/check-commits-present":
+        raw = params.get("hashes", [""])[0]
+        hashes = [h.strip() for h in raw.split(",") if h.strip()]
+        present_local = []
+        present_remote = []
+        try:
+            br = current_branch() or ""
+        except Exception:
+            br = ""
+        for h in hashes:
+            _, _, rc = _run(["git", "merge-base", "--is-ancestor", h, "HEAD"], timeout=15)
+            if rc == 0:
+                present_local.append(h)
+            if br:
+                _, _, rc2 = _run(["git", "merge-base", "--is-ancestor", h, "refs/remotes/origin/" + br], timeout=15)
+                if rc2 == 0:
+                    present_remote.append(h)
+        send_json({
+            "ok": True,
+            "branch": br,
+            "present_local": present_local,
+            "present_remote": present_remote,
+        })
         return True
 
     elif path == "/api/file-commits":
@@ -260,13 +675,24 @@ def handle_get(path, params, send_json, send_stream=None):
             send_json(status)
         return True
 
+    elif path == "/api/ai/git-autofix-status":
+        job_id = params.get("jobId", [""])[0]
+        status = _get_autofix_job(job_id)
+        if not status:
+            send_json({"ok": False, "error": "Job not found"}, 404)
+        else:
+            status.pop("_command_parts", None)
+            status.pop("_lock_refs", None)
+            send_json({"ok": True, "job": status})
+        return True
+
     elif path == "/api/latest-commit-diff":
-        from git_ops import get_latest_commit_diff
+        from core.git_ops import get_latest_commit_diff
         send_json(get_latest_commit_diff())
         return True
 
     elif path == "/api/commit-diff-compare":
-        from git_ops import get_commit_diff_compare
+        from core.git_ops import get_commit_diff_compare
         base_hash = params.get("base", [""])[0].strip()
         head_hash = params.get("head", ["HEAD"])[0].strip() or "HEAD"
         if not base_hash:
@@ -492,11 +918,17 @@ def handle_post(path, data, send_json):
 
     elif path == "/api/pull":
         mode = data.get("mode", "merge")
-        log, stderr, rc = pull_current(mode)
+        force = bool(data.get("force", False))
+        log, stderr, rc = pull_current(mode, force=force)
         if rc == 0:
             send_json({"ok": True, "log": log})
         else:
-            send_json({"ok": False, "error": stderr or log, "log": log}, 400)
+            # Detect divergence-guard rejection so the frontend can render a
+            # dedicated warning modal instead of a generic error.
+            body = {"ok": False, "error": stderr or log, "log": log}
+            if isinstance(log, str) and log.startswith("Pull blocked: branch is diverged"):
+                body["divergedBlocked"] = True
+            send_json(body, 400)
         return True
 
     elif path == "/api/network-timeout":
@@ -518,7 +950,7 @@ def handle_post(path, data, send_json):
         return True
 
     elif path == "/api/resign-commits":
-        base = data.get("base", "develop")
+        base = data.get("base") or detect_base_branch()
         ok, msg = resign_branch_commits(base)
         if ok:
             send_json({"ok": True, "message": msg})
@@ -526,8 +958,18 @@ def handle_post(path, data, send_json):
             send_json({"ok": False, "error": msg}, 400)
         return True
 
+    elif path == "/api/squash-unsigned":
+        base = data.get("base") or detect_base_branch()
+        message = data.get("message") or None
+        ok, msg = squash_unsigned_commits(base, message)
+        if ok:
+            send_json({"ok": True, "message": msg})
+        else:
+            send_json({"ok": False, "error": msg}, 400)
+        return True
+
     elif path == "/api/resign-commits-autofix":
-        base = data.get("base", "develop")
+        base = data.get("base") or detect_base_branch()
         ok, msg = resign_branch_commits_with_autostash(base)
         if ok:
             send_json({"ok": True, "message": msg})
@@ -544,14 +986,18 @@ def handle_post(path, data, send_json):
         return True
 
     elif path == "/api/gitop-start":
-        import uuid, threading
         op = data.get("op", "fetch")
         mode = data.get("mode", "merge")
-        job_id = str(uuid.uuid4())[:8]
+        force = bool(data.get("force", False))
+        job_id = str(_uuid4())[:8]
         with _PUSH_JOBS_LOCK:
             _PUSH_JOBS[job_id] = {'lines': [], 'done': False, 'ok': False,
                                   'error': '', 'authRequired': False}
-        threading.Thread(target=_run_gitop_streaming, args=(job_id, op, mode), daemon=True).start()
+        threading.Thread(
+            target=_run_gitop_streaming,
+            args=(job_id, op, mode, force),
+            daemon=True,
+        ).start()
         send_json({"ok": True, "jobId": job_id})
         return True
 
@@ -572,15 +1018,26 @@ def handle_post(path, data, send_json):
         return True
 
     elif path == "/api/push":
-        import uuid, threading, tempfile, stat as _stat
+        import tempfile, stat as _stat
         branch = current_branch()
+        # Resolve detached HEAD → real branch name using symbolic-ref fallback
+        if not branch or branch in ("HEAD", "unknown"):
+            sym_out, _, sym_rc = _run(["git", "symbolic-ref", "--short", "HEAD"])
+            if sym_rc == 0 and sym_out.strip():
+                branch = sym_out.strip()
+            else:
+                # Last resort: find which branch points at HEAD
+                ref_out, _, ref_rc = _run(["git", "branch", "--points-at", "HEAD", "--format=%(refname:short)"])
+                candidates = [r.strip() for r in ref_out.splitlines() if r.strip() and r.strip() != "HEAD"]
+                if candidates:
+                    branch = candidates[0]
         username = data.get("username", "").strip()
         password = data.get("password", "").strip()
         force = bool(data.get("force", False))
         remote_branch = data.get("remote_branch", "").strip() or None
         remote_url, _, _ = _run(["git", "remote", "get-url", "origin"])
         is_ssh = remote_url.startswith("git@") or remote_url.startswith("ssh://")
-        job_id = str(uuid.uuid4())[:8]
+        job_id = str(_uuid4())[:8]
         with _PUSH_JOBS_LOCK:
             _PUSH_JOBS[job_id] = {'lines': [], 'done': False, 'ok': False,
                                   'error': '', 'authRequired': False}
@@ -630,6 +1087,15 @@ def handle_post(path, data, send_json):
             send_json({"ok": False, "log": combined, "hasConflict": has_conflict, "error": combined})
         return True
 
+    elif path == "/api/rebase-preflight":
+        source = data.get("branch", "").strip()
+        if not source:
+            send_json({"ok": False, "error": "No branch specified"}, 400)
+            return True
+        safety = check_rebase_safety(source)
+        send_json({"ok": True, **safety})
+        return True
+
     elif path == "/api/rebase":
         source = data.get("branch", "").strip()
         if not source:
@@ -648,6 +1114,19 @@ def handle_post(path, data, send_json):
             "alreadyUpToDate": already_up_to_date,
             "error": combined if rc != 0 else "",
         })
+        return True
+
+    elif path == "/api/rebase-rebuild-force-push":
+        base_branch = data.get("base_branch", "").strip()
+        remote_branch = data.get("remote_branch", "").strip() or None
+        if not base_branch:
+            send_json({"ok": False, "error": "base_branch is required"}, 400)
+            return True
+        stdout, stderr, rc = rebase_rebuild_keep_head_and_force_push(base_branch, remote_branch=remote_branch)
+        if rc == 0:
+            send_json({"ok": True, "stdout": stdout})
+        else:
+            send_json({"ok": False, "error": stderr or stdout, "stdout": stdout}, 400)
         return True
 
     elif path == "/api/switch-remote-ssh":
@@ -718,10 +1197,12 @@ def handle_post(path, data, send_json):
         env = {"GIT_EDITOR": "true"}
         gpg_flag = ["-S"] if get_gpg_sign() else []
         if os.path.exists(os.path.join(cwd, ".git", "CHERRY_PICK_HEAD")):
-            stdout, stderr, rc = _run(["git", "cherry-pick", "--continue"] + gpg_flag, env=env)
+            # --continue does not accept -S; GPG signing is controlled by commit.gpgsign config
+            stdout, stderr, rc = _run(["git", "cherry-pick", "--continue"], env=env)
         elif os.path.exists(os.path.join(cwd, ".git", "rebase-merge")) or \
              os.path.exists(os.path.join(cwd, ".git", "rebase-apply")):
-            stdout, stderr, rc = _run(["git", "rebase", "--continue"] + gpg_flag, env=env)
+            # --continue does not accept -S; GPG signing is controlled by commit.gpgsign config
+            stdout, stderr, rc = _run(["git", "rebase", "--continue"], env=env)
         elif os.path.exists(os.path.join(cwd, ".git", "MERGE_HEAD")):
             if msg:
                 stdout, stderr, rc = _run(["git", "commit"] + gpg_flag + ["-m", msg])
@@ -757,6 +1238,19 @@ def handle_post(path, data, send_json):
             send_json({"ok": False, "error": stderr or stdout}, 400)
         return True
 
+    elif path == "/api/remove-files-from-commit":
+        commit = data.get("commit", "")
+        files = data.get("files", [])
+        if not commit or not files:
+            send_json({"ok": False, "error": "Missing commit or files"}, 400)
+            return True
+        ok, msg = remove_files_from_commit(commit, files)
+        if ok:
+            send_json({"ok": True, "message": msg})
+        else:
+            send_json({"ok": False, "error": msg}, 400)
+        return True
+
     elif path == "/api/drop_commit":
         commit = data.get("commit", "")
         stdout, stderr, rc = drop_commit(commit)
@@ -775,6 +1269,106 @@ def handle_post(path, data, send_json):
             send_json({"ok": True, "stdout": stdout})
         else:
             send_json({"ok": False, "error": stderr or stdout}, 400)
+        return True
+
+    elif path == "/api/squash-conflict-check":
+        hashes = data.get("hashes", [])
+        result = squash_conflict_check(hashes)
+        send_json(result)
+        return True
+
+    elif path == "/api/squash-selected":
+        hashes = data.get("hashes", [])
+        msg = data.get("message", "")
+        # Always use server-side GPG setting; client hint is secondary
+        gpg_sign = get_gpg_sign() or bool(data.get("gpg_sign", False))
+        if is_rebase_in_progress():
+            send_json({
+                "ok": False,
+                "error": (
+                    "Another rebase is already in progress. "
+                    "Please finish it first (Continue/Skip) or abort it, then retry squash."
+                ),
+                "rebaseInProgress": True,
+            }, 409)
+            return True
+        if not hashes or len(hashes) < 2:
+            send_json({"ok": False, "error": "Need at least 2 commit hashes"}, 400)
+            return True
+        # Snapshot HEAD before/after so client can visibly confirm the branch
+        # ref actually moved. This exposes the case where old backend code (or
+        # a hook) silently no-ops the rewrite while returning ok=True.
+        pre_head_out, _, _ = _run(["git", "rev-parse", "HEAD"])
+        pre_head_snap = (pre_head_out or "").strip()
+        # Also snapshot origin/<branch> so we can later detect "reset to origin".
+        try:
+            _pre_branch = current_branch() or ""
+        except Exception:
+            _pre_branch = ""
+        _pre_origin = ""
+        if _pre_branch:
+            _po, _, _po_rc = _run(["git", "rev-parse", "refs/remotes/origin/" + _pre_branch], timeout=10)
+            if _po_rc == 0:
+                _pre_origin = (_po or "").strip()
+        _write_local_log("squash-selected:start", [
+            f"branch={_pre_branch}  pre_HEAD={pre_head_snap}",
+            f"pre_origin/{_pre_branch}={_pre_origin or '-'}",
+            f"gpg_sign={gpg_sign}",
+            f"count={len(hashes)}",
+            "hashes=" + ",".join(h[:12] for h in hashes),
+            "message=" + (msg or "")[:200],
+        ])
+        ok, result_msg, squash_hash = squash_selected_commits(hashes, msg, gpg_sign)
+        post_head_out, _, _ = _run(["git", "rev-parse", "HEAD"])
+        post_head_snap = (post_head_out or "").strip()
+        _write_local_log("squash-selected:end", [
+            f"branch={_pre_branch}  ok={ok}  squash_hash={squash_hash}",
+            f"pre_HEAD={pre_head_snap}  post_HEAD={post_head_snap}",
+            f"moved={pre_head_snap != post_head_snap and bool(post_head_snap)}",
+            "result_msg=" + (result_msg or "")[:400],
+        ])
+        if ok:
+            # Defense-in-depth: if HEAD didn't move even though squash_selected_commits
+            # returned ok, force-fail so the UI cannot mislead the user.
+            if not post_head_snap or post_head_snap == pre_head_snap:
+                _write_local_log("squash-selected:head-did-not-move", [
+                    f"branch={_pre_branch}",
+                    f"pre_HEAD={pre_head_snap}",
+                    f"post_HEAD={post_head_snap}",
+                    "server reported ok=True but rev-parse HEAD is unchanged",
+                ])
+                send_json({
+                    "ok": False,
+                    "error": (
+                        "Squash reported success but HEAD did not move.\n"
+                        f"pre_head={pre_head_snap[:12]}  post_head={post_head_snap[:12] or '-'}\n"
+                        "This means the branch ref was not updated. Likely causes: "
+                        "detached HEAD, a git hook that aborts commit silently, or "
+                        "the Python server is running stale code — restart the "
+                        "GitAutoManageBoard service and hard-refresh the browser, "
+                        "then retry."
+                    ),
+                    "pre_head": pre_head_snap,
+                    "post_head": post_head_snap,
+                    "backend_version": "squash-v2-headmove",
+                }, 400)
+                return True
+            send_json({
+                "ok": True,
+                "message": result_msg,
+                "squash_commit_hash": squash_hash,
+                "pre_head": pre_head_snap,
+                "post_head": post_head_snap,
+                "backend_version": "squash-v2-headmove",
+            })
+        else:
+            send_json({
+                "ok": False,
+                "error": result_msg,
+                "pre_head": pre_head_snap,
+                "post_head": post_head_snap,
+                "backend_version": "squash-v2-headmove",
+            }, 400)
         return True
 
     elif path == "/api/rename-branch":
@@ -857,6 +1451,62 @@ def handle_post(path, data, send_json):
             send_json({"ok": False, "error": "messages required"}, 400)
             return True
         job_id = start_chat_job(provider, api_key, base_url, model, messages)
+        send_json({"ok": True, "jobId": job_id})
+        return True
+
+    elif path == "/api/ai/git-autofix-start":
+        provider = data.get("provider", "openai")
+        api_key = data.get("api_key", "")
+        base_url = data.get("base_url", "")
+        model = data.get("model", "")
+        err_text = (data.get("error") or "").strip()
+        op_name = (data.get("operation") or "").strip()
+        ui_lang = (data.get("lang") or "en").strip().lower()
+        if not err_text:
+            send_json({"ok": False, "error": "error is required"}, 400)
+            return True
+        if not model:
+            send_json({"ok": False, "error": "model is required"}, 400)
+            return True
+        if provider != "ollama" and not str(api_key or "").strip():
+            send_json({"ok": False, "error": f"API key required for provider: {provider}"}, 400)
+            return True
+        if provider == "custom" and not str(base_url or "").strip():
+            send_json({"ok": False, "error": "base_url is required for custom provider"}, 400)
+            return True
+        job_id = str(_uuid4())[:8]
+        _set_autofix_job(job_id, {
+            "jobId": job_id,
+            "created_at": int(time.time()),
+            "done": False,
+            "ok": False,
+            "phase": "queued",
+            "progress": 0,
+            "message": "Queued",
+            "error": "",
+            "operation": op_name,
+        })
+        threading.Thread(
+            target=_autofix_analyze_job,
+            args=(job_id, provider, api_key, base_url, model, op_name, err_text, ui_lang),
+            daemon=True
+        ).start()
+        send_json({"ok": True, "jobId": job_id})
+        return True
+
+    elif path == "/api/ai/git-autofix-apply":
+        job_id = (data.get("jobId") or "").strip()
+        if not job_id:
+            send_json({"ok": False, "error": "jobId required"}, 400)
+            return True
+        job = _get_autofix_job(job_id)
+        if not job:
+            send_json({"ok": False, "error": "Job not found"}, 404)
+            return True
+        if job.get("phase") == "applying":
+            send_json({"ok": False, "error": "Job is already applying"}, 400)
+            return True
+        threading.Thread(target=_autofix_apply_job, args=(job_id,), daemon=True).start()
         send_json({"ok": True, "jobId": job_id})
         return True
 

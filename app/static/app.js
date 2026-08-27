@@ -56,6 +56,9 @@ var T = {
   reset_soft: {en:'Soft Reset', zh:'软重置'},
   reset_hard: {en:'Hard Reset', zh:'硬重置'},
   reset_desc: {en:'<b>Soft Reset</b>: Keeps working tree changes, moves commits back to staging.<br><b>Hard Reset</b>: Discards ALL changes back to that commit.', zh:'<b>Soft Reset</b>: 保留工作区改动，commit 回到暂存区。<br><b>Hard Reset</b>: 丢弃所有改动，直接回到该commit状态。'},
+  reset_hard_push_title: {en:'⚠️ Hard Reset Completed', zh:'⚠️ Hard Reset 已完成'},
+  reset_hard_push_desc: {en:'<b>Hard Reset rewrote local history.</b><br>If this branch was already pushed, your next push should use <b>Force Push</b>.<br><br>Push to remote now?', zh:'<b>Hard Reset 已改写本地历史。</b><br>如果此分支之前已推送到远端，下一步应使用 <b>Force Push</b>。<br><br>现在推送到远端吗？'},
+  reset_hard_force_btn: {en:'Force Push to Remote', zh:'Force Push 到远端'},
   revert_title: {en:'Revert', zh:'撤销'},
   revert_desc: {en:'Creates a new commit that undoes this commit. History is preserved.', zh:'创建一个新commit撤销该commit，不丢失历史。'},
   drop_title: {en:'Drop Commit', zh:'删除 Commit'},
@@ -64,6 +67,14 @@ var T = {
   squash_confirm: {en:'Squash {n} commits into one?', zh:'将 {n} 个commit合并为1个？'},
   squash_ok: {en:'Squash successful!', zh:'Squash 成功！'},
   squash_fail: {en:'Squash failed: ', zh:'Squash 失败: '},
+  squash_result_title: {en:'Squash Result', zh:'Squash 结果'},
+  squash_result_ready: {en:'Ready to push', zh:'可直接推送'},
+  squash_result_hash: {en:'Commit', zh:'提交'},
+  squash_result_msg: {en:'Message', zh:'消息'},
+  squash_result_focus_btn: {en:'Locate in Log', zh:'在日志中定位'},
+  squash_result_push_btn: {en:'Force Push Now', zh:'立即 Force Push'},
+  squash_result_clear_btn: {en:'Clear', zh:'清除'},
+  squash_result_missing_hash: {en:'Squash finished but no new commit hash was returned. Please refresh log and verify before pushing.', zh:'Squash 执行结束但未返回新 commit hash。请先刷新日志确认后再推送。'},
   reset_ok: {en:'Reset ({mode}) successful', zh:'Reset ({mode}) 成功'},
   reset_fail: {en:'Reset failed: ', zh:'Reset 失败: '},
   revert_ok: {en:'Revert successful', zh:'Revert 成功'},
@@ -273,6 +284,9 @@ var T = {
   ai_provider_base_url: {en:'Base URL', zh:'Base URL'},
   ai_provider_model_label: {en:'Model', zh:'模型'},
   ai_provider_custom_model: {en:'Or enter a custom model name…', zh:'或输入自定义模型名…'},
+  ai_model_default_option: {en:'— Select from default models —', zh:'— 从默认模型中选择 —'},
+  ai_google_hint: {en:'🔑 Use your Google AI Studio API key. Base URL defaults to Gemini OpenAI-compatible endpoint.', zh:'🔑 使用你的 Google AI Studio API Key。Base URL 默认指向 Gemini 的 OpenAI 兼容接口。'},
+  ai_google_http400_hint: {en:'(Google returned HTTP 400. Check model name and ensure Base URL is Google OpenAI-compatible endpoint.)', zh:'（Google 返回 HTTP 400，请检查模型名，并确认 Base URL 是 Google OpenAI 兼容端点。）'},
   ai_provider_test: {en:'🔌 Test Connection', zh:'🔌 测试连接'},
   ai_provider_save: {en:'💾 Save', zh:'💾 保存'},
   ai_provider_cancel: {en:'Cancel', zh:'取消'},
@@ -288,6 +302,8 @@ var T = {
   force_push_btn: {en:'Force Push Now', zh:'立即 Force Push'},
   force_push_later: {en:'Later', zh:'稍后手动操作'},
   squash_tip: {en:'💡 Tip: Check 2 or more commit checkboxes to merge them into one commit (Squash)', zh:'💡 提示：勾选 2 个或以上 commit 的 checkbox，可将它们合并为一个新 commit（Squash）'},
+  squash_panel_title: {en:'Squash Commits', zh:'Squash 合并'},
+  squash_nonadj_note: {en:'Non-adjacent commits selected — they will be grouped at the oldest position via interactive rebase. Only these commits are squashed; others are NOT affected.', zh:'所选 commit 不相邻，将通过 interactive rebase 把它们集中后再合并，其余 commit 顺序不变、不受影响。'},
   create_branch_btn: {en:'+ Create Branch', zh:'+ 新建分支'},
   new_branch_placeholder: {en:'New branch name...', zh:'新分支名...'},
   branch_search_placeholder: {en:'Search branches (fuzzy)...', zh:'搜索分支（模糊匹配）...'},
@@ -408,6 +424,27 @@ var T = {
   rebase_continue_ok: {en:'✅ Rebase continuing — check Conflicts tab if new conflicts appear', zh:'✅ Rebase 继续中 — 如有新冲突请检查 Conflicts 标签页'},
   rebase_continue_fail: {en:'Continue failed: ', zh:'继续失败: '},
   rebase_confirm_btn: {en:'Confirm', zh:'确认'},
+  ai_fix_btn: {en:'🤖 AI Fix', zh:'🤖 AI 修复'},
+  ai_fix_starting: {en:'Starting AI fix...', zh:'正在启动 AI 修复...'},
+  ai_fix_progress: {en:'AI is fixing git error...', zh:'AI 正在修复 Git 错误...'},
+  ai_fix_plan_title: {en:'🤖 AI Fix Plan', zh:'🤖 AI 修复方案'},
+  ai_fix_plan_desc: {en:'AI generated the following fix commands. Apply now?', zh:'AI 已生成以下修复命令，是否现在执行？'},
+  ai_fix_apply_confirm: {en:'Apply Fix', zh:'执行修复'},
+  ai_fix_apply_cancel: {en:'Cancel', zh:'取消'},
+  ai_fix_failed: {en:'AI fix failed: ', zh:'AI 修复失败: '},
+  ai_fix_done: {en:'AI fix completed.', zh:'AI 修复完成。'},
+  ai_fix_canceled: {en:'AI fix canceled.', zh:'AI 修复已取消。'},
+  ai_fix_retry_title: {en:'Retry original git operation?', zh:'是否重试原 Git 操作？'},
+  ai_fix_retry_desc: {en:'Fix is applied. Continue the previous git operation now?', zh:'修复已执行，是否继续刚才的 Git 操作？'},
+  ai_fix_retry_confirm: {en:'Retry Operation', zh:'重试操作'},
+  ai_fix_retry_cancel: {en:'Later', zh:'稍后'},
+  ai_fix_no_config: {en:'AI provider/model is not configured.', zh:'AI 服务商或模型未配置。'},
+  ai_fix_need_api_key: {en:'AI API key is required for current provider.', zh:'当前 AI 服务商需要 API Key。'},
+  ai_fix_need_base_url: {en:'Base URL is required for custom AI provider.', zh:'自定义 AI 服务商需要 Base URL。'},
+  ai_fix_error_detail_fallback: {en:'Unknown failure. Please check AI settings and server logs.', zh:'未知失败，请检查 AI 配置和服务端日志。'},
+  ai_fix_log_expand: {en:'Show more logs', zh:'展开日志'},
+  ai_fix_log_collapse: {en:'Collapse logs', zh:'收起日志'},
+  ai_fix_no_retry: {en:'No retry action found for this operation.', zh:'当前操作未记录可重试动作。'},
 };
 
 function t(key, lang) {
@@ -477,8 +514,24 @@ function _renderSmartPaginationHTML(section) {
 
 function _togglePagExpand(section) {
   _pagExpanded[section] = !_pagExpanded[section];
-  var pag = document.getElementById(section+'-pagination');
-  if (pag) pag.innerHTML = _renderSmartPaginationHTML(section);
+  _renderPagSection(section);
+}
+
+function _renderPagSection(section){
+  var html=_renderSmartPaginationHTML(section);
+  var ids=[section+'-pagination', section+'-pagination-top'];
+  for(var i=0;i<ids.length;i++){
+    var el=document.getElementById(ids[i]);
+    if(el) el.innerHTML=html;
+  }
+}
+
+function _clearPagSection(section){
+  var ids=[section+'-pagination', section+'-pagination-top'];
+  for(var i=0;i<ids.length;i++){
+    var el=document.getElementById(ids[i]);
+    if(el) el.innerHTML='';
+  }
 }
 
 function _setSmartPagination(section, totalPages, cur, loadFn, totalItems) {
@@ -487,10 +540,13 @@ function _setSmartPagination(section, totalPages, cur, loadFn, totalItems) {
     infoHtml: totalItems ? '<span class="page-info">Total '+totalItems+'</span>' : ''
   };
   if (_pagExpanded[section] === undefined) _pagExpanded[section] = false;
-  var pag = document.getElementById(section+'-pagination');
-  if (!pag) return;
-  if (totalPages <= 1) { pag.innerHTML = ''; return; }
-  pag.innerHTML = _renderSmartPaginationHTML(section);
+  var hasAny=document.getElementById(section+'-pagination')||document.getElementById(section+'-pagination-top');
+  if (!hasAny) return;
+  if (totalPages <= 1) {
+    _renderPagSection(section);
+    return;
+  }
+  _renderPagSection(section);
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -589,18 +645,149 @@ var expandedPaths = {};
 var modalCallback = null;
 var resolvedConflicts = {};
 var squashSelected = {};
+var squashCommitCache = {};  // hash → full commit data, persists across page turns
+var lastSquashResult = null; // {hash, message, selectedCount}
 var currentLogData = null;
+var logUnsignedFilter = false;
+var _lastGitOpCtx = null;
+var _aiFixActive = false;
+var _aiFixLogs = {};
+
+// ── Commit log local cache ────────────────────────────────────────────────────
+var _logCache = {
+  branch: null, headHash: null, total: 0, perPage: 10, order: 'desc', pages: {}
+};
+
+function _logCacheStorageKey(branch, perPage, order) {
+  return 'gitboard_log_' + (branch||'') + '_' + perPage + '_' + order;
+}
+
+function _saveLogCache() {
+  try {
+    var key = _logCacheStorageKey(_logCache.branch, _logCache.perPage, _logCache.order);
+    localStorage.setItem(key, JSON.stringify(_logCache));
+  } catch(e) {}
+}
+
+function _tryRestoreLogCache(branch, perPage, order) {
+  try {
+    // If branch is known, try direct key first
+    if (branch) {
+      var key = _logCacheStorageKey(branch, perPage, order);
+      var raw = localStorage.getItem(key);
+      if (raw) {
+        var d = JSON.parse(raw);
+        if (d && d.perPage == perPage && d.order === order) {
+          _logCache = d;
+          return true;
+        }
+      }
+    }
+    // Branch unknown (first load): scan localStorage for any matching entry
+    var prefix = 'gitboard_log_';
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.startsWith(prefix)) {
+        var d2 = JSON.parse(localStorage.getItem(k));
+        if (d2 && d2.perPage == perPage && d2.order === order && d2.pages) {
+          _logCache = d2;
+          return true;
+        }
+      }
+    }
+  } catch(e) {}
+  return false;
+}
+
+function _invalidateLogCache() {
+  _logCache.pages = {};
+  _logCache.headHash = null;
+  _saveLogCache();
+}
+
+// Aggressive: remove ALL persisted log caches (all branches/perPage/order combos).
+// Use after history-rewriting operations (squash, rebase, reset, drop) and after push,
+// so a stale entry under a different key never resurrects old commits in the UI.
+function _purgeAllLogCaches() {
+  try {
+    var toDel = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf('gitboard_log_') === 0) toDel.push(k);
+    }
+    toDel.forEach(function(k){ try { localStorage.removeItem(k); } catch(e) {} });
+  } catch(e) {}
+  _logCache.pages = {};
+  _logCache.headHash = null;
+}
+
+// Use after any git mutation (commit/squash/push/rebase/reset/revert/drop)
+function _reloadLog(page) {
+  _invalidateLogCache();
+  loadLog(page || 1);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+function _rememberGitOp(name, retryFn){
+  _lastGitOpCtx = {name:name||'', retry:typeof retryFn==='function'?retryFn:null, ts:Date.now()};
+}
+
+function _getAICfgSafe(){
+  try{
+    if(typeof getAIConfig==='function') return getAIConfig() || null;
+  }catch(e){}
+  return null;
+}
+
+function _getAIProviderDefSafe(provider){
+  try{
+    if(typeof AI_PROVIDERS==='object' && AI_PROVIDERS && AI_PROVIDERS[provider]) return AI_PROVIDERS[provider];
+  }catch(e){}
+  return null;
+}
+
+function _validateAIFixConfig(cfg){
+  if(!cfg||!cfg.provider||!cfg.model) return t('ai_fix_no_config');
+  var p=_getAIProviderDefSafe(cfg.provider);
+  if(p && p.needsKey && !String(cfg.api_key||'').trim()) return t('ai_fix_need_api_key');
+  if(cfg.provider==='custom' && !String(cfg.base_url||'').trim()) return t('ai_fix_need_base_url');
+  return '';
+}
+
+function _formatAIFixError(data, fallback){
+  var parts=[];
+  if(data){
+    if(data.error) parts.push(String(data.error).trim());
+    if(!parts.length && data.message) parts.push(String(data.message).trim());
+    if(data.phase) parts.push('phase='+data.phase);
+    if(data.raw) parts.push('raw='+String(data.raw).slice(0,400));
+    if(Array.isArray(data.apply_logs) && data.apply_logs.length){
+      for(var i=data.apply_logs.length-1;i>=0;i--){
+        var it=data.apply_logs[i]||{};
+        if(it.ok===false){
+          var seg=['cmd='+(it.cmd||'')];
+          if(it.stderr) seg.push('stderr='+(it.stderr||'').slice(0,400));
+          else if(it.stdout) seg.push('stdout='+(it.stdout||'').slice(0,400));
+          parts.push(seg.join(' | '));
+          break;
+        }
+      }
+    }
+  }
+  var detail=parts.filter(function(x){return !!x;}).join('\n');
+  if(!detail) detail=fallback||t('ai_fix_error_detail_fallback');
+  return detail;
+}
 
 // ═══════════ Utils ═══════════
 var _spinnerCount=0;
 function _showSpinner(msg){
   _spinnerCount++;
-  var s=document.getElementById('global-spinner');
-  if(s){document.getElementById('spinner-msg').textContent=msg||'Loading...';s.classList.add('show')}
+  // intentionally no-op: global top spinner removed in favor of inline progress+skeleton states
 }
 function _hideSpinner(){
   _spinnerCount=Math.max(0,_spinnerCount-1);
-  if(!_spinnerCount){var s=document.getElementById('global-spinner');if(s)s.classList.remove('show')}
+  // intentionally no-op
 }
 function showToast(msg, type, duration) {
   type=type||'info'; duration=duration||3500;
@@ -624,10 +811,124 @@ function escapeHtml(s){s=s==null?'':String(s);return s.replace(/&/g,'&amp;').rep
 function escapeAttr(s){s=s==null?'':String(s);return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function escapeJS(s){return escapeAttr(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
 
+function _rememberContainerHeight(el){
+  if(!el)return;
+  var h=Math.round((el.getBoundingClientRect&&el.getBoundingClientRect().height)||0);
+  if(h>=80) el.dataset.lastContentHeight=String(h);
+}
+
+function _rememberContainerHeightById(id){
+  var el=document.getElementById(id);
+  if(!el)return;
+  requestAnimationFrame(function(){_rememberContainerHeight(el);});
+}
+
+function _setLoadingState(target, msg){
+  var el=(typeof target==='string')?document.getElementById(target):target;
+  if(!el)return;
+  _rememberContainerHeight(el);
+  el.innerHTML='<div class="loading-bar">'+escapeHtml(msg||'Loading...')+'</div>';
+  var bar=el.firstElementChild;
+  if(bar && bar.classList && bar.classList.contains('loading-bar')){
+    var known=parseInt(el.dataset.lastContentHeight||'0',10);
+    if(known>0){
+      bar.style.minHeight=Math.max(known,112)+'px';
+    }
+  }
+}
+
+function _chunkedAppendHTML(el, chunks, onDone){
+  var idx=0;
+  function step(){
+    if(!el||!el.isConnected)return;
+    var start=(typeof performance!=='undefined'&&performance.now)?performance.now():Date.now();
+    while(idx<chunks.length){
+      el.insertAdjacentHTML('beforeend', chunks[idx++]);
+      var now=(typeof performance!=='undefined'&&performance.now)?performance.now():Date.now();
+      if(now-start>12)break;
+    }
+    if(idx<chunks.length){
+      requestAnimationFrame(step);
+    }else if(typeof onDone==='function'){
+      onDone();
+    }
+  }
+  requestAnimationFrame(step);
+}
+
+function _enhanceLoadingBar(el){
+  if(!el||el.dataset.loadingEnhanced==='1')return;
+  var txt=(el.textContent||'Loading...').trim();
+  var label=txt||'Loading...';
+  var targetH=parseInt(el.style.minHeight||'0',10);
+  if(!(targetH>0)){
+    var b=(el.getBoundingClientRect&&el.getBoundingClientRect())||null;
+    targetH=Math.round((b&&b.height)||0);
+  }
+  if(!(targetH>0)) targetH=224;
+  var headAndTrack=46;
+  var rowH=42; // close to commits table row height
+  var rowCount=Math.max(3,Math.floor((targetH-headAndTrack)/rowH));
+  var rowsHtml='';
+  for(var i=0;i<rowCount;i++){
+    var cls='w-100';
+    if(i%4===1) cls='w-92';
+    else if(i%4===2) cls='w-78';
+    else if(i%4===3) cls='w-86';
+    rowsHtml+='<span class="skeleton-line '+cls+'"></span>';
+  }
+  el.dataset.loadingEnhanced='1';
+  el.innerHTML=
+    '<div class="loading-live-head">'
+      +'<span class="loading-live-label">'+escapeHtml(label)+'</span>'
+      +'<span class="loading-live-percent">0%</span>'
+    +'</div>'
+    +'<div class="loading-live-track"><span class="loading-live-fill"></span></div>'
+    +'<div class="skeleton-stack">'
+      +rowsHtml
+    +'</div>';
+  var pct=0;
+  var pctEl=el.querySelector('.loading-live-percent');
+  var fillEl=el.querySelector('.loading-live-fill');
+  var timer=setInterval(function(){
+    if(!el.isConnected){clearInterval(timer);return;}
+    pct=Math.min(94,pct+Math.max(1,Math.floor((100-pct)/9)));
+    if(fillEl)fillEl.style.width=pct+'%';
+    if(pctEl)pctEl.textContent=pct+'%';
+  },180);
+  el._loadingTimer=timer;
+}
+
+function _observeLoadingBars(){
+  function scan(root){
+    if(!root)return;
+    if(root.classList&&root.classList.contains('loading-bar'))_enhanceLoadingBar(root);
+    if(root.querySelectorAll){
+      var bars=root.querySelectorAll('.loading-bar');
+      for(var i=0;i<bars.length;i++)_enhanceLoadingBar(bars[i]);
+    }
+  }
+  scan(document.body);
+  var mo=new MutationObserver(function(muts){
+    muts.forEach(function(m){
+      if(m.addedNodes){
+        for(var i=0;i<m.addedNodes.length;i++)scan(m.addedNodes[i]);
+      }
+    });
+  });
+  mo.observe(document.body,{childList:true,subtree:true});
+}
+
 function addMsg(msg, cls, opts) {
   cls=cls||'info';
   opts=opts||{};
-  var maxLines = opts.maxLines || 0; // 0 = no limit
+  // Global cap: every message (red/blue/green) shows at most 10 lines. If the
+  // caller passes a smaller maxLines we respect it; larger values (or the
+  // default 0 = unlimited) are clamped to 10 so long stack traces / reflogs
+  // never blow up the message area — they become a scrollable box instead.
+  var GLOBAL_MSG_LINE_CAP = 10;
+  var requested = opts.maxLines || GLOBAL_MSG_LINE_CAP;
+  var maxLines = Math.min(requested, GLOBAL_MSG_LINE_CAP);
   msgLog.push({time:new Date().toLocaleString(), type:cls, text:msg});
   _saveMsgLogToStorage();
   updateMsgCount();
@@ -639,12 +940,35 @@ function addMsg(msg, cls, opts) {
   div.id=id;
   var lines = msg.split('\n');
   var needScroll = maxLines > 0 && lines.length > maxLines;
+  var extraActions = Array.isArray(opts.actions) ? opts.actions.slice() : [];
+  if (cls === 'error' && !opts.disableAiFix && !_aiFixActive) {
+    extraActions.push({
+      label: t('ai_fix_btn'),
+      className: 'btn-primary',
+      onClick: function(){ _startAIFixFlow(msg, opts.gitOp || _lastGitOpCtx || null); }
+    });
+  }
+  var actionsHtml = '';
+  if (extraActions.length) {
+    actionsHtml = '<div class="msg-actions"></div>';
+  }
   if (needScroll) {
-    div.innerHTML='<span class="msg-text msg-text-scroll" style="display:block;max-height:'+(maxLines*1.6)+'em;overflow-y:auto;white-space:pre-wrap;font-family:monospace;font-size:12px;line-height:1.6">'+escapeHtml(msg)+'</span><span class="msg-close" onclick="dismissMsg(\''+id+'\')">✕</span>';
+    div.innerHTML='<div class="msg-main"><span class="msg-text msg-text-scroll" style="display:block;max-height:'+(maxLines*1.6)+'em;overflow-y:auto;white-space:pre-wrap;font-family:monospace;font-size:12px;line-height:1.6">'+escapeHtml(msg)+'</span><span class="msg-close" onclick="dismissMsg(\''+id+'\')">✕</span></div>'+actionsHtml;
   } else {
-    div.innerHTML='<span class="msg-text">'+escapeHtml(msg)+'</span><span class="msg-close" onclick="dismissMsg(\''+id+'\')">✕</span>';
+    div.innerHTML='<div class="msg-main"><span class="msg-text">'+escapeHtml(msg)+'</span><span class="msg-close" onclick="dismissMsg(\''+id+'\')">✕</span></div>'+actionsHtml;
+  }
+  if (extraActions.length) {
+    var actionWrap = div.querySelector('.msg-actions');
+    extraActions.forEach(function(a){
+      var b = document.createElement('button');
+      b.className = 'btn btn-sm ' + (a.className || 'btn-secondary');
+      b.textContent = a.label || 'Action';
+      b.onclick = function(){ if(typeof a.onClick==='function') a.onClick(); };
+      actionWrap.appendChild(b);
+    });
   }
   area.appendChild(div);
+  return id;
 }
 
 function addMsgWithAction(msg, cls, actions) {
@@ -658,11 +982,34 @@ function addMsgWithAction(msg, cls, actions) {
   var div=document.createElement('div');
   div.className='msg-item '+cls;
   div.id=id;
-  var btnHtml='';
-  actions.forEach(function(a){
-    btnHtml+=' <button class="btn btn-sm btn-primary" onclick="dismissMsg(\''+id+'\');('+a.onClick.toString()+')()" style="margin-left:6px">'+escapeHtml(a.label)+'</button>';
+  // Same 10-line cap as addMsg — long errors become a scrollable box.
+  var GLOBAL_MSG_LINE_CAP = 10;
+  var lines = (msg || '').split('\n');
+  var needScroll = lines.length > GLOBAL_MSG_LINE_CAP;
+  var textHtml;
+  if (needScroll) {
+    textHtml = '<span class="msg-text msg-text-scroll" style="display:block;max-height:'
+      +(GLOBAL_MSG_LINE_CAP*1.6)+'em;overflow-y:auto;white-space:pre-wrap;font-family:monospace;font-size:12px;line-height:1.6">'
+      +escapeHtml(msg)+'</span>';
+  } else {
+    textHtml = '<span class="msg-text">'+escapeHtml(msg)+'</span>';
+  }
+  div.innerHTML='<div class="msg-main">'+textHtml+'<span class="msg-close" onclick="dismissMsg(\''+id+'\')">✕</span></div><div class="msg-actions"></div>';
+  var actionWrap = div.querySelector('.msg-actions');
+  (actions||[]).forEach(function(a){
+    var b=document.createElement('button');
+    b.className='btn btn-sm btn-primary';
+    b.textContent=a.label;
+    b.onclick=function(){dismissMsg(id);if(typeof a.onClick==='function')a.onClick();};
+    actionWrap.appendChild(b);
   });
-  div.innerHTML='<span class="msg-text">'+escapeHtml(msg)+'</span>'+btnHtml+'<span class="msg-close" onclick="dismissMsg(\''+id+'\')">✕</span>';
+  if (cls === 'error' && !_aiFixActive) {
+    var aiBtn=document.createElement('button');
+    aiBtn.className='btn btn-sm btn-primary';
+    aiBtn.textContent=t('ai_fix_btn');
+    aiBtn.onclick=function(){_startAIFixFlow(msg,_lastGitOpCtx||null);};
+    actionWrap.appendChild(aiBtn);
+  }
   area.appendChild(div);
 }
 
@@ -726,6 +1073,32 @@ function clearMsgLog() {
   });
 }
 
+function showConfirmDialog(opts){
+  opts=opts||{};
+  var title=opts.title||'';
+  var msg=opts.message||'';
+  var confirmText=opts.confirmText||'OK';
+  var cancelText=opts.cancelText||'Cancel';
+  var confirmClass=opts.confirmClass||'btn-warning';
+  var onConfirm=opts.onConfirm;
+  var onCancel=opts.onCancel;
+  document.getElementById('modal-title').innerHTML=title;
+  document.getElementById('modal-msg').innerHTML=msg;
+  var btnsDiv=document.getElementById('modal-btns');
+  btnsDiv.innerHTML='';
+  var cancelBtn=document.createElement('button');
+  cancelBtn.className='btn btn-secondary';
+  cancelBtn.textContent=cancelText;
+  cancelBtn.onclick=function(){closeModal();if(typeof onCancel==='function')onCancel();};
+  var confirmBtn=document.createElement('button');
+  confirmBtn.className='btn '+confirmClass;
+  confirmBtn.textContent=confirmText;
+  confirmBtn.onclick=function(){closeModal();if(typeof onConfirm==='function')onConfirm();};
+  btnsDiv.appendChild(cancelBtn);
+  btnsDiv.appendChild(confirmBtn);
+  document.getElementById('modal-bg').classList.add('show');
+}
+
 function showModal(title, msg, confirmLabel, cb) {
   document.getElementById('modal-title').innerHTML=title;
   document.getElementById('modal-msg').innerHTML=msg;
@@ -777,6 +1150,235 @@ function closeModal() {
   if(_modalRestoreFn)_modalRestoreFn();
   document.getElementById('modal-bg').classList.remove('show');
   modalCallback=null;
+}
+
+function _ensureAIFixProgressUI(msgId){
+  var host=document.getElementById(msgId);
+  if(!host) return null;
+  var box=host.querySelector('.msg-ai-fix-progress');
+  if(!box){
+    box=document.createElement('div');
+    box.className='msg-ai-fix-progress';
+    box.innerHTML=
+      '<div class="msg-ai-fix-meta"><span class="msg-ai-fix-text"></span><span class="msg-ai-fix-percent">0%</span></div>'
+      +'<div class="msg-ai-fix-bar"><div class="msg-ai-fix-fill"></div></div>'
+      +'<div class="msg-ai-fix-log-wrap">'
+      +'<button class="msg-ai-fix-log-toggle" style="display:none" onclick="_toggleAIFixLog(\''+msgId+'\')"></button>'
+      +'<pre class="msg-ai-fix-log"></pre>'
+      +'</div>';
+    box.dataset.logExpanded='0';
+    host.appendChild(box);
+  }
+  return box;
+}
+
+function _toggleAIFixLog(msgId){
+  var box=_ensureAIFixProgressUI(msgId);
+  if(!box) return;
+  box.dataset.logExpanded = box.dataset.logExpanded==='1' ? '0' : '1';
+  _renderAIFixLog(msgId, _aiFixLogs[msgId]||[]);
+}
+
+function _renderAIFixLog(msgId, lines){
+  var box=_ensureAIFixProgressUI(msgId);
+  if(!box) return;
+  lines=Array.isArray(lines)?lines:[];
+  _aiFixLogs[msgId]=lines;
+  var pre=box.querySelector('.msg-ai-fix-log');
+  var btn=box.querySelector('.msg-ai-fix-log-toggle');
+  if(!pre||!btn) return;
+  var expanded=box.dataset.logExpanded==='1';
+  var limit=expanded?10:3;
+  var shown=lines.slice(-limit);
+  pre.textContent=shown.join('\n');
+  pre.style.maxHeight=expanded?'15.5em':'4.9em';
+  pre.style.overflowY=lines.length>limit?'auto':'hidden';
+  if(lines.length<=3){
+    btn.style.display='none';
+  }else{
+    btn.style.display='inline-block';
+    btn.textContent=expanded?t('ai_fix_log_collapse'):t('ai_fix_log_expand');
+  }
+}
+
+function _collectAIFixLogs(job, state){
+  state=state||{};
+  state.logs=state.logs||[];
+  state._lastMsgKey=state._lastMsgKey||'';
+  var phase=job.phase||'';
+  var progress=(job.progress==null?0:job.progress);
+  var msg=(job.message||'').trim();
+  var key=phase+'|'+progress+'|'+msg;
+  if(key!==state._lastMsgKey){
+    state._lastMsgKey=key;
+    var line=(phase?('['+phase+'] '):'')+(msg||'...');
+    if(progress||progress===0) line+=' ('+progress+'%)';
+    if(!state.logs.length||state.logs[state.logs.length-1]!==line){
+      state.logs.push(line);
+    }
+  }
+  var applyLogs=Array.isArray(job.apply_logs)?job.apply_logs:[];
+  var startIdx=state._lastApplyLogCount||0;
+  for(var i=startIdx;i<applyLogs.length;i++){
+    var it=applyLogs[i]||{};
+    var prefix=it.ok?'[apply-ok] ':'[apply-fail] ';
+    var line=prefix+(it.cmd||'git ?');
+    if(!it.ok&&it.stderr) line+=' | '+String(it.stderr).split('\n')[0];
+    if(!it.ok&&!it.stderr&&it.stdout) line+=' | '+String(it.stdout).split('\n')[0];
+    state.logs.push(line);
+  }
+  state._lastApplyLogCount=applyLogs.length;
+  return state.logs;
+}
+
+function _updateAIFixProgress(msgId, percent, text){
+  var box=_ensureAIFixProgressUI(msgId);
+  if(!box) return;
+  var p=Math.max(0,Math.min(100,parseInt(percent||0)));
+  var fill=box.querySelector('.msg-ai-fix-fill');
+  var txt=box.querySelector('.msg-ai-fix-text');
+  var pe=box.querySelector('.msg-ai-fix-percent');
+  if(fill) fill.style.width=p+'%';
+  if(txt) txt.textContent=text||t('ai_fix_progress');
+  if(pe) pe.textContent=p+'%';
+}
+
+function _renderAIFixPlanHtml(status){
+  var commands=status.commands||[];
+  var html='<div style="font-size:13px;line-height:1.7">';
+  html+='<div style="margin-bottom:8px">'+escapeHtml(t('ai_fix_plan_desc'))+'</div>';
+  if(status.summary){
+    html+='<div style="margin-bottom:8px;padding:8px 10px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0">'
+      +escapeHtml(status.summary)+'</div>';
+  }
+  html+='<div style="max-height:260px;overflow:auto;border:1px solid #e5e7eb;border-radius:8px;background:#0f172a;color:#e2e8f0;padding:10px;font-family:monospace;font-size:12px">';
+  for(var i=0;i<commands.length;i++){
+    var c=commands[i]||{};
+    html+='<div style="margin-bottom:9px"><div style="color:#67e8f9">$ '+escapeHtml(c.cmd||'')+'</div>';
+    if(c.reason) html+='<div style="color:#94a3b8"># '+escapeHtml(c.reason)+'</div>';
+    html+='</div>';
+  }
+  html+='</div></div>';
+  return html;
+}
+
+function _finalizeAIFixWithRetry(gitOpCtx){
+  showConfirmDialog({
+    title:t('ai_fix_retry_title'),
+    message:'<div style="font-size:14px;line-height:1.7">'+escapeHtml(t('ai_fix_retry_desc'))+'</div>',
+    confirmText:t('ai_fix_retry_confirm'),
+    cancelText:t('ai_fix_retry_cancel'),
+    confirmClass:'btn-primary',
+    onConfirm:function(){
+      if(gitOpCtx&&typeof gitOpCtx.retry==='function'){
+        gitOpCtx.retry();
+      }else{
+        addMsg(t('ai_fix_no_retry'),'info',{disableAiFix:true});
+      }
+    }
+  });
+}
+
+function _pollAIFixStatus(jobId, msgId, gitOpCtx, state){
+  state=state||{};
+  fetch('/api/ai/git-autofix-status?jobId='+encodeURIComponent(jobId))
+    .then(function(r){return r.json();})
+    .then(function(data){
+      if(!data.ok || !data.job){
+        _aiFixActive=false;
+        addMsg(t('ai_fix_failed')+_formatAIFixError(data),'error',{maxLines:14,gitOp:gitOpCtx||_lastGitOpCtx||null});
+        return;
+      }
+      var job=data.job||{};
+      _updateAIFixProgress(msgId, job.progress||0, job.message||t('ai_fix_progress'));
+      _renderAIFixLog(msgId, _collectAIFixLogs(job, state));
+      if(!job.done){
+        setTimeout(function(){_pollAIFixStatus(jobId,msgId,gitOpCtx,state);},700);
+        return;
+      }
+      if(job.phase==='await_confirm'){
+        if(state.planShown) return;
+        state.planShown=true;
+        _aiFixActive=false;
+        showConfirmDialog({
+          title:t('ai_fix_plan_title'),
+          message:_renderAIFixPlanHtml(job),
+          confirmText:t('ai_fix_apply_confirm'),
+          cancelText:t('ai_fix_apply_cancel'),
+          confirmClass:'btn-warning',
+          onConfirm:function(){
+            _aiFixActive=true;
+            _updateAIFixProgress(msgId, 8, t('ai_fix_progress'));
+            fetch('/api/ai/git-autofix-apply',{
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({jobId:jobId})
+            }).then(function(r){return r.json();}).then(function(d){
+              if(!d.ok){
+                _aiFixActive=false;
+                addMsg(t('ai_fix_failed')+_formatAIFixError(d),'error',{maxLines:14,gitOp:gitOpCtx||_lastGitOpCtx||null});
+                return;
+              }
+              setTimeout(function(){_pollAIFixStatus(jobId,msgId,gitOpCtx,state);},500);
+            }).catch(function(e){
+              _aiFixActive=false;
+              addMsg(t('network_err')+e.message,'error',{gitOp:gitOpCtx||_lastGitOpCtx||null});
+            });
+          },
+          onCancel:function(){ addMsg(t('ai_fix_canceled'),'info',{disableAiFix:true}); }
+        });
+        return;
+      }
+      _aiFixActive=false;
+      if(job.ok && job.phase==='applied'){
+        _updateAIFixProgress(msgId, 100, t('ai_fix_done'));
+        addMsg(t('ai_fix_done'),'success',{disableAiFix:true});
+        _finalizeAIFixWithRetry(gitOpCtx);
+      }else{
+        addMsg(t('ai_fix_failed')+_formatAIFixError(job),'error',{maxLines:14,gitOp:gitOpCtx||_lastGitOpCtx||null});
+      }
+    })
+    .catch(function(e){
+      _aiFixActive=false;
+      addMsg(t('network_err')+e.message,'error',{gitOp:gitOpCtx||_lastGitOpCtx||null});
+    });
+}
+
+function _startAIFixFlow(errorText, gitOpCtx){
+  if(_aiFixActive) return;
+  var cfg=_getAICfgSafe();
+  var cfgErr=_validateAIFixConfig(cfg);
+  if(cfgErr){
+    addMsg(t('ai_fix_failed')+cfgErr,'error',{maxLines:8,gitOp:gitOpCtx||_lastGitOpCtx||null});
+    return;
+  }
+  _aiFixActive=true;
+  var opName=(gitOpCtx&&gitOpCtx.name)||'git-operation';
+  var msgId=addMsg('🤖 '+t('ai_fix_starting'),'success',{disableAiFix:true});
+  _updateAIFixProgress(msgId, 3, t('ai_fix_starting'));
+  fetch('/api/ai/git-autofix-start',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      provider:cfg.provider,
+      api_key:cfg.api_key||'',
+      base_url:cfg.base_url||'',
+      model:cfg.model||'',
+      lang:L||'en',
+      operation:opName,
+      error:errorText||''
+    })
+  }).then(function(r){return r.json();}).then(function(data){
+    if(!data.ok||!data.jobId){
+      _aiFixActive=false;
+      addMsg(t('ai_fix_failed')+_formatAIFixError(data),'error',{maxLines:14,gitOp:gitOpCtx||_lastGitOpCtx||null});
+      return;
+    }
+    _pollAIFixStatus(data.jobId,msgId,gitOpCtx||null,{planShown:false});
+  }).catch(function(e){
+    _aiFixActive=false;
+    addMsg(t('network_err')+e.message,'error',{disableAiFix:true});
+  });
 }
 
 function toggleHelp(id) {
@@ -831,22 +1433,68 @@ function highlightDiff(text) {
 }
 
 // ═══════════ Main page ═══════════
-function renderFiles(files) {
+var _filesCache = [];
+var _filesPage = 1;
+
+function _getMainFilesPerPage(){
+  var el=document.getElementById('main-files-per-page');
+  if(!el)return 10;
+  var v=parseInt(el.value,10);
+  if(!isFinite(v)||v<=0)return 10;
+  return v;
+}
+
+function onMainFilesPerPageChange(){
+  _filesPage=1;
+  renderFilesPage(1);
+}
+
+function renderFilesPage(page){
+  _filesPage=Math.max(1,parseInt(page,10)||1);
+  renderFiles(_filesCache,true);
+}
+
+function renderFiles(files, fromCache) {
+  if(!fromCache)_filesCache=Array.isArray(files)?files:[];
+  files=_filesCache;
   var list=document.getElementById('file-list');
   var allBar=document.getElementById('select-all-bar');
+  var controls=document.getElementById('main-files-controls');
+  var perPage=_getMainFilesPerPage();
+  var total=files.length;
+  var totalPages=Math.max(1,Math.ceil(total/perPage));
+  if(_filesPage>totalPages)_filesPage=totalPages;
+  var start=(_filesPage-1)*perPage;
+  var pageFiles=files.slice(start,start+perPage);
+  var totalEl=document.getElementById('main-files-total');
+  if(totalEl)totalEl.textContent=tf('files_pending',L,{n:total});
+
+  _pagData['main-files']={
+    totalPages:totalPages,
+    cur:_filesPage,
+    loadFn:'renderFilesPage',
+    infoHtml:'<span class="page-info">Total '+total+'</span>'
+  };
+  if(_pagExpanded['main-files']===undefined)_pagExpanded['main-files']=false;
+  _renderPagSection('main-files');
+
   if(!files.length){
     list.innerHTML='<div class="empty">🎉 '+t('no_files')+'</div>';
     document.getElementById('toolbar').style.display='none';
     allBar.style.display='none';
+    if(controls)controls.style.display='none';
+    _clearPagSection('main-files');
     return;
   }
   document.getElementById('toolbar').style.display='flex';
   allBar.style.display='block';
+  if(controls)controls.style.display='flex';
   var allCb=document.getElementById('select-all-cb');
   var allChecked=files.every(function(f){return checkedPaths[f.path]});
   allCb.checked=allChecked;
-  var html='';
-  files.forEach(function(f,idx){
+  list.innerHTML='';
+  var chunks=[],chunk='';
+  pageFiles.forEach(function(f,idx){
     var safePath=escapeHtml(f.path),attrPath=escapeAttr(f.path);
     var diffHtml=highlightDiff(f.diff);
     var checked=checkedPaths[f.path]?' checked':'';
@@ -855,27 +1503,33 @@ function renderFiles(files) {
     var bodyCls=expanded?' file-body expanded':' file-body';
     var lineCount=f.diff?f.diff.split('\n').length:0;
     var isLargeDiff = lineCount > 80;
-    html+='<div class="file-card" data-index="'+idx+'"><div class="file-header">';
-    html+='<span class="cb-wrap"><input type="checkbox" data-path="'+attrPath+'" class="file-cb"'+checked+'></span>';
-    html+='<span class="'+toggleCls+'">▶</span>';
-    html+='<span class="file-path">'+safePath+'</span>';
-    html+='<span style="color:#9ca3af;font-size:12px">('+lineCount+' '+t('lines')+')</span>';
-    html+='<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();ignoreFile(\''+attrPath+'\')" title="Discard changes for this file">Ignore</button>';
-    html+='</div>';
+    var row='';
+    row+='<div class="file-card" data-index="'+(start+idx)+'"><div class="file-header">';
+    row+='<span class="cb-wrap"><input type="checkbox" data-path="'+attrPath+'" class="file-cb"'+checked+'></span>';
+    row+='<span class="'+toggleCls+'">▶</span>';
+    row+='<span class="file-path">'+safePath+'</span>';
+    row+='<span style="color:#9ca3af;font-size:12px">('+lineCount+' '+t('lines')+')</span>';
+    row+='<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();ignoreFile(\''+attrPath+'\')" title="Discard changes for this file">Ignore</button>';
+    row+='</div>';
     if(diffHtml){
-      var blockId='diff-block-'+idx;
-      html+='<div class="'+bodyCls+'">';
-      html+='<div class="diff-block" id="'+blockId+'">'+diffHtml+'</div>';
+      var blockId='diff-block-'+(start+idx);
+      row+='<div class="'+bodyCls+'">';
+      row+='<div class="diff-block" id="'+blockId+'">'+diffHtml+'</div>';
       if(isLargeDiff){
-        html+='<div style="text-align:center;padding:4px 0 8px">'
+        row+='<div style="text-align:center;padding:4px 0 8px">'
           +'<button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="toggleDiffExpand(\''+blockId+'\',this)">⇕ Show full diff ('+lineCount+' lines)</button>'
           +'</div>';
       }
-      html+='</div>';
+      row+='</div>';
     }
-    html+='</div>';
+    row+='</div>';
+    chunk+=row;
+    if((idx+1)%12===0){chunks.push(chunk);chunk='';}
   });
-  list.innerHTML=html;
+  if(chunk)chunks.push(chunk);
+  _chunkedAppendHTML(list,chunks,function(){
+    _rememberContainerHeightById('file-list');
+  });
 }
 
 var _filesPollInterval = (function() {
@@ -887,11 +1541,17 @@ var _filesPollTimer = null;
 var _filesLastJson = '';
 
 function loadFiles(silent){
+  if(!silent){
+    _setLoadingState('file-list','Loading files...');
+  }
   apiGet('/api/files', function(data) {
     var json = JSON.stringify(data.files);
     if (json !== _filesLastJson) {
       _filesLastJson = json;
-      renderFiles(data.files);
+      _filesCache=Array.isArray(data.files)?data.files:[];
+      renderFiles(_filesCache,true);
+    }else if(!silent){
+      renderFiles(_filesCache,true);
     }
   }, silent ? {silent:true} : null);
 }
@@ -1364,78 +2024,87 @@ function checkConflicts(){
     .catch(function(){});
 }
 
+// Captures the latest successful rebase context so push-failure flows can
+// offer a one-click "reset to rebase base + keep HEAD + force push" recovery.
+var _lastRebaseForcePushContext = null;
+
 // ═══════════ Pull + Fetch ═══════════
 function doPush(credentials, force, remoteBranch){
+  _rememberGitOp('push', function(){ doPush(null, !!force, remoteBranch); });
   var gpgToggle = document.getElementById('gpg-sign-toggle');
   var gpgEnabled = gpgToggle && gpgToggle.checked;
 
   // If GPG signing is enabled, check for unsigned commits before pushing
   if (gpgEnabled && !doPush._skipResignCheck) {
-    apiGet('/api/unsigned-commits?base=develop', function(info) {
-      if (info.has_unsigned) {
-        showModalDouble(
-          '🔏 Unsigned Commits Detected',
-          'Found <b>' + info.unsigned_count + '</b> unsigned commit(s) out of ' + info.total_count + ' on this branch.<br><br>' +
-          'Re-sign all commits with GPG before pushing?<br>' +
-          '<span style="font-size:12px;color:#6b7280">(This will rebase and force push)</span>',
-          '🔏 Re-sign & Push',
-          function() {
-            addMsg('🔏 Re-signing commits...', 'info');
-            apiPost('/api/resign-commits', {base: 'develop'}, function(d) {
-              if (d.ok) {
-                addMsg('✅ ' + d.message, 'success');
-                // Now force push since rebase rewrites history
-                doPush._skipResignCheck = true;
-                doPush(credentials, true, remoteBranch);
-                doPush._skipResignCheck = false;
-              } else {
-                var resignErr = (d && d.error) || '';
-                addMsg('❌ Re-sign failed: ' + resignErr, 'error');
-                var canAutoFix = /cannot rebase:\s*You have unstaged changes/i.test(resignErr) ||
-                                 /Please commit or stash them/i.test(resignErr);
-                if (canAutoFix) {
-                  showModalDouble(
-                    '🧹 Auto Fix Re-sign Failure',
-                    'Detected local changes blocking rebase.<br><br>' +
-                    'Run <b>auto stash + re-sign</b>, then push immediately?',
-                    '🧹 Auto Fix & Push',
-                    function() {
-                      addMsg('🧹 Auto-fixing and re-signing commits...', 'info');
-                      apiPost('/api/resign-commits-autofix', {base: 'develop'}, function(fix) {
-                        if (fix.ok) {
-                          addMsg('✅ ' + fix.message, 'success');
-                          doPush._skipResignCheck = true;
-                          doPush(credentials, true, remoteBranch);
-                          doPush._skipResignCheck = false;
-                        } else {
-                          addMsg('❌ Auto-fix failed: ' + ((fix && fix.error) || ''), 'error');
-                        }
-                      });
-                    },
-                    'Close',
-                    function() {},
-                    'btn-primary',
-                    'btn-secondary'
-                  );
+    // Detect the actual base branch first — never hard-code 'develop'
+    apiPost('/api/detect-base', {}, function(baseData) {
+      var detectedBase = (baseData && baseData.base) || 'origin/develop';
+      apiGet('/api/unsigned-commits?base=' + encodeURIComponent(detectedBase), function(info) {
+        if (info.has_unsigned) {
+          showModalDouble(
+            '🔏 Unsigned Commits Detected',
+            'Found <b>' + info.unsigned_count + '</b> unsigned commit(s) out of ' + info.total_count + ' on this branch.<br><br>' +
+            'Re-sign all commits with GPG before pushing?<br>' +
+            '<span style="font-size:12px;color:#6b7280">(Base detected: <code>' + escapeHtml(detectedBase) + '</code>)</span>',
+            '🔏 Re-sign & Push',
+            function() {
+              addMsg('🔏 Re-signing commits...', 'info');
+              apiPost('/api/resign-commits', {base: detectedBase}, function(d) {
+                if (d.ok) {
+                  addMsg('✅ ' + d.message, 'success');
+                  // Now force push since rebase rewrites history
+                  doPush._skipResignCheck = true;
+                  doPush(credentials, true, remoteBranch);
+                  doPush._skipResignCheck = false;
+                } else {
+                  var resignErr = (d && d.error) || '';
+                  addMsg('❌ Re-sign failed: ' + resignErr, 'error');
+                  var canAutoFix = /cannot rebase:\s*You have unstaged changes/i.test(resignErr) ||
+                                   /Please commit or stash them/i.test(resignErr);
+                  if (canAutoFix) {
+                    showModalDouble(
+                      '🧹 Auto Fix Re-sign Failure',
+                      'Detected local changes blocking rebase.<br><br>' +
+                      'Run <b>auto stash + re-sign</b>, then push immediately?',
+                      '🧹 Auto Fix & Push',
+                      function() {
+                        addMsg('🧹 Auto-fixing and re-signing commits...', 'info');
+                        apiPost('/api/resign-commits-autofix', {base: detectedBase}, function(fix) {
+                          if (fix.ok) {
+                            addMsg('✅ ' + fix.message, 'success');
+                            doPush._skipResignCheck = true;
+                            doPush(credentials, true, remoteBranch);
+                            doPush._skipResignCheck = false;
+                          } else {
+                            addMsg('❌ Auto-fix failed: ' + ((fix && fix.error) || ''), 'error');
+                          }
+                        });
+                      },
+                      'Close',
+                      function() {},
+                      'btn-primary',
+                      'btn-secondary'
+                    );
+                  }
                 }
-              }
-            });
-          },
-          'Skip & Push Anyway',
-          function() {
-            doPush._skipResignCheck = true;
-            doPush(credentials, force, remoteBranch);
-            doPush._skipResignCheck = false;
-          },
-          'btn-primary',
-          'btn-secondary'
-        );
-      } else {
-        // All signed, proceed normally
-        doPush._skipResignCheck = true;
-        doPush(credentials, force, remoteBranch);
-        doPush._skipResignCheck = false;
-      }
+              });
+            },
+            'Skip & Push Anyway',
+            function() {
+              doPush._skipResignCheck = true;
+              doPush(credentials, force, remoteBranch);
+              doPush._skipResignCheck = false;
+            },
+            'btn-primary',
+            'btn-secondary'
+          );
+        } else {
+          // All signed, proceed normally
+          doPush._skipResignCheck = true;
+          doPush(credentials, force, remoteBranch);
+          doPush._skipResignCheck = false;
+        }
+      });
     });
     return;
   }
@@ -1505,8 +2174,68 @@ function doPush(credentials, force, remoteBranch){
           if(r.ok){
             if(ld3) ld3.innerHTML+='<span style="color:#4ade80;font-weight:700">✅ Push succeeded!\n</span>';
             addMsg('✅ Push OK','success');
+            // Capture pending squash context BEFORE clearing so we can post-verify.
+            var _pendingSquashVerify = (lastSquashResult && lastSquashResult.selectedHashes && lastSquashResult.selectedHashes.length)
+              ? {hashes:lastSquashResult.selectedHashes.slice(), squashHash:lastSquashResult.hash}
+              : null;
+            clearSquashResultSection();
+            cancelSquash();  // dismiss squash panel & clear selection after successful push
+            // Nuke any stale localStorage log caches (all branches) so the UI never
+            // resurrects the pre-squash commit list from cache.
+            _purgeAllLogCaches();
             // Reload log and branch so commit history reflects force-push/rewrite
-            loadLog(1); loadCurrentBranch();
+            _reloadLog(1); loadCurrentBranch();
+            // Post-push verification: if we just pushed after a squash, confirm the
+            // squashed commits are truly gone from both local HEAD and remote branch.
+            if(_pendingSquashVerify){
+              var qs='/api/check-commits-present?hashes='+encodeURIComponent(_pendingSquashVerify.hashes.join(','));
+              apiGet(qs,function(vr){
+                if(!vr||!vr.ok) return;
+                var stillLocal=(vr.present_local||[]).filter(function(h){
+                  return h!==_pendingSquashVerify.squashHash;
+                });
+                var stillRemote=(vr.present_remote||[]).filter(function(h){
+                  return h!==_pendingSquashVerify.squashHash;
+                });
+                if(stillLocal.length===0 && stillRemote.length===0) return;
+                var shortList=function(arr){return arr.map(function(x){return x.substring(0,8);}).join(', ');};
+                var lines=[];
+                lines.push((L==='zh')
+                  ? '❌ Push 完成，但被 squash 的 commit 依然存在。Squash 实际上没有改写历史。'
+                  : '❌ Push completed, but the squashed commits are still present. The squash did not actually rewrite history.');
+                if(stillLocal.length){
+                  lines.push((L==='zh'?'本地 HEAD 仍可达: ':'Still reachable from local HEAD: ')+shortList(stillLocal));
+                }
+                if(stillRemote.length){
+                  lines.push((L==='zh'?'远端分支仍可达: ':'Still reachable on remote branch: ')+shortList(stillRemote));
+                }
+                lines.push((L==='zh')
+                  ? '常见原因: 选中的 commit 位于合并 (merge) 之下，rebase -i 静默跳过了 merge，导致 drop 未生效。'
+                  : 'Common cause: selected commits live below a merge; rebase -i silently skipped the merge so the drop had no effect.');
+                lines.push((L==='zh')
+                  ? '建议: 先 rebase 展平/去掉相关 merge，或在一个仅含目标 commit 的 topic 分支上重试 squash。'
+                  : 'Suggestion: flatten/remove the merge first, or retry the squash on a topic branch that contains only the target commits.');
+                addMsg(lines.join('\n'),'error',{maxLines:20});
+                setSquashResult(_pendingSquashVerify.squashHash,
+                  (L==='zh'?'⚠️ Push 完成但未真正 squash':'⚠️ Push done but squash did NOT take effect'),
+                  _pendingSquashVerify.hashes.length,
+                  _pendingSquashVerify.hashes);
+                // Pull the last 40 HEAD reflog entries so we can see exactly
+                // what moved HEAD back onto the old commits (post-commit hook,
+                // pull, reset, external process, etc.). This is high-signal
+                // for diagnosing "squash succeeded then vanished".
+                apiGet('/api/head-reflog?limit=40',function(rl){
+                  if(!rl||!rl.ok) return;
+                  var reflogTxt=(rl.reflog||'').trim();
+                  var headTxt=(rl.head||'').substring(0,12);
+                  var brTxt=rl.branch||'';
+                  var header=(L==='zh')
+                    ? ('🔍 当前 HEAD='+headTxt+' 分支='+brTxt+'\n最近 HEAD 变动 (reflog, 最新在最前):')
+                    : ('🔍 Current HEAD='+headTxt+' branch='+brTxt+'\nRecent HEAD moves (reflog, newest first):');
+                  addMsg(header+'\n'+(reflogTxt||'(empty)'),'info',{maxLines:60});
+                });
+              });
+            }
             // Re-enable close button
             var cbOk=document.querySelector('#modal-btns .btn-warning');
             if(cbOk){cbOk.disabled=false;cbOk.style.opacity='';cbOk.textContent='Close';cbOk.onclick=closeModal;}
@@ -1559,17 +2288,96 @@ function doPush(credentials, force, remoteBranch){
             clsBtn2.className='btn btn-secondary';clsBtn2.textContent='Close';clsBtn2.onclick=closeModal;
             btnsDiv2.appendChild(clsBtn2);
             if(isAnyRejected){
-              if(isNonFastForward&&!isRejectedFetchFirst){
-                if(ld3) ld3.innerHTML+='<span style="color:#fbbf24">💡 Local branch is behind remote (e.g. after git reset --hard).\n   Use Force Push to overwrite remote, or Pull to sync first.\n</span>';
-              }else{
-                if(ld3) ld3.innerHTML+='<span style="color:#fbbf24">💡 Remote has new commits. Pull first, then push.\n</span>';
-              }
+              // Detect whether the non-fast-forward is because we just rebased
+              var justRebased = isNonFastForward && !isRejectedFetchFirst &&
+                                _lastRebaseForcePushContext &&
+                                _lastRebaseForcePushContext.branch === branch;
+
+              // Default hint; will be overwritten by diverge-status check below
+              var hintMsgId = 'push-fail-hint-'+Date.now();
+              var hintHtml = justRebased
+                ? '<span style="color:#fbbf24">💡 Rebase rewrites commit history — Force Push is required.\n   Pulling would create duplicate commits. Do NOT pull.\n</span>'
+                : '<span style="color:#94a3b8" id="'+hintMsgId+'">🔍 Checking branch status...\n</span>';
+              if(ld3) ld3.innerHTML+=hintHtml;
+
+              // Pull & Retry — hidden/secondary when we just rebased (may be updated below)
               var pullRetryBtn=document.createElement('button');
-              pullRetryBtn.className='btn btn-success';
+              pullRetryBtn.className= justRebased ? 'btn btn-secondary' : 'btn btn-success';
               pullRetryBtn.textContent='⬇️ Pull & Retry Push';
+              if(justRebased){
+                pullRetryBtn.title=(L==='zh')
+                  ?'Rebase 后不应该 Pull，这会产生重复 commit。请使用 Force Push。'
+                  :'After a rebase you should NOT pull — it creates duplicate commits. Use Force Push instead.';
+              }
+
+              // Async diverge check — update hint + button styles when result arrives
+              if(!justRebased && isNonFastForward){
+                apiPost('/api/branch-diverge-status', {remote_branch: effectiveRemote !== branch ? effectiveRemote : null}, function(ds){
+                  var hintEl = document.getElementById(hintMsgId);
+                  if(!hintEl || !ds) return;
+                  if(ds.diverged){
+                    // Local was rewritten (rebase/resign/squash) — force push is the only safe answer.
+                    hintEl.style.color='#fbbf24';
+                    hintEl.textContent='💡 Branch is diverged: local has '+(ds.ahead||0)+' commit(s) remote doesn\'t, remote has '+(ds.behind||0)+' the local doesn\'t.\n'
+                      +'   This typically means a rebase / squash / resign changed local history.\n'
+                      +'   ⚠️ DO NOT Pull — `git pull --rebase` will silently drop your local rewrite via patch-id matching.\n'
+                      +'   ✅ Use Force Push (--force-with-lease) to update remote.\n'
+                      +(ds.ownCommits > 0 ? '   ✅ You have '+ds.ownCommits+' signed commit(s) of your own ready to push.\n' : '');
+                    // Promote Force Push, HARD-DISABLE Pull
+                    forceBtn.className='btn btn-warning';
+                    forceBtn.textContent=(L==='zh')?'🚀 Force Push（推荐）':'🚀 Force Push (recommended)';
+                    pullRetryBtn.className='btn btn-secondary';
+                    pullRetryBtn.disabled=true;
+                    pullRetryBtn.style.opacity='0.45';
+                    pullRetryBtn.style.cursor='not-allowed';
+                    pullRetryBtn.textContent=(L==='zh')
+                      ?'⬇️ Pull（已禁用，分支已分叉）'
+                      :'⬇️ Pull (disabled — branch diverged)';
+                    pullRetryBtn.title=(L==='zh')
+                      ?'分支已分叉：本地有 rewrite（squash/rebase/amend），Pull 会通过 patch-id 匹配把你的 squash commit 悄悄丢掉，回到远端 tip。请点 Force Push。'
+                      :'Branch diverged: local has a rewrite (squash/rebase/amend). Pulling would use patch-id matching to silently drop your squash commit and revert to the remote tip. Use Force Push instead.';
+                    // Re-order buttons: force first
+                    var parent = forceBtn.parentNode;
+                    if(parent){ parent.removeChild(forceBtn); parent.insertBefore(forceBtn, pullRetryBtn); }
+                  } else if(ds.onlyBehind){
+                    hintEl.style.color='#fbbf24';
+                    hintEl.textContent='💡 Remote has '+(ds.behind||0)+' new commit(s) your local branch doesn\'t have.\n'
+                      +'   Pull first to integrate remote changes, then push.\n';
+                  } else {
+                    hintEl.style.color='#fbbf24';
+                    hintEl.textContent='💡 Push rejected. Check remote for conflicts.\n';
+                  }
+                });
+              }
               pullRetryBtn.onclick=function(){
                 pullRetryBtn.disabled=true;pullRetryBtn.textContent='Pulling...';
                 var ld4=document.getElementById(logDivId);
+                // Pre-flight: check for active rebase or unmerged files before pulling
+                apiGet('/api/git-state',function(gs){
+                  if(gs && (gs.rebaseInProgress || gs.hasUnmerged)){
+                    var detail = gs.rebaseInProgress
+                      ? (L==='zh' ? '检测到进行中的 Rebase 状态' : 'An in-progress rebase was detected')
+                      : (L==='zh'
+                          ? '存在未解决的冲突文件：' + (gs.unmergedFiles||[]).slice(0,3).join(', ')
+                          : 'Unmerged conflict files: ' + (gs.unmergedFiles||[]).slice(0,3).join(', '));
+                    if(ld4) ld4.innerHTML+='<span style="color:#f87171">❌ Cannot pull: '+escapeHtml(detail)+'</span>\n';
+                    if(ld4) ld4.innerHTML+='<span style="color:#fbbf24">⏳ Aborting leftover rebase state first...\n</span>';
+                    apiPost('/api/conflict-reset',{},function(ar){
+                      if(ar&&ar.ok){
+                        if(ld4) ld4.innerHTML+='<span style="color:#4ade80">✅ Rebase state cleared. Retrying pull...\n</span>';
+                        _doPullAndRetry();
+                      } else {
+                        if(ld4) ld4.innerHTML+='<span style="color:#f87171">❌ Could not clear state: '+escapeHtml((ar&&ar.error)||'')+'</span>\n';
+                        if(ld4) ld4.innerHTML+='<span style="color:#fbbf24">👉 Go to Conflicts tab to resolve, then push manually.\n</span>';
+                        pullRetryBtn.disabled=false; pullRetryBtn.textContent='⬇️ Pull & Retry Push';
+                        checkConflicts(); loadConflicts();
+                      }
+                    });
+                    return;
+                  }
+                  _doPullAndRetry();
+                });
+                function _doPullAndRetry(){
                 apiGet('/api/has-uncommitted',function(hasData){
                   var shouldStash=!!(hasData&&hasData.hasChanges);
                   var doPullAndRetry=function(){
@@ -1603,8 +2411,9 @@ function doPush(credentials, force, remoteBranch){
                     if(ld4) ld4.innerHTML+='<span style="color:#4ade80">✅ Stashed local changes. Continue pulling...\n</span>';
                     doPullAndRetry();
                   });
-                });
-              };
+                }); // closes apiGet has-uncommitted
+              } // closes _doPullAndRetry
+              }; // closes pullRetryBtn.onclick
               var forceBtn=document.createElement('button');
               forceBtn.className='btn btn-warning';
               forceBtn.textContent='⚠️ Force Push';
@@ -1624,8 +2433,77 @@ function doPush(credentials, force, remoteBranch){
                   function(){ closeModal(); setTimeout(function(){ doPushForce(); },300); }
                 );
               };
-              btnsDiv2.appendChild(forceBtn);
-              btnsDiv2.appendChild(pullRetryBtn);
+
+              if(isNonFastForward && _lastRebaseForcePushContext &&
+                 _lastRebaseForcePushContext.branch === branch &&
+                 _lastRebaseForcePushContext.baseBranch){
+                var rebuildBtn=document.createElement('button');
+                rebuildBtn.className='btn btn-danger';
+                rebuildBtn.textContent=(L==='zh')
+                  ?'🛠 按 Rebase 基线重建并强推'
+                  :'🛠 Rebuild from Rebase Base & Force Push';
+                rebuildBtn.onclick=function(){
+                  var baseBranch=_lastRebaseForcePushContext.baseBranch;
+                                  var gpgOn=(document.getElementById('gpg-sign-toggle')||{}).checked;
+                                  var gpgNote=gpgOn
+                                    ?(L==='zh'
+                                      ?'<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;margin-top:8px;color:#166534;font-size:12px">🔏 GPG 签名已开启 — cherry-pick 会自动附加签名</div>'
+                                      :'<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;margin-top:8px;color:#166534;font-size:12px">🔏 GPG signing is ON — the cherry-picked commit will be signed automatically</div>')
+                                    :(L==='zh'
+                                      ?'<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:8px 12px;margin-top:8px;color:#92400e;font-size:12px">⚠️ GPG 签名未开启 — 如果远端要求签名验证，push 仍会被拒绝。请先在右上角打开 GPG 开关。</div>'
+                                      :'<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:8px 12px;margin-top:8px;color:#92400e;font-size:12px">⚠️ GPG signing is OFF — if the remote requires verified signatures, the push will still be rejected. Enable the GPG toggle first.</div>');
+                                  var warn=(L==='zh')
+                                    ?'<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:12px 14px;margin-bottom:10px;color:#7f1d1d">'
+                                      +'<b>⚠️ 将执行重写历史操作</b><br><br>'
+                                      +'将按以下步骤自动执行：<br>'
+                      +'1) <code>git reset --hard '+escapeHtml(baseBranch)+'</code><br>'
+                                      +'2) <code>git cherry-pick 原HEAD</code><br>'
+                      +'3) <code>git push --force-with-lease</code><br><br>'
+                                      +'仅保留"当前顶部 commit"，其它本地新增 commit 会被移除。'
+                                      +'</div>'+gpgNote
+                                    :'<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:12px 14px;margin-bottom:10px;color:#7f1d1d">'
+                                      +'<b>⚠️ This rewrites history</b><br><br>'
+                                      +'It will run:<br>'
+                                      +'1) <code>git reset --hard '+escapeHtml(baseBranch)+'</code><br>'
+                                      +'2) <code>git cherry-pick previous HEAD</code><br>'
+                                      +'3) <code>git push --force-with-lease</code><br><br>'
+                                      +'Only the current top commit will be kept; other local extra commits are removed.'
+                                      +'</div>'+gpgNote;
+                  showModal(
+                    (L==='zh')?'🛠 重建并强推':'🛠 Rebuild & Force Push',
+                    warn,
+                    (L==='zh')?'确认执行':'Proceed',
+                    function(){
+                      closeModal();
+                      addMsg((L==='zh')?'🛠 正在执行重建并强推...':'🛠 Rebuilding branch and force pushing...','info');
+                      apiPost('/api/rebase-rebuild-force-push',{
+                        base_branch: baseBranch,
+                        remote_branch: effectiveRemote
+                      },function(rr){
+                        if(rr&&rr.ok){
+                          addMsg((L==='zh')?'✅ 重建并强推成功':'✅ Rebuild + force push succeeded','success');
+                          if(rr.stdout) addMsg('📋 '+rr.stdout,'info',{maxLines:16});
+                          _reloadLog(1); loadCurrentBranch(); loadFiles();
+                        }else{
+                          addMsg((L==='zh'?'❌ 重建并强推失败: ':'❌ Rebuild + force push failed: ')+((rr&&rr.error)||''),'error',{maxLines:16});
+                          if(rr&&rr.stdout) addMsg('📋 '+rr.stdout,'info',{maxLines:16});
+                        }
+                      });
+                    }
+                  );
+                };
+                btnsDiv2.appendChild(rebuildBtn);
+              }
+              if(justRebased){
+                // After rebase: Force Push is the correct action — place it first and highlight it
+                forceBtn.className='btn btn-warning';
+                forceBtn.textContent=(L==='zh')?'🚀 Force Push（推荐）':'🚀 Force Push (recommended)';
+                btnsDiv2.appendChild(forceBtn);
+                btnsDiv2.appendChild(pullRetryBtn);
+              } else {
+                btnsDiv2.appendChild(forceBtn);
+                btnsDiv2.appendChild(pullRetryBtn);
+              }
             }
           }
         } else {
@@ -1793,7 +2671,7 @@ function _startGitopStream(op, mode, onDone){
           checkConflicts();
           if(r.ok && op==='pull'){
             loadCurrentBranch();
-            loadLog(1);
+            _reloadLog(1);
             loadFiles();
           }
           if(onDone) onDone(r.ok);
@@ -1813,6 +2691,7 @@ function _executePull(mode, onDone){
 }
 
 function doPull() {
+  _rememberGitOp('pull', function(){ doPull(); });
   addMsg(t('pulling'),'info');
   apiGet('/api/has-uncommitted',function(hasData){
     if(hasData&&hasData.hasChanges){
@@ -1867,6 +2746,7 @@ function doPull() {
 }
 
 function doFetch() {
+  _rememberGitOp('fetch', function(){ doFetch(); });
   addMsg(t('fetching'),'info');
   _startGitopStream('fetch', null, function(ok){
     if(ok){ loadFiles(); }
@@ -1874,6 +2754,52 @@ function doFetch() {
 }
 
 function handlePullErr(err) {
+  // Divergence guard triggered on backend: local was rewritten (squash /
+  // rebase / amend) and pulling would silently drop it via patch-id matching.
+  // Show a dedicated modal that steers the user to Force Push.
+  if(err && (err.indexOf('Pull blocked: branch')>=0 || err.indexOf('diverged') >= 0 && err.indexOf('patch-id')>=0)){
+    var title=(L==='zh')?'⛔ Pull 已被拦截（分支已分叉）':'⛔ Pull blocked (branch diverged)';
+    var body=(L==='zh')
+      ? '<div style="font-size:13px;line-height:1.7">'
+        +'<b>你的本地分支有 rewrite（Squash / Rebase / Amend），如果 Pull 会被 <code>git pull --rebase</code> 通过 patch-id 匹配悄悄丢掉，回到远端 tip。</b><br><br>'
+        +'✅ 正确做法：点右上或每行的 <b>Force Push</b>（<code>--force-with-lease</code>）把本地 rewrite 推上去。<br><br>'
+        +'⚠️ 如果你 <b>确实</b> 想放弃本地 rewrite 用远端覆盖，可以点下面 "Pull Anyway"（会强制 Pull）。'
+        +'<pre style="background:#0f172a;color:#e2e8f0;padding:10px 12px;border-radius:6px;font-size:12px;max-height:180px;overflow:auto;white-space:pre-wrap;word-break:break-all;margin-top:10px">'
+        +escapeHtml(err)+'</pre></div>'
+      : '<div style="font-size:13px;line-height:1.7">'
+        +'<b>Your local branch has a rewrite (Squash / Rebase / Amend). Pulling now would let <code>git pull --rebase</code> patch-id-match your local commits and silently drop them back to the remote tip.</b><br><br>'
+        +'✅ Correct next step: click <b>Force Push</b> (<code>--force-with-lease</code>) to publish your local rewrite.<br><br>'
+        +'⚠️ If you <b>really</b> want to discard the local rewrite and reset onto remote, use "Pull Anyway" below.'
+        +'<pre style="background:#0f172a;color:#e2e8f0;padding:10px 12px;border-radius:6px;font-size:12px;max-height:180px;overflow:auto;white-space:pre-wrap;word-break:break-all;margin-top:10px">'
+        +escapeHtml(err)+'</pre></div>';
+    showModal(title, body, (L==='zh')?'知道了':'Got it', null);
+    var btnsDiv=document.getElementById('modal-btns');
+    if(btnsDiv){
+      var forceLink=document.createElement('button');
+      forceLink.className='btn btn-warning';
+      forceLink.textContent=(L==='zh')?'🚀 Force Push':'🚀 Force Push';
+      forceLink.onclick=function(){ closeModal(); doForcePush(); };
+      var pullAnyway=document.createElement('button');
+      pullAnyway.className='btn btn-danger';
+      pullAnyway.textContent=(L==='zh')?'⬇️ 强制 Pull（放弃本地 rewrite）':'⬇️ Pull Anyway (discard local rewrite)';
+      pullAnyway.onclick=function(){
+        closeModal();
+        addMsg((L==='zh')?'⬇️ 强制 Pull（force=true）...':'⬇️ Force pulling (force=true)...','info');
+        apiPost('/api/pull',{mode:'rebase',force:true},function(pd){
+          if(pd && pd.ok){
+            addMsg('✅ '+t('pull_ok'),'success');
+            _reloadLog(1); loadFiles(); loadCurrentBranch(); checkConflicts();
+          } else {
+            addMsg((L==='zh'?'❌ Pull 失败: ':'❌ Pull failed: ')+((pd&&(pd.error||pd.log))||''),'error',{maxLines:12});
+          }
+        });
+      };
+      btnsDiv.insertBefore(forceLink, btnsDiv.firstChild);
+      btnsDiv.appendChild(pullAnyway);
+    }
+    addMsg((L==='zh')?'⛔ Pull 被拦截：分支已分叉。请 Force Push，不要 Pull。':'⛔ Pull blocked: branch diverged. Force Push instead of Pull.','error',{maxLines:8});
+    return;
+  }
   if(err.indexOf('CONFLICT')>=0||err.indexOf('conflict')>=0||err.indexOf('Automatic merge failed')>=0){
     addMsg('⚠️ '+t('pull_conflict')+' — 请在 Conflicts 标签页中手动解决冲突','error');
     checkConflicts();
@@ -2011,7 +2937,7 @@ function loadBranches(page){
   switchPage('branches');
   _initBranchTab();
   _updateBranchTabUI();
-  document.getElementById('branches-content').innerHTML='<div class="loading-bar"><span class="spinner"></span>Loading branches...</div>';
+  _setLoadingState('branches-content','Loading branches...');
   document.getElementById('branches-pagination').innerHTML='';
   var _bpv=document.getElementById('branches-per-page').value;var perPage=_bpv===''?20:parseInt(_bpv);
   // Always fetch all — enables client-side tab pagination and correct counts
@@ -2130,6 +3056,7 @@ function _renderBranchesByTab(data,page,perPage){
   }
 
   container.innerHTML=html;
+  _rememberContainerHeightById('branches-content');
   var infoLabel=(isLocal?'Local':'Remote')+': '+(search?filtered.length+' match(es)':total+' total');
   _pagData['branches']={
     totalPages:totalPages, cur:page, loadFn:'renderBranchPage',
@@ -2393,7 +3320,7 @@ function checkoutBranch(branchName){
         var el=document.getElementById('branch-name');
         if(el) el.textContent=branchName;
         addMsg('✅ Switched to ' + branchName, 'success');
-        loadLog(1); loadFiles(); loadBranches(1);
+        _reloadLog(1); loadFiles(); loadBranches(1);
         setTimeout(function(){ window.location.reload(); }, 800);
       } else {
         var err = data.error || '';
@@ -2685,7 +3612,7 @@ function _doMerge(sourceBranch,curBranch,msg){
       +escapeHtml((data.log||'').trim())+'</div>';
     if(data.ok){
       addMsg('✅ Merged '+sourceBranch+' into '+curBranch,'success');
-      loadFiles();loadLog(1);checkConflicts();
+      loadFiles();_reloadLog(1);checkConflicts();
       showModalDouble(
         '✅ Merge succeeded',
         logBox+'<b>Push <code>'+escapeHtml(curBranch)+'</code> to remote now?</b>',
@@ -2745,7 +3672,98 @@ function _doMerge(sourceBranch,curBranch,msg){
 }
 
 function _doRebase(sourceBranch,curBranch){
+  // ── After rebase: check for unsigned commits, offer to squash, then push ──
+  function checkUnsignedAndPush(logBox){
+    apiGet('/api/unsigned-commit-list?base='+encodeURIComponent(sourceBranch),function(info){
+      var unsigned=(info&&info.unsigned)||[];
+      if(unsigned.length===0){ showForcePushPrompt(logBox); return; }
+
+      // ── Dialog 1: list unsigned commits and ask whether to squash ──
+      var rows='';
+      unsigned.slice(0,10).forEach(function(c){
+        rows+='<tr>'
+          +'<td style="font-family:monospace;color:#7c3aed;padding:2px 8px 2px 0;white-space:nowrap">'+escapeHtml(c.short)+'</td>'
+          +'<td style="color:#374151;padding:2px 0;line-height:1.4">'+escapeHtml(c.subject)+'</td>'
+          +'</tr>';
+      });
+      var extra=unsigned.length>10
+        ?'<tr><td colspan="2" style="color:#6b7280;font-style:italic;padding-top:4px">…and '+(unsigned.length-10)+' more</td></tr>':'';
+
+      var bodyHtml=
+        '<div style="background:#fef9c3;border:2px solid #fbbf24;border-radius:10px;padding:14px 16px;margin-bottom:12px">'
+        +'<div style="font-size:14px;font-weight:800;color:#92400e;margin-bottom:8px">🔓 '
+        +(L==='zh'
+          ?'Rebase 后检测到 <b>'+unsigned.length+'</b> 个未签名 commit'
+          :'Found <b>'+unsigned.length+'</b> unsigned commit(s) after rebase')
+        +'</div>'
+        +'<div style="font-size:13px;color:#78350f;margin-bottom:10px;line-height:1.6">'
+        +(L==='zh'
+          ?'以下 commit 缺少 GPG 签名。你可以将它们 <b>Squash</b> 成一个签名 commit，或直接跳过继续推送。'
+          :'The following commits are missing GPG signatures. You can <b>squash</b> them into one signed commit, or skip and push as-is.')
+        +'</div>'
+        +'<div style="overflow-x:auto;max-height:180px;overflow-y:auto"><table style="font-size:12px;width:100%;border-collapse:collapse">'
+        +rows+extra+'</table></div>'
+        +'</div>';
+
+      document.getElementById('modal-title').innerHTML='🔓 '+(L==='zh'?'发现未签名 Commits':'Unsigned Commits Detected');
+      document.getElementById('modal-msg').innerHTML=bodyHtml;
+      var btnsDiv=document.getElementById('modal-btns');
+      btnsDiv.innerHTML='';
+
+      var skipBtn=document.createElement('button');
+      skipBtn.className='btn btn-secondary';
+      skipBtn.textContent=L==='zh'?'跳过，直接推送':'Skip, push as-is';
+      skipBtn.onclick=function(){ closeModal(); showForcePushPrompt(logBox); };
+
+      var squashBtn=document.createElement('button');
+      squashBtn.className='btn btn-warning';
+      squashBtn.textContent=L==='zh'?'✅ Squash 未签名 Commits':'✅ Squash Unsigned Commits';
+      squashBtn.onclick=function(){
+        closeModal();
+        // ── Dialog 2: second confirmation before squashing ──
+        var confirmBody=
+          '<div style="font-size:14px;line-height:1.7;color:#1e293b">'
+          +(L==='zh'
+            ?'确认将当前分支 <b>'+escapeHtml(curBranch)+'</b> 上相对 <b>'+escapeHtml(sourceBranch)+'</b> 的所有 commit squash 成 <b>1 个签名 commit</b>？<br><br>'
+             +'<span style="color:#ef4444;font-size:12px">⚠️ 此操作将重写分支历史，无法撤销。</span>'
+            :'Confirm: squash all commits on <b>'+escapeHtml(curBranch)+'</b> above <b>'+escapeHtml(sourceBranch)+'</b> into <b>1 signed commit</b>?<br><br>'
+             +'<span style="color:#ef4444;font-size:12px">⚠️ This rewrites branch history and cannot be undone.</span>')
+          +'</div>';
+        showModalDouble(
+          L==='zh'?'⚠️ 确认 Squash':'⚠️ Confirm Squash',
+          confirmBody,
+          L==='zh'?'确认 Squash':'Confirm Squash',
+          function(){
+            addMsg(L==='zh'?'🔀 正在 squash 未签名 commits...':'🔀 Squashing unsigned commits...','info');
+            apiPost('/api/squash-unsigned',{base:sourceBranch},function(sq){
+              if(sq.ok){
+                addMsg((L==='zh'?'✅ Squash 完成: ':'✅ Squash done: ')+(sq.message||''),'success');
+                _reloadLog(1);
+                showForcePushPrompt(logBox);
+              }else{
+                addMsg((L==='zh'?'❌ Squash 失败: ':'❌ Squash failed: ')+(sq.error||''),'error');
+                showForcePushPrompt(logBox);
+              }
+            });
+          },
+          L==='zh'?'取消':'Cancel',
+          function(){ showForcePushPrompt(logBox); },
+          'btn-danger','btn-secondary'
+        );
+      };
+
+      btnsDiv.appendChild(skipBtn);
+      btnsDiv.appendChild(squashBtn);
+      document.getElementById('modal-bg').classList.add('show');
+    });
+  }
+
   function showForcePushPrompt(logBox){
+    _lastRebaseForcePushContext = {
+      baseBranch: sourceBranch,
+      branch: curBranch,
+      at: Date.now()
+    };
     var pushDesc=tf('rebase_push_desc',L,{branch:curBranch});
     showModalDouble(
       t('rebase_ok_title'),
@@ -2778,7 +3796,7 @@ function _doRebase(sourceBranch,curBranch){
         }
 
         addMsg(t('rebase_ok'),'success');
-        loadFiles();loadLog(1);checkConflicts();
+        loadFiles();_reloadLog(1);checkConflicts();
 
         if(stashedBeforeRebase){
           showModalDouble(
@@ -2794,7 +3812,7 @@ function _doRebase(sourceBranch,curBranch){
                 if(popData.ok){
                   addMsg(L==='zh'?'✅ Stash 已恢复':'✅ Stash restored','success');
                   loadFiles();
-                  showForcePushPrompt(logBox);
+                  checkUnsignedAndPush(logBox);
                   return;
                 }
                 var popErr=popData.error||'';
@@ -2809,13 +3827,13 @@ function _doRebase(sourceBranch,curBranch){
               });
             },
             L==='zh'?'稍后手动处理':'Later',
-            function(){ showForcePushPrompt(logBox); },
+            function(){ checkUnsignedAndPush(logBox); },
             'btn-primary','btn-secondary'
           );
           return;
         }
 
-        showForcePushPrompt(logBox);
+        checkUnsignedAndPush(logBox);
       }else if(data.hasConflict || data.rebaseInProgress){
         addMsg(t('rebase_conflict_title')+' '+sourceBranch,'error');
         if(stashedBeforeRebase){
@@ -2863,8 +3881,110 @@ function _doRebase(sourceBranch,curBranch){
     });
   }
 
-  apiGet('/api/has-uncommitted',function(hasData){
-    if(!(hasData&&hasData.hasChanges)){ runRebase(false); return; }
+  // ── Pre-flight: detect merge commits / foreign commits in branch history ──
+  function runWithPreflightCheck(){
+    addMsg(L==='zh'?'🔍 正在检查分支历史安全性...':'🔍 Checking branch history safety...','info');
+    apiPost('/api/rebase-preflight',{branch:sourceBranch},function(pf){
+      var hasRisk=(pf.hasMergeCommits||((pf.foreignCommits||[]).length>0));
+      if(!hasRisk){ checkUncommittedAndRebase(); return; }
+
+      // Build warning HTML
+      var foreignRows='';
+      (pf.foreignCommits||[]).slice(0,8).forEach(function(c){
+        foreignRows+='<tr><td style="font-family:monospace;color:#7c3aed;padding:2px 8px 2px 0">'+escapeHtml(c.hash)+'</td>'
+          +'<td style="color:#b91c1c;padding:2px 8px 2px 0">'+escapeHtml(c.author)+'</td>'
+          +'<td style="color:#374151">'+escapeHtml(c.subject)+'</td></tr>';
+      });
+      var extraRows=(pf.foreignCommits||[]).length>8
+        ?'<tr><td colspan="3" style="color:#6b7280;font-style:italic">… and '+((pf.foreignCommits||[]).length-8)+' more</td></tr>':'';
+
+      var warnHtml='<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:10px;padding:14px 16px;margin-bottom:12px">'
+        +'<div style="font-size:14px;font-weight:800;color:#b91c1c;margin-bottom:8px">⚠️ '
+        +(L==='zh'?'Rebase 风险：分支历史包含其他人的 commit':'Rebase Risk: Branch contains other authors\' commits')+'</div>'
+        +'<div style="font-size:13px;color:#7f1d1d;line-height:1.7;margin-bottom:10px">'
+        +(L==='zh'
+          ?'当前分支历史中包含 <b>'+((pf.foreignCommits||[]).length)+'</b> 个其他人的 commit（可能是之前执行过 <code>git merge</code> 导致的）。'
+           +'直接 Rebase 会把这些 commit <b>重新写入到本分支</b>，导致分支混入他人代码。<br><br>'
+           +'<b>推荐做法：</b>使用 <b>Rebuild & Force Push</b>，它会自动识别并只保留属于你的 commit。'
+          :'The branch history contains <b>'+((pf.foreignCommits||[]).length)+'</b> commit(s) from other authors '
+           +'(likely caused by a previous <code>git merge</code>). A plain rebase will <b>re-apply all of them</b> onto the new base, '
+           +'polluting this branch with other people\'s code.<br><br>'
+           +'<b>Recommended:</b> Use <b>Rebuild & Force Push</b> — it keeps only YOUR commits.')
+        +'</div>'
+        +(foreignRows?'<div style="overflow-x:auto;max-height:160px;overflow-y:auto"><table style="font-size:12px;width:100%;border-collapse:collapse">'
+          +foreignRows+extraRows+'</table></div>':'')
+        +(pf.hasMergeCommits?'<div style="margin-top:8px;font-size:12px;color:#7f1d1d">⚠️ '
+          +(L==='zh'?'检测到 merge commit，这是引发该问题的直接原因。':'Merge commit(s) detected in branch — this is the direct cause of the issue.')+'</div>':'')
+        +'</div>';
+
+      document.getElementById('modal-title').innerHTML='⚠️ '+(L==='zh'?'Rebase 安全警告':'Rebase Safety Warning');
+      document.getElementById('modal-msg').innerHTML=warnHtml;
+      var btnsDiv=document.getElementById('modal-btns');
+      btnsDiv.innerHTML='';
+
+      var cancelBtn2=document.createElement('button');
+      cancelBtn2.className='btn btn-secondary';
+      cancelBtn2.textContent='Cancel';
+      cancelBtn2.onclick=closeModal;
+
+      var forceBtn=document.createElement('button');
+      forceBtn.className='btn btn-danger';
+      forceBtn.textContent=L==='zh'?'⚠️ 仍然 Rebase（不推荐）':'⚠️ Rebase Anyway (not recommended)';
+      forceBtn.onclick=function(){ closeModal(); checkUncommittedAndRebase(); };
+
+      var rebuildBtn=document.createElement('button');
+      rebuildBtn.className='btn btn-warning';
+      rebuildBtn.textContent=L==='zh'?'✅ Rebuild & Force Push（推荐）':'✅ Rebuild & Force Push (recommended)';
+      rebuildBtn.onclick=function(){
+        closeModal();
+        var gpgOn=(document.getElementById('gpg-sign-toggle')||{}).checked;
+        var gpgNote=gpgOn
+          ?(L==='zh'
+            ?'<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;margin-top:10px;color:#166534;font-size:12px">🔏 GPG 签名已开启 — cherry-pick 会自动附加签名</div>'
+            :'<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;margin-top:10px;color:#166534;font-size:12px">🔏 GPG signing is ON — the cherry-picked commit will be signed automatically</div>')
+          :(L==='zh'
+            ?'<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:8px 12px;margin-top:10px;color:#92400e;font-size:12px">⚠️ GPG 签名未开启 — 如果远端要求签名验证，push 仍会被拒绝。建议先在右上角打开 GPG 开关再继续。</div>'
+            :'<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:8px 12px;margin-top:10px;color:#92400e;font-size:12px">⚠️ GPG signing is OFF — if the remote requires verified signatures the push will still be rejected. Enable the GPG toggle first.</div>');
+        var confirmBody=(L==='zh'
+          ?'<p style="margin:0 0 6px;font-size:13px;color:#374151">将执行以下操作，仅保留当前 HEAD commit：<br>'
+            +'<code>git reset --hard '+escapeHtml(sourceBranch)+'</code><br>'
+            +'<code>git cherry-pick HEAD</code><br>'
+            +'<code>git push --force-with-lease</code></p>'
+          :'<p style="margin:0 0 6px;font-size:13px;color:#374151">This will run:<br>'
+            +'<code>git reset --hard '+escapeHtml(sourceBranch)+'</code><br>'
+            +'<code>git cherry-pick HEAD</code><br>'
+            +'<code>git push --force-with-lease</code><br>'
+            +'Only the current HEAD commit is kept.</p>')
+          + gpgNote;
+        showModal(
+          L==='zh'?'🛠 确认 Rebuild & Force Push':'🛠 Confirm Rebuild & Force Push',
+          confirmBody,
+          L==='zh'?'确认执行':'Proceed',
+          function(){
+            closeModal();
+            addMsg(L==='zh'?'🔨 正在 Rebuild 分支...':'🔨 Rebuilding branch...','info');
+            apiPost('/api/rebase-rebuild-force-push',{base_branch:sourceBranch},function(rd){
+              if(rd.ok){
+                addMsg(L==='zh'?'✅ Rebuild & Force Push 成功，分支已清理干净':'✅ Rebuild & Force Push succeeded — branch is clean','success');
+                _reloadLog(1);loadFiles();
+              }else{
+                addMsg((L==='zh'?'❌ Rebuild 失败: ':'❌ Rebuild failed: ')+(rd.error||''),'error');
+              }
+            });
+          }
+        );
+      };
+
+      btnsDiv.appendChild(cancelBtn2);
+      btnsDiv.appendChild(forceBtn);
+      btnsDiv.appendChild(rebuildBtn);
+      document.getElementById('modal-bg').classList.add('show');
+    });
+  }
+
+  function checkUncommittedAndRebase(){
+    apiGet('/api/has-uncommitted',function(hasData){
+      if(!(hasData&&hasData.hasChanges)){ runRebase(false); return; }
     document.getElementById('modal-title').innerHTML=L==='zh'?'🔒 检测到本地未提交改动':'🔒 Local Changes Detected';
     document.getElementById('modal-msg').innerHTML='<div style="font-size:14px;line-height:1.7">'
       +(L==='zh'
@@ -2902,6 +4022,9 @@ function _doRebase(sourceBranch,curBranch){
     btnsDiv.appendChild(stashBtn);
     document.getElementById('modal-bg').classList.add('show');
   });
+  } // end checkUncommittedAndRebase
+
+  runWithPreflightCheck();
 }
 
 // ═══════════ Rebase failure quick actions ═══════════
@@ -2999,7 +4122,7 @@ function _rebaseAction(action){
     apiPost(endpoint, {}, function(data){
       if(data.ok){
         addMsg(t(okKey),'success');
-        loadFiles(); loadLog(1); checkConflicts(); loadCurrentBranch();
+        loadFiles(); _reloadLog(1); checkConflicts(); loadCurrentBranch();
         if(action==='continue') checkConflicts();
       }else{
         var errMsg=t(failKey)+(data.error||'');
@@ -3244,24 +4367,31 @@ function toggleCompareDiff(id){
 function loadStash(page){
   page=page||1;
   switchPage('stash');
-  document.getElementById('stash-content').innerHTML='<div class="loading-bar"><span class="spinner"></span>Loading stash...</div>';
+  _setLoadingState('stash-content','Loading stash...');
   document.getElementById('stash-pagination').innerHTML='';
   var _spv=document.getElementById('stash-per-page').value;var perPage=_spv===''?10:parseInt(_spv);
   apiGet('/api/stash-list?page='+page+'&per_page='+perPage,function(data){
     var container=document.getElementById('stash-content');
     if(!data.stashes||!data.stashes.length){container.innerHTML='<div class="empty">'+t('no_stash')+'</div>';return}
-    var html='';
+    container.innerHTML='';
+    var chunks=[],chunk='';
     data.stashes.forEach(function(s,idx){
       var globalIdx = (data.page-1)*data.per_page + idx;
-      html+='<div class="stash-item" style="flex-wrap:wrap;cursor:pointer" onclick="toggleStashDiff('+globalIdx+')">';
-      html+='<span class="file-toggle" id="stash-toggle-'+globalIdx+'">▶</span>';
-      html+='<span class="name">'+escapeHtml(s)+'</span>';
-      html+='<button class="btn btn-sm btn-success" onclick="event.stopPropagation();popStash('+globalIdx+')">Pop</button>';
-      html+='<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();dropStash('+globalIdx+')">Drop</button>';
-      html+='</div>';
-      html+='<div class="file-body" id="stash-body-'+globalIdx+'"><div id="stash-diff-'+globalIdx+'" style="padding:12px 16px"></div></div>';
+      var row='';
+      row+='<div class="stash-item" style="flex-wrap:wrap;cursor:pointer" onclick="toggleStashDiff('+globalIdx+')">';
+      row+='<span class="file-toggle" id="stash-toggle-'+globalIdx+'">▶</span>';
+      row+='<span class="name">'+escapeHtml(s)+'</span>';
+      row+='<button class="btn btn-sm btn-success" onclick="event.stopPropagation();popStash('+globalIdx+')">Pop</button>';
+      row+='<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();dropStash('+globalIdx+')">Drop</button>';
+      row+='</div>';
+      row+='<div class="file-body" id="stash-body-'+globalIdx+'"><div id="stash-diff-'+globalIdx+'" style="padding:12px 16px"></div></div>';
+      chunk+=row;
+      if((idx+1)%20===0){chunks.push(chunk);chunk='';}
     });
-    container.innerHTML=html;
+    if(chunk)chunks.push(chunk);
+    _chunkedAppendHTML(container,chunks,function(){
+      _rememberContainerHeightById('stash-content');
+    });
     // Pagination
     var totalPages=data.per_page>0?Math.ceil(data.total/data.per_page):1;
     _setSmartPagination('stash', totalPages, data.page, 'loadStash', data.total);
@@ -3345,6 +4475,22 @@ function showStashDialog(paths, onSuccess) {
 // ═══════════ Log page ═══════════
 var logDebounceTimer=null;
 var logSortOrder='desc'; // 'desc' = newest first, 'asc' = oldest first
+
+function toggleUnsignedFilter(){
+  logUnsignedFilter=!logUnsignedFilter;
+  var btn=document.getElementById('log-unsigned-btn');
+  if(btn){
+    if(logUnsignedFilter){
+      btn.className='btn btn-sm btn-warning';
+      btn.textContent=L==='zh'?'🔓 仅显示未签名 ✕':'🔓 Unsigned Only ✕';
+    } else {
+      btn.className='btn btn-sm btn-secondary';
+      btn.textContent='🔓 Unsigned';
+    }
+  }
+  loadLog(1);
+}
+
 var prDebounceTimer=null;
 var prState='in_review';
 var currentPRData=null;
@@ -3409,26 +4555,101 @@ function _updatePRStateTabs(){
 
 function toggleLogSort(){
   logSortOrder=logSortOrder==='desc'?'asc':'desc';
+  _invalidateLogCache();
   loadLog(1);
 }
 
 function loadLog(page){
   page=page||1;
   switchPage('log');
-  document.getElementById('log-content').innerHTML='<div class="loading-bar"><span class="spinner"></span>Loading commits...</div>';
-  document.getElementById('log-pagination').innerHTML='';
-  var search=document.getElementById('log-search').value;
-  var _lpv=document.getElementById('log-per-page').value;var perPage=_lpv===''?10:parseInt(_lpv);
-  var url='/api/commits?page='+page+'&per_page='+perPage+'&order='+logSortOrder;
-  if(search)url+='&search='+encodeURIComponent(search);
-  apiGet(url,function(data){
-    if(!search.trim() && !((document.getElementById('log-code-search')||{value:''}).value||'').trim()){
-      _inDiffSearchMode=false;
-    }
+  var search=(document.getElementById('log-search')||{}).value||'';
+  var codeSearch=((document.getElementById('log-code-search')||{}).value||'').trim();
+  var _lpv=(document.getElementById('log-per-page')||{}).value;
+  var perPage=_lpv===''?10:parseInt(_lpv);
+  var logContent=document.getElementById('log-content');
+
+  // Build network URL helper
+  function _buildUrl(pg){
+    var u='/api/commits?page='+pg+'&per_page='+perPage+'&order='+logSortOrder;
+    if(search)u+='&search='+encodeURIComponent(search);
+    if(logUnsignedFilter)u+='&unsigned_only=1';
+    return u;
+  }
+
+  function _applyData(data, fromCache){
+    if(!search.trim()&&!codeSearch){_inDiffSearchMode=false;}
     currentLogData=data;
     renderLog(data);
     renderPagination(data);
-    if(data.commits&&data.commits.length)showToast('Loaded '+data.commits.length+' commit(s)','ok',2000);
+    if(!fromCache&&data.commits&&data.commits.length){
+      showToast('Loaded '+data.commits.length+' commit(s)','ok',2000);
+    }
+  }
+
+  // Skip cache when searching or filtering
+  var useCache = !search.trim() && !codeSearch && !logUnsignedFilter;
+
+  if(!useCache){
+    _setLoadingState(logContent,'Loading commits...');
+    _clearPagSection('log');
+    apiGet(_buildUrl(page),function(data){_applyData(data,false);});
+    return;
+  }
+
+  // ── Cache path ──────────────────────────────────────────────────────────────
+  // Try to read cached page for current settings (branch known from cache or current)
+  var cachedBranch=_logCache.branch||'';
+  _tryRestoreLogCache(cachedBranch, perPage, logSortOrder);
+
+  var cachedPage=_logCache.pages[page];
+  if(cachedPage){
+    // Render immediately from cache — no spinner
+    var cachedData={
+      commits:cachedPage,
+      total:_logCache.total,
+      page:page,
+      per_page:perPage,
+      order:logSortOrder
+    };
+    _applyData(cachedData, true);
+    // Soft indicator that we're verifying freshness
+    var indicator=document.createElement('div');
+    indicator.id='log-cache-indicator';
+    indicator.style.cssText='font-size:11px;color:#888;text-align:right;padding:2px 8px;';
+    indicator.textContent='⚡ From cache — checking for updates...';
+    logContent.appendChild(indicator);
+  } else {
+    _setLoadingState(logContent,'Loading commits...');
+    _clearPagSection('log');
+  }
+
+  // Check HEAD hash — very cheap call
+  apiGet('/api/head-hash',function(hd){
+    var indicator=document.getElementById('log-cache-indicator');
+    var sameHead = hd && hd.hash && _logCache.headHash && hd.hash===_logCache.headHash;
+    var sameBranch = hd && hd.branch && hd.branch===_logCache.branch;
+
+    if(sameHead && sameBranch && cachedPage){
+      // HEAD unchanged — cache is fresh, done
+      if(indicator)indicator.remove();
+      return;
+    }
+
+    // HEAD changed or no cache — fetch from network
+    if(indicator)indicator.textContent='⟳ Updating commits...';
+    apiGet(_buildUrl(page),function(data){
+      _applyData(data,false);
+      // Update cache
+      _logCache.branch=hd?hd.branch:_logCache.branch;
+      _logCache.headHash=hd?hd.hash:null;
+      _logCache.total=data.total||0;
+      _logCache.perPage=perPage;
+      _logCache.order=logSortOrder;
+      // If branch changed, wipe old pages
+      if(!sameBranch) _logCache.pages={};
+      _logCache.pages[page]=data.commits;
+      _saveLogCache();
+    });
   });
 }
 
@@ -3436,7 +4657,7 @@ function loadPullRequests(page){
   page=page||1;
   switchPage('prs');
   _updatePRStateTabs();
-  document.getElementById('prs-content').innerHTML='<div class="loading-bar"><span class="spinner"></span>'+(L==='zh'?'正在加载拉取请求...':'Loading pull requests...')+'</div>';
+  _setLoadingState('prs-content',(L==='zh'?'正在加载拉取请求...':'Loading pull requests...'));
   document.getElementById('prs-pagination').innerHTML='';
   var search=document.getElementById('prs-search').value;
   var ppv=document.getElementById('prs-per-page').value;
@@ -3461,9 +4682,11 @@ function renderPullRequests(data){
   var container=document.getElementById('prs-content');
   var list=(data&&data.pull_requests)||[];
   if(!list.length){container.innerHTML='<div class="empty">'+t('prs_no_match')+'</div>';return}
-  var html='<table class="log-table"><thead><tr>';
-  html+='<th>PR</th><th>Author</th><th>Date</th><th>Message</th><th>Status</th><th>Actions</th><th style="width:20px"></th>';
-  html+='</tr></thead><tbody>';
+  container.innerHTML='<table class="log-table"><thead><tr>'
+    +'<th>PR</th><th>Author</th><th>Date</th><th>Message</th><th>Status</th><th>Actions</th><th style="width:20px"></th>'
+    +'</tr></thead><tbody id="prs-tbody"></tbody></table>';
+  var tbody=document.getElementById('prs-tbody');
+  var chunks=[],chunk='';
   list.forEach(function(pr,idx){
     if(pr.head_sha){
       _logCommitMap[pr.head_sha]={
@@ -3475,8 +4698,16 @@ function renderPullRequests(data){
     var date=(pr.merged_at||'')||(pr.updated_at||pr.created_at||'');
     var merged=(pr.state==='merged')||(prState==='merged');
     var closed=(pr.state==='closed')||(prState==='closed');
+    var risk=(pr&&pr.risk)||{};
+    var riskHints=[];
+    if(risk.main_entry_changed) riskHints.push(_aiCmpText('主入口改动','Main entry changed'));
+    if(risk.too_many_files) riskHints.push(_aiCmpText('改动文件 '+Number(risk.files_changed||0),'Files changed '+Number(risk.files_changed||0)));
+    var riskTitle='';
+    if(risk.main_entry_files && risk.main_entry_files.length){
+      riskTitle=' · '+risk.main_entry_files.join(', ');
+    }
     var statusCell=
-      '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;'
+      '<span class="pr-status-pill" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;'
       +(merged
         ?'background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;'
         :(closed
@@ -3486,8 +4717,15 @@ function renderPullRequests(data){
       +(merged?('✅ '+t('prs_merged')):(closed?('⚪ '+t('prs_closed')):('🟡 '+t('prs_open'))))
       +(pr.is_draft?(' · '+t('prs_draft')):'')
       +'</span>';
-    html+='<tr style="cursor:pointer" onclick="togglePRDiff('+Number(pr.number||0)+','+idx+',\''+escapeAttr(pr.head_sha||'')+'\')">';
-    html+='<td><span class="log-hash">#'+escapeHtml(String(pr.number||''))+'</span></td>';
+    if(risk.is_risky){
+      statusCell+='<div class="pr-risk-pill" title="'+escapeAttr(_aiCmpText('风险提示：','Risk: ')+(riskHints.join(' · ')||_aiCmpText('请重点关注','Needs attention'))+riskTitle)+'">⚠️ '+_aiCmpText('RISK','RISK')+'</div>';
+      if(riskHints.length){
+        statusCell+='<div class="pr-risk-note">'+escapeHtml(riskHints.join(' · '))+'</div>';
+      }
+    }
+    var row='';
+    row+='<tr class="'+(risk.is_risky?'pr-risk-row':'')+'" style="cursor:pointer" onclick="togglePRDiff('+Number(pr.number||0)+','+idx+',\''+escapeAttr(pr.head_sha||'')+'\')">';
+    row+='<td><span class="log-hash">#'+escapeHtml(String(pr.number||''))+'</span></td>';
     var authorMain=(pr.author_name||pr.author_display||pr.author_login||pr.author||'');
     var authorId=(pr.author_login||pr.author||'').trim();
     var authorSub='';
@@ -3498,20 +4736,24 @@ function renderPullRequests(data){
         authorSub='<div style="margin-top:2px;font-size:11px;color:#64748b">@'+escapeHtml(authorId)+'</div>';
       }
     }
-    html+='<td class="log-author"><div>'+escapeHtml(authorMain)+'</div>'+authorSub+'</td>';
-    html+='<td class="log-date">'+escapeHtml(date||'')+'</td>';
-    html+='<td class="log-msg"><div class="commit-msg-box"><div>'+escapeHtml(pr.title||'')+'</div><div style="margin-top:4px;font-size:11px;color:#64748b">'+escapeHtml((pr.head_ref||'')+' → '+(pr.base_ref||''))+'</div></div></td>';
-    html+='<td class="log-status">'+statusCell+'</td>';
-    html+='<td class="log-actions">'
+    row+='<td class="log-author"><div>'+escapeHtml(authorMain)+'</div>'+authorSub+'</td>';
+    row+='<td class="log-date">'+escapeHtml(date||'')+'</td>';
+    row+='<td class="log-msg">'+_renderCommitMessageCell(pr.title||'','pr-msg-'+idx,'')+'<div style="margin-top:4px;font-size:11px;color:#64748b">'+escapeHtml((pr.head_ref||'')+' → '+(pr.base_ref||''))+'</div></td>';
+    row+='<td class="log-status">'+statusCell+'</td>';
+    row+='<td class="log-actions">'
       +'<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();window.open(\''+escapeJS(pr.url||'')+'\',\'_blank\')">'+t('prs_view')+'</button>'
       +'<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();openPRAIAnalysis('+Number(pr.number||0)+',\''+escapeAttr(pr.head_sha||'')+'\')">🤖 '+_aiCmpText('AI 分析','AI Analysis')+'</button>'
       +'</td>';
-    html+='<td style="text-align:center"><span class="file-toggle" id="pr-toggle-'+idx+'">▶</span></td>';
-    html+='</tr>';
-    html+='<tr id="pr-diff-row-'+idx+'" style="display:none"><td colspan="7" style="padding:0"><div id="pr-diff-'+idx+'" style="padding:12px 16px;max-height:600px;overflow-y:auto"></div></td></tr>';
+    row+='<td style="text-align:center"><span class="file-toggle" id="pr-toggle-'+idx+'">▶</span></td>';
+    row+='</tr>';
+    row+='<tr id="pr-diff-row-'+idx+'" class="log-diff-row" style="display:none"><td colspan="7" class="log-diff-cell"><div id="pr-diff-'+idx+'" class="log-diff-panel"></div></td></tr>';
+    chunk+=row;
+    if((idx+1)%15===0){chunks.push(chunk);chunk='';}
   });
-  html+='</tbody></table>';
-  container.innerHTML=html;
+  if(chunk)chunks.push(chunk);
+  _chunkedAppendHTML(tbody,chunks,function(){
+    _rememberContainerHeightById('prs-content');
+  });
 }
 
 function renderPRPagination(data){
@@ -3535,7 +4777,7 @@ function togglePRDiff(prNumber, idx, headSha){
   diffEl.innerHTML='<div class="loading-bar"><span class="spinner"></span>'+(L==='zh'?'正在加载 PR 代码改动...':'Loading PR diff...')+'</div>';
   var key=''+prNumber;
   if(_prDiffCache[key]){
-    diffEl.innerHTML='<div class="diff-block">'+highlightPRDiffFiles(_prDiffCache[key],headSha,prNumber)+'</div>';
+    diffEl.innerHTML='<div class="diff-block diff-block--bare">'+highlightPRDiffFiles(_prDiffCache[key],headSha,prNumber)+'</div>';
     return;
   }
   apiGet('/api/pull-request-diff?number='+encodeURIComponent(prNumber),function(data){
@@ -3544,7 +4786,7 @@ function togglePRDiff(prNumber, idx, headSha){
       return;
     }
     _prDiffCache[key]=data.diff||'';
-    diffEl.innerHTML='<div class="diff-block">'+highlightPRDiffFiles(data.diff||'',headSha,prNumber)+'</div>';
+    diffEl.innerHTML='<div class="diff-block diff-block--bare">'+highlightPRDiffFiles(data.diff||'',headSha,prNumber)+'</div>';
   });
 }
 
@@ -3576,16 +4818,18 @@ function highlightPRDiffFiles(text, headSha, prNumber){
     if(headSha){
       _commitFileDiffStore[_commitDiffStoreKey(headSha, sec.file)] = fileDiffText;
     }
-    html+='<div style="border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;overflow:hidden">';
-    html+='<div style="display:flex;align-items:center;padding:8px 14px;background:#f9fafb;cursor:pointer" onclick="toggleDiffFile(\''+fileId+'\',this)">';
+    html+='<div class="diff-file-card">';
+    html+='<div class="diff-file-header" onclick="toggleDiffFile(\''+fileId+'\',this)">';
     html+='<span class="file-toggle" id="'+fileId+'-toggle">▶</span>';
-    html+='<b style="color:#2563eb;flex:1;margin-left:8px">'+escapeHtml(sec.file)+'</b>';
-    html+='<span style="font-size:11px;color:#9ca3af">'+sec.lines.length+' lines</span>';
+    html+='<b class="diff-file-title">'+escapeHtml(sec.file)+'</b>';
+    html+='<span class="diff-file-meta">'+_aiCmpText('改动行数: ','Changed lines: ')+sec.lines.length+'</span>';
     html+='</div>';
-    html+='<div id="'+fileId+'" style="display:none">'+highlightDiff(fileDiffText)+'</div>';
-    html+='<div style="padding:4px 14px;border-top:1px solid #e5e7eb;background:#fafafa">';
+    html+='<div id="'+fileId+'" class="diff-file-body" style="display:none">';
+    html+='<div class="diff-current-label">'+_aiCmpText('当前提交','Current Commit')+'</div>';
+    html+='<div class="diff-block diff-block--bare">'+highlightDiff(fileDiffText)+'</div>';
+    html+='<div class="diff-file-actions">';
     html+='<button class="btn btn-sm btn-primary" title="'+escapeAttr(_aiCmpText('分析此文件改动','Analyze this file changes'))+'" onclick="event.stopPropagation();openPRAICompareFile(\''+escapeAttr(sec.file)+'\',\''+escapeAttr(headSha||'')+'\',\''+escapeAttr(prNumber)+'\')">🤖 AI Compare</button>';
-    html+='</div></div>';
+    html+='</div></div></div>';
   });
   return html;
 }
@@ -3625,16 +4869,23 @@ function openPRAIAnalysis(prNumber, headSha){
 
 function renderLog(data){
   var container=document.getElementById('log-content');
-  if(!data.commits||!data.commits.length){container.innerHTML='<div class="empty">'+t('no_match')+'</div>';return}
+  if(!data.commits||!data.commits.length){
+    container.innerHTML='<div class="empty">'+t('no_match')+'</div>';
+    renderSquashResultSection();
+    return;
+  }
   _logCommitMap={};
   var sortIcon=logSortOrder==='desc'?' ↓':' ↑';
   var sortTip=logSortOrder==='desc'?'Newest first — click for oldest first':'Oldest first — click for newest first';
-  var html='<table class="log-table"><thead><tr>';
-  html+='<th style="width:20px"></th>';
-  html+='<th>Hash</th><th>Author</th>';
-  html+='<th style="cursor:pointer;user-select:none;white-space:nowrap" onclick="toggleLogSort()" title="'+sortTip+'">Date'+sortIcon+'</th>';
-  html+='<th>Message</th><th>Status</th><th>Actions</th><th style="width:20px"></th>';
-  html+='</tr></thead><tbody>';
+  var tableHtml='<table class="log-table"><thead><tr>'
+    +'<th style="width:20px"></th>'
+    +'<th>Hash</th><th>Author</th>'
+    +'<th style="cursor:pointer;user-select:none;white-space:nowrap" onclick="toggleLogSort()" title="'+sortTip+'">Date'+sortIcon+'</th>'
+    +'<th>Message</th><th>Status</th><th>Actions</th><th style="width:20px"></th>'
+    +'</tr></thead><tbody id="log-tbody"></tbody></table>';
+  container.innerHTML=tableHtml;
+  var tbody=document.getElementById('log-tbody');
+  var chunks=[],chunk='';
   data.commits.forEach(function(c,idx){
     _logCommitMap[c.hash]=c;
     var checked=squashSelected[c.hash]?' checked':'';
@@ -3665,28 +4916,45 @@ function renderLog(data){
         +'color:#fff;border:none;border-radius:12px;font-weight:600;cursor:pointer;'
         +'box-shadow:0 1px 4px rgba(79,70,229,.35);margin-left:2px">⬆ Push</button>';
     }
+    // ── GPG signature badge ────────────────────────────────────────────────
+    var gpg=c.gpg_status||'';
+    var gpgBadge='';
+    if(gpg==='G'||gpg==='U'||gpg==='X'||gpg==='Y'||gpg==='R'){
+      gpgBadge='<span title="GPG signed and verified" style="display:inline-flex;align-items:center;font-size:11px;font-weight:600;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;border-radius:20px;padding:2px 8px;margin-left:4px;white-space:nowrap;cursor:default">🔐 Signed</span>';
+    } else if(gpg==='E'){
+      gpgBadge='<span title="GPG signed — public key not in local keyring, cannot verify locally" style="display:inline-flex;align-items:center;font-size:11px;font-weight:600;background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd;border-radius:20px;padding:2px 8px;margin-left:4px;white-space:nowrap;cursor:default">🔏 Signed*</span>';
+    } else if(gpg==='N'||gpg==='B'){
+      gpgBadge='<span title="No GPG signature" style="display:inline-flex;align-items:center;font-size:11px;font-weight:600;background:#fef9c3;color:#92400e;border:1px solid #fcd34d;border-radius:20px;padding:2px 8px;margin-left:4px;white-space:nowrap;cursor:default">🔓 Unsigned</span>';
+    }
+    if(gpgBadge) statusCell+=' '+gpgBadge;
     if(releaseInfo){
       statusCell+='<div class="log-release-info">'+releaseInfo+'</div>';
     }
 
-    html+='<tr style="cursor:pointer" onclick="toggleCommitDiff(\''+c.hash+'\','+idx+')"><td><input type="checkbox" class="squash-cb" data-hash="'+c.hash+'"'+checked+cbDisabled+' onclick="event.stopPropagation();toggleSquashSelect(this)"></td>';
-    html+='<td>'+_renderLogHashCell(c)+'</td>';
-    html+='<td class="log-author">'+escapeHtml(c.author)+'</td>';
-    html+='<td class="log-date">'+c.date+'</td>';
-    html+='<td class="log-msg">'+_renderCommitMessageCell(c.message,'log-msg-'+idx,rootBadge)+'</td>';
-    html+='<td class="log-status" onclick="event.stopPropagation()">'+statusCell+'</td>';
-    html+='<td class="log-actions">';
-    html+='<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();showResetModal(\''+c.hash+'\',\''+c.short_hash+'\')">Reset</button>';
-    html+='<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();showRevertModal(\''+c.hash+'\',\''+c.short_hash+'\')">Revert</button>';
-    html+='<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();openCommitAIAnalysis(\''+escapeAttr(c.hash)+'\')" title="'+escapeAttr(_aiCmpText('分析这个 commit 的全部代码改动','Analyze all code changes in this commit'))+'">🤖 '+_aiCmpText('AI 分析','AI Analysis')+'</button>';
-    html+='</td>';
-    html+='<td style="text-align:center"><span class="file-toggle" id="log-toggle-'+idx+'">▶</span></td>';
-    html+='</tr>';
-    html+='<tr id="commit-diff-row-'+idx+'" style="display:none"><td colspan="8" style="padding:0"><div id="commit-diff-'+idx+'" style="padding:12px 16px;max-height:600px;overflow-y:auto"></div></td></tr>';
+    var row='';
+    row+='<tr style="cursor:pointer" onclick="toggleCommitDiff(\''+c.hash+'\','+idx+')"><td><input type="checkbox" class="squash-cb" data-hash="'+c.hash+'"'+checked+cbDisabled+' onclick="event.stopPropagation();toggleSquashSelect(this)"></td>';
+    row+='<td>'+_renderLogHashCell(c)+'</td>';
+    row+='<td class="log-author">'+escapeHtml(c.author)+'</td>';
+    row+='<td class="log-date">'+c.date+'</td>';
+    row+='<td class="log-msg">'+_renderCommitMessageCell(c.message,'log-msg-'+idx,rootBadge)+'</td>';
+    row+='<td class="log-status" onclick="event.stopPropagation()">'+statusCell+'</td>';
+    row+='<td class="log-actions">';
+    row+='<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();showResetModal(\''+c.hash+'\',\''+c.short_hash+'\')">Reset</button>';
+    row+='<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();showRevertModal(\''+c.hash+'\',\''+c.short_hash+'\')">Revert</button>';
+    row+='<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();openCommitAIAnalysis(\''+escapeAttr(c.hash)+'\')" title="'+escapeAttr(_aiCmpText('分析这个 commit 的全部代码改动','Analyze all code changes in this commit'))+'">🤖 '+_aiCmpText('AI 分析','AI Analysis')+'</button>';
+    row+='</td>';
+    row+='<td style="text-align:center"><span class="file-toggle" id="log-toggle-'+idx+'">▶</span></td>';
+    row+='</tr>';
+    row+='<tr id="commit-diff-row-'+idx+'" class="log-diff-row" style="display:none"><td colspan="8" class="log-diff-cell"><div id="commit-diff-'+idx+'" class="log-diff-panel"></div></td></tr>';
+    chunk+=row;
+    if((idx+1)%15===0){chunks.push(chunk);chunk='';}
   });
-  html+='</tbody></table>';
-  container.innerHTML=html;
-  updateSquashBar();
+  if(chunk)chunks.push(chunk);
+  _chunkedAppendHTML(tbody,chunks,function(){
+    updateSquashBar();
+    renderSquashResultSection();
+    _rememberContainerHeightById('log-content');
+  });
 }
 
 function _renderCommitMessageCell(message,id,badgeHtml){
@@ -3774,7 +5042,7 @@ function toggleCommitDiff(hash,idx){
   if(diffEl.innerHTML)return;
   diffEl.innerHTML='<div class="loading-bar"><span class="spinner"></span>Loading diff...</div>';
   apiGet('/api/commit-diff?commit='+hash,function(data){
-    diffEl.innerHTML='<div class="diff-block">'+highlightDiffFiles(data.diff, hash)+'</div>';
+    diffEl.innerHTML='<div class="diff-block diff-block--bare">'+highlightDiffFiles(data.diff, hash)+'</div>';
   });
 }
 
@@ -3805,42 +5073,39 @@ function highlightDiffFiles(text, commitHash){
       +'<div style="font-size:12px;color:#475569;margin-bottom:6px">No per-file patch blocks in this commit view. Loading changed-file list…</div>'
       +'<div id="'+fallbackId+'" style="font-size:12px;color:#64748b">Loading files…</div>'
       +'</div>';
-    for(var j=0;j<lines.length;j++)
-      h+=diffLine(lines[j]);
+    h+=highlightDiff(text);
     setTimeout(function(){ _loadCommitAIEntryFiles(commitHash,fallbackId); },0);
     return h;
   }
   
-  var html='';
+  var toolbarId='rmfc-toolbar-'+commitHash.substr(0,7);
+  var isZhL=(L==='zh');
+  var html='<div id="'+toolbarId+'" class="rmfc-toolbar" style="display:none;margin-bottom:8px;padding:6px 10px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;align-items:center;gap:8px">'
+    +'<span style="font-size:13px;color:#92400e">'+(isZhL?'已选 ':'Selected ')+'<b id="'+toolbarId+'-count">0</b>'+(isZhL?' 个文件':' file(s)')+'</span>'
+    +'<button class="btn btn-sm btn-danger" onclick="doRemoveFilesFromCommit(\''+escapeAttr(commitHash)+'\')">'
+    +(isZhL?'✂️ 从此 Commit 移除并还原到工作区':'✂️ Remove from commit &amp; restore to working tree')
+    +'</button></div>';
   sections.forEach(function(sec, si){
     var fileId='diff-file-'+si+'-'+commitHash.substr(0,7);
+    var cbId='rmfc-cb-'+si+'-'+commitHash.substr(0,7);
     var fileDiffText=(sec.lines||[]).join('\n');
     _commitFileDiffStore[_commitDiffStoreKey(commitHash, sec.file)] = fileDiffText;
-    html+='<div style="border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;overflow:hidden">';
-    html+='<div style="display:flex;align-items:center;padding:8px 14px;background:#f9fafb;cursor:pointer" onclick="toggleDiffFile(\''+fileId+'\',this)">';
+    html+='<div class="diff-file-card">';
+    html+='<div class="diff-file-header" onclick="toggleDiffFile(\''+fileId+'\',this)" style="display:flex;align-items:center;gap:6px">';
+    html+='<input type="checkbox" id="'+cbId+'" class="rmfc-cb" data-commit="'+escapeAttr(commitHash)+'" data-file="'+escapeAttr(sec.file)+'" onclick="event.stopPropagation();_updateRmfcToolbar(\''+escapeAttr(commitHash)+'\')" style="cursor:pointer;width:14px;height:14px;flex-shrink:0;margin:0">';
     html+='<span class="file-toggle" id="'+fileId+'-toggle">▶</span>';
-    html+='<b style="color:#2563eb;flex:1;margin-left:8px">'+escapeHtml(sec.file)+'</b>';
-    html+='<span style="font-size:11px;color:#9ca3af">'+sec.lines.length+' lines</span>';
+    html+='<b class="diff-file-title">'+escapeHtml(sec.file)+'</b>';
+    html+='<span class="diff-file-meta">'+_aiCmpText('改动行数: ','Changed lines: ')+sec.lines.length+'</span>';
     html+='</div>';
-    html+='<div id="'+fileId+'" style="display:none">';
-    for(var k=0;k<sec.lines.length;k++)
-      html+=diffLine(sec.lines[k]);
-    html+='</div>';
-    html+='<div style="padding:4px 14px;border-top:1px solid #e5e7eb;background:#fafafa">';
+    html+='<div id="'+fileId+'" class="diff-file-body" style="display:none">';
+    html+='<div class="diff-current-label">'+_aiCmpText('当前提交','Current Commit')+'</div>';
+    html+='<div class="diff-block diff-block--bare">'+highlightDiff(fileDiffText)+'</div>';
+    html+='<div class="diff-file-actions">';
     html+='<button class="btn btn-sm btn-secondary restore-file-btn" title="Restore this file to a specific commit — choose from commit history" data-file="'+escapeAttr(sec.file)+'" onclick="event.stopPropagation();openRestorePage(this.getAttribute(\'data-file\'))">📂 Restore to commit...</button>';
     html+=' <button class="btn btn-sm btn-primary" title="Open AI compare panel for this file" onclick="event.stopPropagation();openCommitAICompare(\''+escapeAttr(sec.file)+'\',\''+escapeAttr(commitHash)+'\')">🤖 AI Compare</button>';
-    html+='</div></div>';
+    html+='</div></div></div>';
   });
   return html;
-  
-  function diffLine(line){
-    var s='<div style="font-family:monospace;font-size:12px;line-height:1.6;white-space:pre-wrap;padding:1px 8px;';
-    if(line.charAt(0)==='+')s+='background:#e6ffed;color:#059664';
-    else if(line.charAt(0)==='-')s+='background:#ffeef0;color:#dc2626';
-    else if(/^(@@|diff|index|commit|Author:|Date:)/.test(line))s+='color:#6b7280';
-    s+='">'+escapeHtml(line)+'</div>';
-    return s;
-  }
 }
 
 function _loadCommitAIEntryFiles(commitHash,targetId){
@@ -3865,6 +5130,73 @@ function _loadCommitAIEntryFiles(commitHash,targetId){
 
 function _commitDiffStoreKey(commitHash, filePath){
   return (commitHash||'')+'::'+(filePath||'');
+}
+
+function _updateRmfcToolbar(commitHash){
+  var shortHash=commitHash.substr(0,7);
+  var toolbarId='rmfc-toolbar-'+shortHash;
+  var toolbar=document.getElementById(toolbarId);
+  if(!toolbar)return;
+  var cbs=document.querySelectorAll('.rmfc-cb[data-commit="'+commitHash+'"]:checked');
+  var count=cbs.length;
+  var countEl=document.getElementById(toolbarId+'-count');
+  if(countEl)countEl.textContent=count;
+  toolbar.style.display=count>0?'flex':'none';
+}
+
+function doRemoveFilesFromCommit(commitHash){
+  var cbs=document.querySelectorAll('.rmfc-cb[data-commit="'+commitHash+'"]:checked');
+  if(!cbs.length)return;
+  var files=[];
+  for(var i=0;i<cbs.length;i++)files.push(cbs[i].getAttribute('data-file'));
+  var isZh=(L==='zh');
+  var fileList=files.map(function(f){return'<li style="word-break:break-all">'+escapeHtml(f)+'</li>';}).join('');
+  // First confirmation dialog
+  showConfirmDialog({
+    title:'✂️ '+(isZh?'从 Commit 移除文件':'Remove Files from Commit'),
+    message:(isZh
+      ?'将以下 <b>'+files.length+'</b> 个文件从 commit <code>'+escapeHtml(commitHash.substr(0,7))+'</code> 中移除，文件改动将还原到工作区：'
+      :'Remove <b>'+files.length+'</b> file(s) from commit <code>'+escapeHtml(commitHash.substr(0,7))+'</code>. Their changes will be restored to the working tree:')
+      +'<ul style="margin:8px 0 0 16px;text-align:left;font-size:12px;color:#374151">'+fileList+'</ul>',
+    confirmText:isZh?'继续':'Continue',
+    confirmClass:'btn-warning',
+    onConfirm:function(){
+      // Second (final) confirmation dialog
+      showConfirmDialog({
+        title:'⚠️ '+(isZh?'确认重写 Git 历史？':'Confirm Git History Rewrite?'),
+        message:(isZh
+          ?'这将<b>修改 Git 历史</b>（amend commit）。<br><br>如果该 commit 已推送到远端，之后需要 <b>Force Push</b>。<br><br>确定要继续吗？'
+          :'This will <b>rewrite Git history</b> (amend the commit).<br><br>If this commit was already pushed to remote, you will need to <b>Force Push</b> afterwards.<br><br>Are you absolutely sure?'),
+        confirmText:isZh?'确认执行':'Yes, Remove',
+        confirmClass:'btn-danger',
+        onConfirm:function(){
+          _execRemoveFilesFromCommit(commitHash,files);
+        }
+      });
+    }
+  });
+}
+
+function _execRemoveFilesFromCommit(commitHash,files){
+  var isZh=(L==='zh');
+  addMsg(isZh?'⏳ 正在从 commit 移除文件…':'⏳ Removing files from commit…','info');
+  apiPost('/api/remove-files-from-commit',{commit:commitHash,files:files},function(data){
+    if(data.ok){
+      addMsg(isZh?'✅ 已成功移除 '+files.length+' 个文件，改动已还原到工作区':'✅ Removed '+files.length+' file(s) from commit. Changes restored to working tree.','success');
+      // Reload the diff block in-place if still visible, then refresh log
+      var toolbar=document.getElementById('rmfc-toolbar-'+commitHash.substr(0,7));
+      var diffBlock=toolbar&&toolbar.closest?toolbar.closest('.diff-block--bare'):null;
+      if(diffBlock){
+        diffBlock.innerHTML='<div class="loading-bar"><span class="spinner"></span>'+(isZh?'重新加载 diff…':'Reloading diff…')+'</div>';
+        apiGet('/api/commit-diff?commit='+encodeURIComponent(commitHash),function(d){
+          diffBlock.innerHTML=highlightDiffFiles(d.diff,commitHash);
+        });
+      }
+      loadLog();
+    }else{
+      addMsg((isZh?'❌ 移除失败: ':'❌ Remove failed: ')+(data.error||''),'error');
+    }
+  });
 }
 
 function _parseDiffSectionsForAI(diffText){
@@ -3906,13 +5238,13 @@ function _renderAIDiffSections(diffText, idPrefix, forcedTitle){
     var sec=sections[i];
     var bodyId=idPrefix+'-sec-'+i;
     var count=(sec.lines||[]).length;
-    html+='<div style="border:1px solid #e5e7eb;border-radius:8px;background:#fff;overflow:hidden;margin-bottom:8px">';
-    html+='<div style="display:flex;align-items:center;padding:8px 10px;background:#f8fafc;cursor:pointer" onclick="toggleDiffFile(\''+bodyId+'\',this)">';
+    html+='<div style="border:1px solid #dbe3f1;border-radius:8px;background:#fbfdff;overflow:hidden;margin-bottom:8px">';
+    html+='<div style="display:flex;align-items:center;padding:8px 10px;background:#f3f7ff;cursor:pointer" onclick="toggleDiffFile(\''+bodyId+'\',this)">';
     html+='<span class="file-toggle" id="'+bodyId+'-toggle">▶</span>';
     html+='<b style="margin-left:8px;color:#1d4ed8;flex:1;font-size:12px">'+escapeHtml(sec.title||_aiCmpText('未命名文件','Unnamed file'))+'</b>';
     html+='<span style="font-size:11px;color:#94a3b8">'+count+' '+_aiCmpText('行','lines')+'</span>';
     html+='</div>';
-    html+='<div id="'+bodyId+'" style="display:none">'+highlightDiff((sec.lines||[]).join('\n'))+'</div>';
+    html+='<div id="'+bodyId+'" style="display:none"><div class="diff-block">'+highlightDiff((sec.lines||[]).join('\n'))+'</div></div>';
     html+='</div>';
   }
   return html;
@@ -3970,19 +5302,19 @@ function _renderAIDiffComparisonSections(st){
     var curText=currMap[title]||'';
     var oldText=histMap[title]||'';
     var bodyId='commit-ai-cmp-sec-'+k;
-    html+='<div style="border:1px solid #e5e7eb;border-radius:8px;background:#fff;overflow:hidden;margin-bottom:8px">';
-    html+='<div style="display:flex;align-items:center;padding:8px 10px;background:#f8fafc;cursor:pointer" onclick="toggleDiffFile(\''+bodyId+'\',this)">';
+    html+='<div style="border:1px solid #dbe3f1;border-radius:8px;background:#fbfdff;overflow:hidden;margin-bottom:8px;box-shadow:none">';
+    html+='<div style="display:flex;align-items:center;padding:8px 10px;background:#f3f7ff;cursor:pointer" onclick="toggleDiffFile(\''+bodyId+'\',this)">';
     html+='<span class="file-toggle" id="'+bodyId+'-toggle">▶</span>';
-    html+='<b style="margin-left:8px;color:#1d4ed8;flex:1;font-size:12px">'+escapeHtml(title)+'</b>';
-    html+='<span style="font-size:10px;color:#64748b;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:1px 6px;margin-right:4px">C '+(curText?curText.split('\n').length:0)+'</span>';
-    html+='<span style="font-size:10px;color:#64748b;background:#ecfeff;border:1px solid #a5f3fc;border-radius:10px;padding:1px 6px">H '+(oldText?oldText.split('\n').length:0)+'</span>';
+    html+='<b style="margin-left:8px;color:#1d4ed8;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">'+escapeHtml(title)+'</b>';
+    html+='<span style="flex-shrink:0;font-size:10px;color:#64748b;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:1px 6px;margin-right:4px">'+_aiCmpText('当前 ','Current ')+(curText?curText.split('\n').length:0)+'</span>';
+    html+='<span style="flex-shrink:0;font-size:10px;color:#64748b;background:#ecfeff;border:1px solid #a5f3fc;border-radius:10px;padding:1px 6px">'+_aiCmpText('历史 ','History ')+(oldText?oldText.split('\n').length:0)+'</span>';
     html+='</div>';
-    html+='<div id="'+bodyId+'" style="display:none;padding:8px 10px;background:#fff">';
+    html+='<div id="'+bodyId+'" style="display:none;padding:8px 10px;background:#fbfdff;overflow:auto">';
     html+='<div style="font-size:11px;color:#0f766e;margin-bottom:6px;font-weight:700">'+_aiCmpText('当前提交','Current Commit')+'</div>';
-    html+=(curText?highlightDiff(curText):('<div style="padding:8px;color:#94a3b8;font-size:12px">'+_aiCmpText('当前提交该 section 无改动','No changes in this section for current commit')+'</div>'));
+    html+=(curText?('<div class="diff-block">'+highlightDiff(curText)+'</div>'):('<div style="padding:8px;color:#94a3b8;font-size:12px">'+_aiCmpText('当前提交该 section 无改动','No changes in this section for current commit')+'</div>'));
     html+='<div style="height:8px"></div>';
     html+='<div style="font-size:11px;color:#0369a1;margin-bottom:6px;font-weight:700">'+_aiCmpText('历史提交','Historical Commit')+'</div>';
-    html+=(oldText?highlightDiff(oldText):('<div style="padding:8px;color:#94a3b8;font-size:12px">'+_aiCmpText('历史提交该 section 无改动','No changes in this section for historical commit')+'</div>'));
+    html+=(oldText?('<div class="diff-block">'+highlightDiff(oldText)+'</div>'):('<div style="padding:8px;color:#94a3b8;font-size:12px">'+_aiCmpText('历史提交该 section 无改动','No changes in this section for historical commit')+'</div>'));
     html+='</div></div>';
   }
   return html;
@@ -4118,7 +5450,7 @@ function _openCommitAIComparePanel(opts){
           +(cInfo.date?('<div style="margin-top:4px">'+_aiCmpText('日期: ','Date: ')+escapeHtml(cInfo.date)+'</div>'):'')
           +'<div id="commit-ai-compare-target" style="margin-top:4px">'+_aiCmpText('对比历史: 未选择','Comparing with: not selected')+'</div>'
         +'</div>'
-        +'<div id="commit-ai-current-diff" style="flex:1;overflow-y:auto;padding:10px;background:#fafafa">'
+        +'<div id="commit-ai-current-diff" style="flex:1;overflow:auto;padding:10px;background:#fafafa">'
           +'<div id="commit-ai-compare-sections"></div>'
         +'</div>'
         +'<div style="padding:8px 12px;border-top:1px solid #f1f5f9;background:#f8fafc">'
@@ -4609,7 +5941,7 @@ function openRestorePage(file){
 
 function loadRestoreCommits(page){
   page=page||1;
-  document.getElementById('restore-commits-content').innerHTML='<div class="loading-bar"><span class="spinner"></span>Loading commit history for this file...</div>';
+  _setLoadingState('restore-commits-content','Loading commit history for this file...');
   document.getElementById('restore-pagination').innerHTML='';
   var perPage=20;
   apiGet('/api/file-commits?file='+encodeURIComponent(_restoreFile)+'&page='+page+'&per_page='+perPage,function(data){
@@ -4618,25 +5950,32 @@ function loadRestoreCommits(page){
       container.innerHTML='<div class="empty">No commit history found for this file.</div>';
       return;
     }
-    var html='<table class="log-table"><thead><tr>';
-    html+='<th style="width:20px"></th>';
-    html+='<th>Hash</th><th>Author</th><th>Date</th><th>Message</th><th>Action</th>';
-    html+='</tr></thead><tbody>';
+    container.innerHTML='<table class="log-table"><thead><tr>'
+      +'<th style="width:20px"></th>'
+      +'<th>Hash</th><th>Author</th><th>Date</th><th>Message</th><th>Action</th>'
+      +'</tr></thead><tbody id="restore-tbody"></tbody></table>';
+    var tbody=document.getElementById('restore-tbody');
+    var chunks=[],chunk='';
     data.commits.forEach(function(c,idx){
-      html+='<tr style="cursor:pointer" onclick="toggleRestoreDiff(\''+escapeAttr(c.hash)+'\','+idx+')">';
-      html+='<td style="text-align:center"><span class="file-toggle" id="restore-toggle-'+idx+'">▶</span></td>';
-      html+='<td><span class="log-hash">'+escapeHtml(c.short_hash)+'</span></td>';
-      html+='<td class="log-author">'+escapeHtml(c.author)+'</td>';
-      html+='<td class="log-date">'+escapeHtml(c.date)+'</td>';
-      html+='<td class="log-msg">'+_renderCommitMessageCell(c.message,'restore-msg-'+idx,'')+'</td>';
-      html+='<td><button class="btn btn-sm btn-warning" onclick="event.stopPropagation();doRestoreFile(\''+escapeAttr(_restoreFile)+'\',\''+escapeAttr(c.hash)+'\',\''+escapeAttr(c.short_hash)+'\')">Restore to this</button></td>';
-      html+='</tr>';
-      html+='<tr id="restore-diff-row-'+idx+'" style="display:none"><td colspan="6" style="padding:0">';
-      html+='<div id="restore-diff-'+idx+'" style="padding:12px 16px;max-height:600px;overflow-y:auto;background:#fafafa;border-top:1px solid #e5e7eb"></div>';
-      html+='</td></tr>';
+      var row='';
+      row+='<tr style="cursor:pointer" onclick="toggleRestoreDiff(\''+escapeAttr(c.hash)+'\','+idx+')">';
+      row+='<td style="text-align:center"><span class="file-toggle" id="restore-toggle-'+idx+'">▶</span></td>';
+      row+='<td><span class="log-hash">'+escapeHtml(c.short_hash)+'</span></td>';
+      row+='<td class="log-author">'+escapeHtml(c.author)+'</td>';
+      row+='<td class="log-date">'+escapeHtml(c.date)+'</td>';
+      row+='<td class="log-msg">'+_renderCommitMessageCell(c.message,'restore-msg-'+idx,'')+'</td>';
+      row+='<td><button class="btn btn-sm btn-warning" onclick="event.stopPropagation();doRestoreFile(\''+escapeAttr(_restoreFile)+'\',\''+escapeAttr(c.hash)+'\',\''+escapeAttr(c.short_hash)+'\')">Restore to this</button></td>';
+      row+='</tr>';
+      row+='<tr id="restore-diff-row-'+idx+'" style="display:none"><td colspan="6" style="padding:0">';
+      row+='<div id="restore-diff-'+idx+'" style="padding:12px 16px;max-height:600px;overflow-y:auto;background:#fafafa;border-top:1px solid #e5e7eb"></div>';
+      row+='</td></tr>';
+      chunk+=row;
+      if((idx+1)%15===0){chunks.push(chunk);chunk='';}
     });
-    html+='</tbody></table>';
-    container.innerHTML=html;
+    if(chunk)chunks.push(chunk);
+    _chunkedAppendHTML(tbody,chunks,function(){
+      _rememberContainerHeightById('restore-commits-content');
+    });
     var totalPages=data.per_page>0?Math.ceil(data.total/data.per_page):1;
     _setSmartPagination('restore', totalPages, data.page, 'loadRestoreCommits', data.total);
   });
@@ -4695,7 +6034,7 @@ function onBranchSearchInput(){
     if(_allBranchesCache){
       _renderBranchesByTab(_allBranchesCache,1,perPage);
     }else{
-      document.getElementById('branches-content').innerHTML='<div class="loading-bar"><span class="spinner"></span>Searching...</div>';
+      _setLoadingState('branches-content','Searching...');
       apiGet('/api/branches?page=1&per_page=0',function(data){
         _allBranchesCache=data;
         _updateBranchTabCounts(data);
@@ -4775,18 +6114,23 @@ function filterCommitDiffs(){
   }
   _diffSearchTimer=setTimeout(function(){
     _inDiffSearchMode=true;
-    document.getElementById('log-content').innerHTML='<div class="loading-bar"><span class="spinner"></span>Searching diffs for "'+escapeHtml(search)+'"...</div>';
-    document.getElementById('log-pagination').innerHTML='';
+    _setLoadingState('log-content','Searching diffs for "'+search+'"...');
+    _clearPagSection('log');
     apiGet('/api/search-diff?pattern='+encodeURIComponent(search),function(data){
       if(data.error){addMsg('Diff search error: '+escapeHtml(data.error),'error');return;}
       var fakeData={commits:data.commits,total:data.total,page:1,per_page:data.total||1};
       renderLog(fakeData);
       var pag=document.getElementById('log-pagination');
+      var pagTop=document.getElementById('log-pagination-top');
       if(data.total===0){
-        pag.innerHTML='<span class="page-info">No results for "'+escapeHtml(search)+'"</span>';
+        var msg='<span class="page-info">No results for "'+escapeHtml(search)+'"</span>';
+        if(pag)pag.innerHTML=msg;
+        if(pagTop)pagTop.innerHTML=msg;
         showToast('No diff matches found','err',2500);
       }else{
-        pag.innerHTML='<span class="page-info">Diff search: <b>'+data.total+'</b> commit(s) matched "'+escapeHtml(search)+'"</span>';
+        var info='<span class="page-info">Diff search: <b>'+data.total+'</b> commit(s) matched "'+escapeHtml(search)+'"</span>';
+        if(pag)pag.innerHTML=info;
+        if(pagTop)pagTop.innerHTML=info;
         showToast('Found '+data.total+' commit(s) matching diff','ok',2500);
       }
     });
@@ -4794,8 +6138,134 @@ function filterCommitDiffs(){
 }
 
 function updateSquashBar(){
-  var bar=document.getElementById('squash-bar');
-  bar.style.display=Object.keys(squashSelected).length>=2?'flex':'none';
+  var panel=document.getElementById('squash-panel');
+  var keys=Object.keys(squashSelected);
+  if(!keys.length){panel.style.display='none';return;}
+  panel.style.display='block';
+
+  // Count label
+  var countEl=document.getElementById('squash-panel-count');
+  if(countEl) countEl.textContent=keys.length+(L==='zh'?' 个已选':' selected');
+
+  // Build ordered list of selected commits (by log order if available)
+  var orderedHashes=[];
+  if(currentLogData&&currentLogData.commits){
+    currentLogData.commits.forEach(function(c){if(squashSelected[c.hash])orderedHashes.push(c.hash);});
+  }
+  // Append any selected commits not in current page
+  keys.forEach(function(h){if(orderedHashes.indexOf(h)<0)orderedHashes.push(h);});
+
+  // Detect non-adjacent: find gaps in the log order
+  var logHashes=(currentLogData&&currentLogData.commits)?currentLogData.commits.map(function(c){return c.hash;}):[];
+  var selPositions=logHashes.map(function(h,i){return squashSelected[h]?i:-1;}).filter(function(i){return i>=0;});
+  var nonAdj=false;
+  for(var i=1;i<selPositions.length;i++){
+    if(selPositions[i]-selPositions[i-1]>1){nonAdj=true;break;}
+  }
+  var noteEl=document.getElementById('squash-panel-nonadj-note');
+  if(noteEl) noteEl.style.display=nonAdj?'block':'none';
+
+  // Squash button state
+  var doBtn=document.getElementById('squash-do-btn');
+  if(doBtn){
+    if(keys.length<2){
+      doBtn.disabled=true;
+      doBtn.title=L==='zh'?'至少选 2 个 commit':'Select at least 2 commits';
+      doBtn.style.opacity='0.45';
+    } else {
+      doBtn.disabled=false;
+      doBtn.title='';
+      doBtn.style.opacity='';
+    }
+  }
+
+  // Render commit rows
+  var listEl=document.getElementById('squash-panel-list');
+  if(!listEl) return;
+  var html='';
+  orderedHashes.forEach(function(hash){
+    var c=squashCommitCache[hash]||_logCommitMap[hash]||{hash:hash,short_hash:hash.substr(0,7),author:'',message:'',gpg_status:''};
+    var gpg=c.gpg_status||'';
+    var gpgBadge='';
+    if(gpg==='G'||gpg==='U'||gpg==='X'||gpg==='Y'||gpg==='R'){
+      gpgBadge='<span class="sp-gpg" title="Signed & verified" style="font-size:10px;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;border-radius:12px;padding:1px 6px">🔐</span>';
+    } else if(gpg==='E'){
+      gpgBadge='<span class="sp-gpg" title="Signed — key not in local keyring" style="font-size:10px;background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd;border-radius:12px;padding:1px 6px">🔏</span>';
+    } else if(gpg==='N'||gpg==='B'){
+      gpgBadge='<span class="sp-gpg" title="No GPG signature" style="font-size:10px;background:#fef9c3;color:#92400e;border:1px solid #fcd34d;border-radius:12px;padding:1px 6px">🔓</span>';
+    }
+    html+='<div class="squash-panel-item">'
+      +'<button class="sp-remove" onclick="removeFromSquash(\''+escapeAttr(hash)+'\')" title="Remove from squash">✕</button>'
+      +'<span class="sp-hash">'+escapeHtml(c.short_hash||hash.substr(0,7))+'</span>'
+      +gpgBadge
+      +'<span class="sp-author">'+escapeHtml(c.author||'')+'</span>'
+      +'<span class="sp-msg" title="'+escapeAttr(c.message||'')+'">'+escapeHtml(c.message||'')+'</span>'
+      +'</div>';
+  });
+  if(!html) html='<div style="padding:10px 14px;color:#94a3b8;font-size:12px">'+(L==='zh'?'无选中 commit':'No commits selected')+'</div>';
+  listEl.innerHTML=html;
+}
+
+function renderSquashResultSection(){
+  var panel=document.getElementById('squash-result-panel');
+  if(!panel) return;
+  if(!lastSquashResult || !lastSquashResult.hash){
+    panel.style.display='none';
+    panel.innerHTML='';
+    return;
+  }
+  var hash=lastSquashResult.hash||'';
+  var shortHash=hash?hash.substring(0,12):'—';
+  var msg=lastSquashResult.message||'';
+  var n=lastSquashResult.selectedCount||0;
+  var html='<div class="squash-result">'
+    +'<div class="squash-result-head">✂️ '+t('squash_result_title')
+    +'<span class="squash-result-badge">'+t('squash_result_ready')+'</span></div>'
+    +'<div class="squash-result-grid">'
+    +'<div class="squash-result-key">'+t('squash_result_hash')+'</div>'
+    +'<div class="squash-result-hash" title="'+escapeAttr(hash)+'">'+escapeHtml(shortHash)+'</div>'
+    +'<div class="squash-result-key">'+t('squash_result_msg')+'</div>'
+    +'<div>'+escapeHtml(msg||('- '+n+' commit(s) squashed -'))+'</div>'
+    +'</div>'
+    +'<div class="squash-result-actions">'
+    +'<button class="btn btn-sm btn-secondary" onclick="focusSquashCommitInLog()">'+t('squash_result_focus_btn')+'</button>'
+    +'<button class="btn btn-sm btn-danger" onclick="doForcePush()">'+t('squash_result_push_btn')+'</button>'
+    +'<button class="btn btn-sm btn-secondary" onclick="clearSquashResultSection()">'+t('squash_result_clear_btn')+'</button>'
+    +'</div></div>';
+  panel.innerHTML=html;
+  panel.style.display='block';
+}
+
+function setSquashResult(hash, message, selectedCount, selectedHashes){
+  if(!hash){
+    clearSquashResultSection();
+    return;
+  }
+  lastSquashResult={
+    hash:(hash||''),
+    message:(message||''),
+    selectedCount:(selectedCount||0),
+    selectedHashes:(Array.isArray(selectedHashes)?selectedHashes.slice():[])
+  };
+  renderSquashResultSection();
+}
+
+function clearSquashResultSection(){
+  lastSquashResult=null;
+  renderSquashResultSection();
+}
+
+function focusSquashCommitInLog(){
+  if(!lastSquashResult||!lastSquashResult.hash) return;
+  var searchEl=document.getElementById('log-search');
+  var searchBtn=document.getElementById('log-search-btn');
+  if(searchEl){
+    searchEl.value=lastSquashResult.hash.substring(0,12);
+  }
+  if(searchBtn){
+    searchBtn.style.display='inline-block';
+  }
+  loadLog(1);
 }
 function toggleHash(el){
   var full = el.getAttribute('data-full');
@@ -4806,10 +6276,72 @@ function toggleHash(el){
 function toggleSquashSelect(cb){
   if(cb.disabled)return;
   var hash=cb.dataset.hash;
-  if(cb.checked)squashSelected[hash]=true;else delete squashSelected[hash];
+  if(cb.checked){
+    squashSelected[hash]=true;
+    if(_logCommitMap[hash]) squashCommitCache[hash]=_logCommitMap[hash];
+
+    var allHashes=Object.keys(squashSelected);
+    if(allHashes.length>=2){
+      // Check for file conflicts BEFORE confirming the selection.
+      // If a conflict is found, revert the checkbox and show why.
+      apiPost('/api/squash-conflict-check',{hashes:allHashes},function(r){
+        if(!r||!r.conflict){
+          updateSquashBar();
+          return;
+        }
+        // Revert — this commit can't be added to the selection
+        cb.checked=false;
+        delete squashSelected[hash];
+        delete squashCommitCache[hash];
+
+        var fileList=r.files.slice(0,8).map(function(f){
+          return '<li style="font-family:monospace;font-size:12px;color:#475569">'+escapeHtml(f)+'</li>';
+        }).join('');
+        var moreNote=r.files.length>8?'<li style="color:#94a3b8">…+'+(r.files.length-8)+' more</li>':'';
+        var body=(L==='zh'?
+          '<p style="margin:0 0 10px">无法将此 commit 加入 Squash 选择。<br>'
+          +'所选 commit <b>不相邻</b>，中间的 commit 修改了<b>相同的文件</b>，重排后会产生冲突。</p>'
+          +'<p style="margin:0 0 8px;color:#64748b;font-size:13px">冲突文件：</p>'
+          +'<ul style="margin:0 0 12px 18px;padding:0">'+fileList+moreNote+'</ul>'
+          +'<p style="margin:0;color:#64748b;font-size:12px">💡 请只选相邻的 commit，或同时选中中间的 commit 一起 squash。</p>'
+          :
+          '<p style="margin:0 0 10px">This commit cannot be added to the squash selection.<br>'
+          +'The selected commits are <b>non-adjacent</b> and the intervening commits modify the <b>same files</b>, which would cause a rebase conflict.</p>'
+          +'<p style="margin:0 0 8px;color:#64748b;font-size:13px">Conflicting files:</p>'
+          +'<ul style="margin:0 0 12px 18px;padding:0">'+fileList+moreNote+'</ul>'
+          +'<p style="margin:0;color:#64748b;font-size:12px">💡 Select only adjacent commits, or include the intervening commits in the squash.</p>'
+        );
+        showModal(
+          '<span style="color:#b45309">⚠️ '+(L==='zh'?'无法添加此 commit':'Cannot Add This Commit')+'</span>',
+          body,
+          L==='zh'?'知道了':'OK',
+          null
+        );
+        updateSquashBar();
+      });
+      return; // bar will be updated in callback
+    }
+  } else {
+    delete squashSelected[hash];
+    delete squashCommitCache[hash];
+  }
   updateSquashBar();
 }
-function cancelSquash(){squashSelected={};updateSquashBar();document.getElementById('squash-msg').value='';if(currentLogData)renderLog(currentLogData)}
+function removeFromSquash(hash){
+  delete squashSelected[hash];
+  delete squashCommitCache[hash];
+  var cb=document.querySelector('.squash-cb[data-hash="'+hash+'"]');
+  if(cb) cb.checked=false;
+  updateSquashBar();
+}
+function cancelSquash(){
+  squashSelected={};
+  squashCommitCache={};
+  updateSquashBar();
+  var msgEl=document.getElementById('squash-msg');
+  if(msgEl) msgEl.value='';
+  document.querySelectorAll('.squash-cb').forEach(function(cb){cb.checked=false;});
+}
 // ═══════════ Protected Branch Guard ═══════════
 // Config loaded from server — refreshed every time loadBranches() runs
 var _protExact = [];    // exact-match names
@@ -4853,26 +6385,79 @@ function doSquash(){
   if(keys.length<2){addMsg(t('select_2_commits'),'error');return}
   var msg=document.getElementById('squash-msg').value.trim();
   if(!msg){addMsg(t('enter_squash_msg'),'error');return}
+
+  // Collect hashes ordered by log (current page first, then any cross-page selections)
   var hashes=[];
-  if(currentLogData&&currentLogData.commits){currentLogData.commits.forEach(function(c){if(squashSelected[c.hash])hashes.push(c.hash)})}
-  if(hashes.length<2)return;
-  var fromHash=hashes[hashes.length-1],toHash=hashes[0];
-  _warnProtectedThenDo('protected_branch_squash', function(){
-    showModal('Squash',tf('squash_confirm',L,{n:hashes.length})+'<br>From: '+fromHash.substr(0,7)+' To: '+toHash.substr(0,7),'Squash',function(){
-      apiPost('/api/squash',{from:fromHash,to:toHash,message:msg},function(data){
-        if(data.ok){
-          squashSelected={};loadLog(1);loadFiles();
-          // Squash rewrites history — offer force push immediately
-          doForcePush();
-        }
-        else addMsg(t('squash_fail')+(data.error||''),'error');
-      });
+  var seen={};
+  // First pass: in-page order from currentLogData
+  if(currentLogData&&currentLogData.commits){
+    currentLogData.commits.forEach(function(c){
+      if(squashSelected[c.hash]){hashes.push(c.hash);seen[c.hash]=true;}
     });
+  }
+  // Second pass: cross-page commits from cache (order by date desc from cache)
+  keys.forEach(function(h){if(!seen[h])hashes.push(h);});
+
+  if(hashes.length<2){addMsg(t('select_2_commits'),'error');return;}
+
+  var gpgOn=(document.getElementById('gpg-sign-toggle')||{}).checked;
+
+  _warnProtectedThenDo('protected_branch_squash', function(){
+    showModal('Squash',
+      tf('squash_confirm',L,{n:hashes.length}),
+      'Squash',function(){
+        clearSquashResultSection();
+        addMsg(L==='zh'?'🔀 正在 Squash...':'🔀 Squashing...','info');
+        apiPost('/api/squash-selected',{hashes:hashes,message:msg,gpg_sign:!!gpgOn},function(data){
+          var ver=(data&&data.backend_version)||'';
+          if(!ver){
+            addMsg((L==='zh')
+              ? '⚠️ 后端返回缺少 backend_version 字段，你可能没有重启 GitAutoManageBoard 服务。请重启 python 服务后再试。'
+              : '⚠️ Backend response missing backend_version. Your GitAutoManageBoard service is likely running stale code. Please restart it and retry.',
+              'error',{maxLines:6});
+          }
+          if(data.ok){
+            var sqHash=(data&&data.squash_commit_hash)||'';
+            var pre=(data&&data.pre_head)||'';
+            var post=(data&&data.post_head)||'';
+            if(pre && post && pre===post){
+              clearSquashResultSection();
+              addMsg((L==='zh'?'❌ Squash 未生效：HEAD 没有移动。pre_head=':'❌ Squash did not take effect: HEAD did not move. pre_head=')
+                +pre.substring(0,12)+'  post_head='+post.substring(0,12),
+                'error',{maxLines:6});
+              return;
+            }
+            if(sqHash){
+              setSquashResult(sqHash, msg, hashes.length, hashes);
+              addMsg((L==='zh'?'ℹ️ HEAD 已从 ':'ℹ️ HEAD moved from ')
+                +(pre||'?').substring(0,12)+(L==='zh'?' 移动到 ':' to ')+(post||'?').substring(0,12),
+                'info');
+            } else {
+              clearSquashResultSection();
+              addMsg('⚠️ '+t('squash_result_missing_hash'),'error');
+            }
+            _purgeAllLogCaches();
+            squashSelected={};squashCommitCache={};_reloadLog(1);loadFiles();
+            addMsg(data.message||t('squash_ok'),'success');
+          } else {
+            clearSquashResultSection();
+            if(data.rebaseInProgress){
+              var title=(L==='zh')?'⚠️ Squash 被 Rebase 阻塞':'⚠️ Squash blocked by existing rebase';
+              var body='<div style="background:#0f172a;color:#e2e8f0;font-family:monospace;font-size:12px;line-height:1.5;'
+                +'padding:12px 14px;border-radius:8px;max-height:220px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;'
+                +'border:1px solid #1e293b">'+escapeHtml(data.error||'')+'</div>';
+              _showRebaseFailureModal(title, body, false);
+              return;
+            }
+            addMsg(t('squash_fail')+(data.error||''),'error');
+          }
+        });
+      }
+    );
   });
 }
 
 function renderPagination(data){
-  var pag=document.getElementById('log-pagination');
   var totalPages=data.per_page>0?Math.ceil(data.total/data.per_page):1;
   _setSmartPagination('log', totalPages, data.page, 'loadLog', data.total);
 }
@@ -4884,13 +6469,13 @@ function showRevertModal(hash,shortHash){
   showModalDouble('Revert / Drop '+shortHash,t('revert_or_drop_desc'),
     'Revert',function(){
       apiPost('/api/revert',{commit:hash},function(data){
-        if(data.ok){addMsg(t('revert_ok'),'success');loadLog(1);loadFiles()}
+        if(data.ok){addMsg(t('revert_ok'),'success');_reloadLog(1);loadFiles()}
         else addMsg(t('revert_fail')+(data.error||''),'error');
       });
     },
     'Drop',function(){
       apiPost('/api/drop_commit',{commit:hash},function(data){
-        if(data.ok){addMsg(t('drop_ok'),'success');loadLog(1);loadFiles()}
+        if(data.ok){addMsg(t('drop_ok'),'success');_reloadLog(1);loadFiles()}
         else addMsg(t('drop_fail')+(data.error||''),'error');
       });
     },
@@ -4899,14 +6484,35 @@ function showRevertModal(hash,shortHash){
 }
 function doReset(hash,mode){
   apiPost('/api/reset',{commit:hash,mode:mode},function(data){
-    if(data.ok){addMsg(tf('reset_ok',L,{mode:mode}),'success');loadLog(1);loadFiles();loadCurrentBranch()}
+    if(data.ok){
+      addMsg(tf('reset_ok',L,{mode:mode}),'success');
+      _reloadLog(1);loadFiles();loadCurrentBranch();
+      if(mode==='hard'){
+        var branch=(document.getElementById('branch-name')||{}).textContent||'current branch';
+        var warn='<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:10px 14px;font-size:13px;color:#92400e;margin-bottom:8px">'
+          +(L==='zh'
+            ?'⚠️ 这个操作会改写历史。若该分支已推送过，请使用 <b>Force Push</b> 更新远端。'
+            :'⚠️ This operation rewrites history. If this branch was already pushed, use <b>Force Push</b> to update remote.')
+          +'</div>';
+        showModalDouble(
+          t('reset_hard_push_title'),
+          warn+tf('reset_hard_push_desc',L,{branch:escapeHtml(branch)}),
+          t('reset_hard_force_btn'),
+          function(){ doPushForce(); },
+          t('push_later_btn'),
+          null,
+          'btn-warning',
+          'btn-secondary'
+        );
+      }
+    }
     else addMsg(t('reset_fail')+(data.error||''),'error');
   });
 }
 function abortMerge(){
   showModal(t('conflict_reset_title'),t('conflict_reset_desc'),'Reset',function(){
     apiPost('/api/abort',{},function(data){
-      if(data.ok){addMsg(t('conflict_reset_ok'),'success');loadFiles();checkConflicts();loadLog(1)}
+      if(data.ok){addMsg(t('conflict_reset_ok'),'success');loadFiles();checkConflicts();_reloadLog(1)}
       else addMsg(t('no_conflict_abort')+(data.error||''),'info');
     });
   });
@@ -5492,7 +7098,7 @@ function showMergeCommitDialog(defaultMsg){
       if(data.ok){
         addMsg('✅ '+t('merge_commit_ok'),'success');
         checkConflicts();   // clear the conflict tab badge
-        loadLog(1);         // navigate to log tab and show the new commit
+        _reloadLog(1);         // navigate to log tab and show the new commit
         loadFiles();loadCurrentBranch();
         if(thenPush) setTimeout(function(){ doPush(); },400);
       }else{
@@ -5619,24 +7225,69 @@ document.addEventListener('click',function(e){
 });
 
 // ═══════════ Select All ═══════════
+function _updateBatchProgress(done,total,label){
+  var wrap=document.getElementById('main-batch-progress');
+  var bar=document.getElementById('main-batch-progress-bar');
+  var txt=document.getElementById('main-batch-progress-text');
+  if(!wrap||!bar||!txt)return;
+  var pct=total>0?Math.floor((done/total)*100):100;
+  wrap.style.display='block';
+  bar.style.width=pct+'%';
+  txt.textContent=(label||'Processing')+' '+done+'/'+total+' ('+pct+'%)';
+}
+
+function _finishBatchProgress(){
+  var wrap=document.getElementById('main-batch-progress');
+  if(!wrap)return;
+  setTimeout(function(){wrap.style.display='none';},500);
+}
+
+function _runTogglePaths(paths, action, doneCb){
+  var i=0,active=0,done=0,failed=false;
+  var total=paths.length;
+  var concurrency=8;
+  _updateBatchProgress(0,total,action==='add'?(L==='zh'?'正在全选':'Selecting'):(L==='zh'?'正在取消选择':'Deselecting'));
+  function pump(){
+    while(active<concurrency && i<total){
+      (function(path){
+        active++;
+        apiPost('/api/toggle',{path:path,action:action},function(data){
+          active--;
+          done++;
+          if(!data||!data.ok)failed=true;
+          _updateBatchProgress(done,total,action==='add'?(L==='zh'?'正在全选':'Selecting'):(L==='zh'?'正在取消选择':'Deselecting'));
+          if(done>=total){
+            _finishBatchProgress();
+            doneCb(failed);
+            return;
+          }
+          pump();
+        });
+      })(paths[i++]);
+    }
+  }
+  if(!total){doneCb(false);return;}
+  pump();
+}
+
 document.getElementById('select-all-cb').addEventListener('change',function(){
   var selectAll=this.checked;
-  var allCbs=document.querySelectorAll('.file-cb');
-  var done=0,total=allCbs.length,failed=false;
-  if(!total)return;
+  var files=_filesCache||[];
+  var paths=files.map(function(f){return f.path;});
+  if(!paths.length)return;
   function finalize(){
-    if(!failed)addMsg(selectAll?t('all_selected'):t('all_deselected'),'success');
+    if(!finalize._failed)addMsg(selectAll?t('all_selected'):t('all_deselected'),'success');
     else addMsg(t('partial_fail'),'error');
     _filesLastJson=''; // force re-render so individual checkboxes reflect new state
     loadFiles();
   }
-  for(var i=0;i<allCbs.length;i++){
-    (function(cb,path){
-      var action=selectAll?'add':'reset';
-      if(selectAll)checkedPaths[path]=true;else delete checkedPaths[path];
-      apiPost('/api/toggle',{path:path,action:action},function(data){if(!data.ok)failed=true;done++;if(done===total)finalize()});
-    })(allCbs[i],allCbs[i].dataset.path);
+  for(var p=0;p<paths.length;p++){
+    if(selectAll)checkedPaths[paths[p]]=true;else delete checkedPaths[paths[p]];
   }
+  _runTogglePaths(paths,selectAll?'add':'reset',function(failed){
+    finalize._failed=failed;
+    finalize();
+  });
 });
 
 // ═══════════ Commit page stash button ═══════════
@@ -5658,6 +7309,7 @@ document.getElementById('commit-btn').addEventListener('click',function(){
   for(var i=0;i<cbs.length;i++)paths.push(cbs[i].dataset.path);
   if(!paths.length){addMsg(t('select_at_least_one'),'error');return}
   _warnProtectedThenDo('protected_branch_commit', function(){
+    _rememberGitOp('commit', function(){ document.getElementById('commit-btn').click(); });
     showModal(t('confirm_commit_title'),
       'Commit message: <b>'+escapeHtml(msg)+'</b><br><br>Files:<br>'+paths.map(escapeHtml).join('<br>'),
       'Confirm Commit',
@@ -5687,10 +7339,14 @@ document.getElementById('commit-btn').addEventListener('click',function(){
 
 // ═══════════ Reset all ═══════════
 document.getElementById('reset-btn').addEventListener('click',function(){
-  var allCbs=document.querySelectorAll('.file-cb'),failed=false,done=0;
-  for(var i=0;i<allCbs.length;i++){
-    apiPost('/api/toggle',{path:allCbs[i].dataset.path,action:'reset'},function(data){if(!data.ok)failed=true;done++;if(done===allCbs.length){checkedPaths={};if(!failed){addMsg(t('all_deselected'),'success');loadFiles()}else addMsg(t('partial_fail'),'error')}});
-  }
+  var files=_filesCache||[];
+  var paths=files.map(function(f){return f.path;});
+  if(!paths.length)return;
+  _runTogglePaths(paths,'reset',function(failed){
+    checkedPaths={};
+    if(!failed){addMsg(t('all_deselected'),'success');loadFiles();}
+    else addMsg(t('partial_fail'),'error');
+  });
 });
 
 // ═══════════ GPG Sign Toggle ═══════════
@@ -5711,6 +7367,7 @@ function loadGpgSign() {
 }
 
 // ═══════════ Init ═══════════
+_observeLoadingBars();
 loadCurrentBranch();
 loadProjectName();
 loadWorktreeLabel();
@@ -5800,7 +7457,8 @@ function saveGitSettings() {
   });
 }
 
-document.getElementById('git-settings-modal').addEventListener('click', function(e) {
+var _gitSettingsModal=document.getElementById('git-settings-modal');
+if(_gitSettingsModal) _gitSettingsModal.addEventListener('click', function(e) {
   if (e.target === this) closeGitSettingsModal();
 });
 

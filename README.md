@@ -57,10 +57,10 @@ No frameworks, no npm, no Docker. Just Python 3 and a modern browser.
 | **Branches** | View local & remote branches, create branches, switch branches, delete local/remote branches (with safety guards), fuzzy search, pagination, sort. |
 | **Compare** | Side-by-side branch comparison — visual diff, file-by-file navigation, swap branches, one-click merge. |
 | **Merge** | Squash-merge any branch into the current branch with a custom commit message and conflict warnings. |
-| **Commit Log** | Browse full history. Search by hash / author / message / code-in-diffs. Soft/Hard reset, revert, squash commits. Restore individual files to any historical version. |
+| **Commit Log** | Browse full history. Search by hash / author / message / code-in-diffs. Soft/Hard reset, revert, squash commits. After squash, a dedicated result section shows the new commit and offers one-click force push. Restore individual files to any historical version. |
 | **Conflicts** | Visual conflict resolution with collapsible context blocks, resolved banners, step-by-step dialogs to commit and push after resolution. |
 | **Stash** | List, inspect, pop, or drop stash entries. Pagination support. |
-| **Remote** | Fetch, Pull, Push — all with live streaming log popups. Force push with `--force-with-lease`. Auto SSH/HTTPS switching. |
+| **Remote** | Fetch, Pull, Push — all with live streaming log popups. Fetch auto-recovers local `cannot lock ref`/OID mismatch issues (local cleanup + retry, remote untouched), including case-colliding branch names on case-insensitive filesystems via local-only fetch excludes. Force push with `--force-with-lease`. Auto SSH/HTTPS switching. |
 | **🤖 AI Assistant** | Floating AI chat panel — ask anything about your repo. Auto-injects live page context. **Chat mode** quick actions: analyze conflicts, accept ours/theirs/both, abort merge, suggest commits, explain diffs, recent commits, analyze branch, stash help, clean suggestions. **Diff mode**: per-file code diff with inline Analyze buttons and AI suggestion panel. Supports Claude, GPT-5, Gemini, DeepSeek, Qwen, Ollama. |
 | **Config** | Customise app name and version via `config.ini`. |
 
@@ -76,12 +76,23 @@ No frameworks, no npm, no Docker. Just Python 3 and a modern browser.
 
 #### Run
 
+**macOS — double-click launcher:**
+```
+StartGitBoard.app
+```
+
+**Windows — double-click:**
+```
+StartGitBoard.bat
+```
+
+**Command line (any platform):**
 ```bash
 # Navigate to the target git repository first
 cd /path/to/your/git/repo
 
 # Then run the tool
-python3 /path/to/git_commit_tool.py
+python3 /path/to/GitAutoManageBoard/app/git_commit_tool.py
 ```
 
 The browser will open automatically at `http://127.0.0.1:8989`.  
@@ -408,145 +419,83 @@ All operation results (commits, pulls, pushes, resets, merges, …) are stored i
 ```
 GitAutoManageBoard/
 │
-├── git_commit_tool.py      # Entry point — HTTP server, request routing, static file serving.
-│                           # Class Handler (BaseHTTPRequestHandler):
-│                           #   do_GET  → serves /static/* files + delegates to handle_get()
-│                           #   do_POST → delegates to handle_post()
-│                           # main() finds a free port starting at 8989, starts HTTPServer,
-│                           # opens the browser automatically.
+├── StartGitBoard.app       # macOS one-click launcher (AppleScript app bundle).
+│                           # Double-click to open Terminal and start the server.
+│                           # Uses `path to me` — works wherever the project is placed.
 │
-├── git_ops.py              # All Git operations and shared server state.
-│                           # Globals: PORT, _MSGLOG (in-session operation log),
-│                           #          _PUSH_JOBS (streaming job registry),
-│                           #          _PUSH_JOBS_LOCK, _MSGLOG_LOCK (thread safety)
-│                           # Core helpers:
-│                           #   _get_git_env()          — unified git env (disables prompts)
-│                           #   _run()                  — synchronous git subprocess wrapper
-│                           #   _run_push_streaming()   — async push with live stdout capture
-│                           #   _run_gitop_streaming()  — async fetch/pull with live output
-│                           # Domain functions (one per git operation):
-│                           #   current_branch, get_status, get_conflicts, get_branches,
-│                           #   create_branch, checkout_branch, delete_branch_local/remote,
-│                           #   compare_branches, get_commit_log, get_commit_diff,
-│                           #   reset_to, revert_commit, squash_commits, restore_file,
-│                           #   stash_list/pop/drop, resolve_conflict,
-│                           #   pull_current, fetch, push_streaming, abort_merge ...
+├── StartGitBoard.bat       # Windows one-click launcher.
+│                           # cd to project root and runs `python app\git_commit_tool.py`.
 │
-├── api_handlers.py         # REST API endpoint dispatcher (GET + POST).
-│                           #   json_result(rc, stdout, stderr) — canonical JSON response builder
-│                           #   handle_get(path, params, send_json)  — all GET /api/* routes:
-│                           #     /api/files, /api/branches, /api/log, /api/conflicts,
-│                           #     /api/stash, /api/compare, /api/project-name,
-│                           #     /api/push-status, /api/gitop-status,
-│                           #     /api/ai/chat-status
-│                           #   handle_post(path, data, send_json)   — all POST /api/* routes:
-│                           #     /api/commit, /api/checkout, /api/create-branch,
-│                           #     /api/delete-branch, /api/merge, /api/squash,
-│                           #     /api/reset, /api/revert, /api/restore-file,
-│                           #     /api/resolve-conflict, /api/stash-pop, /api/stash-drop,
-│                           #     /api/push, /api/pull, /api/fetch, /api/abort-merge,
-│                           #     /api/gitignore-add, /api/gitignore-remove,
-│                           #     /api/ai/chat, /api/ai/test-provider
-│
-├── ai_module/
-│   ├── __init__.py         # Package init (empty).
+├── app/                    # All application source code.
 │   │
-│   └── ai_provider.py      # Decoupled AI provider submodule.
-│                           # Supports: OpenAI-compatible, Anthropic native API, Ollama,
-│                           #   DeepSeek, Qwen, and any custom OpenAI-compatible endpoint.
-│                           # Public API:
-│                           #   call_llm(provider, api_key, base_url, model, messages)
-│                           #                            — synchronous LLM call, returns (ok, text)
-│                           #   test_provider(...)       — test connectivity for the settings modal
-│                           #   start_chat_job(...)      — async LLM call, returns job_id
-│                           #   get_job_status(job_id)   — poll async job result
-│
-├── static/
-│   ├── index.html          # HTML skeleton — layout structure, tab panels, modal containers,
-│   │                       # AI chat panel HTML, AI floating button (🤖 + ? badge).
-│   │                       # References /static/style.css, /static/app.js,
-│   │                       # /static/ai-panel.css, /static/ai-panel.js.
+│   ├── git_commit_tool.py  # Entry point — HTTP server, request routing, static file serving.
+│   │                       # Class Handler (BaseHTTPRequestHandler):
+│   │                       #   do_GET  → serves /static/* files + delegates to handle_get()
+│   │                       #   do_POST → delegates to handle_post()
+│   │                       # main() finds a free port starting at 8989, starts HTTPServer,
+│   │                       # opens the browser automatically.
 │   │
-│   ├── diff-tab.html       # Standalone AI Diff tab page — opened in a new browser tab when
-│   │                       # the user clicks "Tab" on a file in the AI Diff panel.
-│   │                       # Displays a single file's diff with syntax highlighting,
-│   │                       # light/dark theme toggle, and copyable diff content.
+│   ├── config.ini          # App branding & runtime config (read on every /api/project-name).
+│   │                       #   [app]    name, version — displayed in top-right header
+│   │                       #   [git]    network_timeout, gpg_sign
+│   │                       #   [protection]  protected_branches_exact / contains
 │   │
-│   ├── style.css           # Core UI styles for the Git board.
-│   │                       # CSS custom properties (:root) define the design token system:
-│   │                       #   --color-primary/success/warning/error/purple,
-│   │                       #   --color-text/bg/border, --radius-*, --font-size-*
-│   │                       # Sections: layout, top-bar, project banner, tabs, diff viewer,
-│   │                       #   branch list, conflict zones, modals, stash, log, toasts,
-│   │                       #   restore file page, squash bar, compare page.
+│   ├── core/               # Internal backend modules.
+│   │   │
+│   │   ├── git_ops.py      # All Git operations and shared server state.
+│   │   │                   # Globals: PORT, _MSGLOG (in-session log), _PUSH_JOBS (streaming
+│   │   │                   #   job registry), _PUSH_JOBS_LOCK, _MSGLOG_LOCK (thread safety)
+│   │   │                   # Core helpers:
+│   │   │                   #   _get_git_env()         — unified git env (disables prompts)
+│   │   │                   #   _run()                 — synchronous git subprocess wrapper
+│   │   │                   #   _run_push_streaming()  — async push with live stdout capture
+│   │   │                   #   _run_gitop_streaming() — async fetch/pull with live output
+│   │   │                   # Domain functions (one per git operation):
+│   │   │                   #   current_branch, get_status, get_conflicts, get_branches,
+│   │   │                   #   create_branch, checkout_branch, delete_branch_local/remote,
+│   │   │                   #   compare_branches, get_commit_log, squash_selected_commits,
+│   │   │                   #   squash_conflict_check, reset_to, revert_commit, restore_file,
+│   │   │                   #   stash_list/pop/drop, resolve_conflict, pull_current, fetch ...
+│   │   │
+│   │   └── api_handlers.py # REST API endpoint dispatcher (GET + POST).
+│   │                       #   handle_get(path, params, send_json)  — all GET /api/* routes
+│   │                       #   handle_post(path, data, send_json)   — all POST /api/* routes
+│   │                       # Also contains the AI autofix orchestration pipeline
+│   │                       # (_autofix_analyze_job, _autofix_apply_job).
 │   │
-│   ├── app.js              # All client-side JavaScript for the Git board (~2800 lines).
-│   │                       # Sections:
-│   │                       #   i18n       — T{} translation table (EN/ZH), t()/tf() helpers,
-│   │                       #               switchLang(), data-i18n attribute auto-apply
-│   │                       #   State      — global UI state (checkedPaths, resolvedConflicts,
-│   │                       #               _conflictData, pagination state ...)
-│   │                       #   API        — apiGet(), apiPost(), global spinner management
-│   │                       #   Pages      — switchPage(), loadFiles(), loadBranches(), loadLog(),
-│   │                       #               loadConflicts(), loadStash(), loadProjectName(),
-│   │                       #               loadCompare(), loadMsgLog()
-│   │                       #   Git ops    — doFetch(), doPull(), doPush(), doManualPush(),
-│   │                       #               checkoutBranch(), createNewBranch(), deleteBranch(),
-│   │                       #               mergeSquash(), doSquash(), doReset(), doRevert(),
-│   │                       #               resolveAllBlocks(), saveAndResolveFile(),
-│   │                       #               loadStashList(), popStash(), dropStash()
-│   │                       #   UI helpers — showModal(), showModalDouble(), showToast(),
-│   │                       #               addMsg(), highlightDiff(), renderConflictZone(),
-│   │                       #               renderDiff(), buildPagination()
-│   │                       #   Syntax HL  — _tokenLine(), buildHighlightedPre() for 10+ languages
+│   ├── ai_module/
+│   │   ├── __init__.py
+│   │   └── ai_provider.py  # Decoupled AI provider submodule.
+│   │                       # Supports: OpenAI-compatible, Anthropic, Ollama, DeepSeek,
+│   │                       #   Qwen, Google, and any custom OpenAI-compatible endpoint.
+│   │                       # Public API:
+│   │                       #   call_llm(...)        — synchronous LLM call → (ok, text)
+│   │                       #   test_provider(...)   — test connectivity
+│   │                       #   start_chat_job(...)  — async LLM call → job_id
+│   │                       #   get_job_status(id)   — poll async job result
 │   │
-│   ├── ai-panel.css        # Styles for the AI chat panel and floating action button.
-│   │                       # Key sections:
-│   │                       #   #ai-fab             — floating 🤖 button with "?" badge,
-│   │                       #                         transition: right for panel-open slide
-│   │                       #   #ai-fab.panel-open  — moves FAB left to dock beside panel
-│   │                       #   #ai-chat-panel      — 400px right-side slide-in panel
-│   │                       #   .ai-quick-actions   — quick-action pill buttons row
-│   │                       #   .ai-msg / .ai-bubble — chat message bubbles (user/assistant/system)
-│   │                       #   .ai-thinking        — animated typing indicator (3 bouncing dots)
-│   │                       #   #ai-provider-modal  — provider/model settings modal
-│   │                       #   .ai-ptabs           — provider tab selector
-│   │
-│   └── ai-panel.js         # All client-side JavaScript for the AI panel (~500 lines).
-│                           # Key sections:
-│                           #   AI_PROVIDERS        — provider definitions (name, baseUrl,
-│                           #                         needsKey, hint, model list)
-│                           #   toggleAIChatPanel() — open/close panel + move FAB
-│                           #   _gatherPageContext()— async: fetches /api/files, /api/stash,
-│                           #                         /api/conflicts + scrapes page DOM to build
-│                           #                         full live context before every message
-│                           #   _buildSystemPrompt()— builds system prompt with project info,
-│                           #                         current page content, git status, conflicts
-│                           #   _sendToAI()         — gathers context then calls /api/ai/chat
-│                           #   _pollChatJob()      — polls /api/ai/chat-status for async result
-│                           #   aiQuickAction()     — handles all quick-action button logic
-│                           #   _acceptAllConflicts()— batch resolve all conflicts (ours/theirs)
-│                           #   openAIProviderModal()— provider/model settings UI
-│                           #   saveAIProvider()    — persists config to localStorage
-│
-├── config.ini              # App branding config (read on every /api/project-name request).
-│                           #   [app]
-│                           #   name    = Git Manage Board   # displayed in top-right header
-│                           #   version = v1.1.0             # displayed below the name badge
+│   └── static/
+│       ├── index.html      # HTML skeleton — layout, tab panels, modal containers,
+│       │                   # AI chat panel HTML, AI floating button (🤖 + ? badge).
+│       ├── diff-tab.html   # Standalone AI Diff tab page (opened in new browser tab).
+│       ├── style.css       # Core UI styles — design token system, all page sections.
+│       ├── app.js          # All client-side JavaScript for the Git board (~7000 lines).
+│       │                   # i18n (EN/ZH), API helpers, all page logic, git op handlers,
+│       │                   # modal/toast system, syntax highlighting for 10+ languages.
+│       ├── ai-panel.css    # Styles for the AI chat panel and floating action button.
+│       └── ai-panel.js     # All client-side JavaScript for the AI panel.
+│                           # Context gathering, provider config, diff mode, quick actions.
 │
 ├── docs/
-│   ├── screenshot.png      # Main board screenshot (Branches page — local/remote branch list,
-│   │                       # compare/merge/checkout actions, fuzzy search, quick-filter tags).
-│   ├── screenshot_AI_1.png # AI Chat panel screenshot — Chat mode with quick-action groups
-│   │                       # (Conflict Resolution, General Git, Commit Analysis) and
-│   │                       # free-text chat alongside the Commit Log page.
-│   └── Screenshot_AI_2.png # AI Diff panel screenshot — per-file code diff viewer with
-│                           # inline Analyze buttons and AI suggestions side panel.
+│   ├── screenshot.png
+│   ├── screenshot_AI_1.png
+│   └── Screenshot_AI_2.png
 │
-└── README.md               # Full documentation in English and Chinese (this file).
+├── README.md
+└── LICENSE
 ```
 
-The application is split into a Python backend (`git_commit_tool.py`, `git_ops.py`, `api_handlers.py`, `ai_module/`) and a static frontend (`static/`). Run with `python3 git_commit_tool.py` — no frameworks or external packages required.
+The application is split into a Python backend (`app/core/`, `app/ai_module/`) and a static frontend (`app/static/`). Run with `python3 app/git_commit_tool.py` — no frameworks or external packages required.
 
 ---
 
@@ -609,10 +558,10 @@ For the AI Assistant, paste your API key in the ⚙️ settings panel.
 | **分支 (Branches)** | 查看本地和远端分支、创建分支、切换分支、删除本地/远端分支（带安全防护）、模糊搜索、分页、排序。 |
 | **对比 (Compare)** | 左右对比任意两个分支 — 可视化 diff、逐文件导航、交换分支、一键合并。 |
 | **合并 (Merge)** | 将任意分支 Squash-merge 到当前分支，支持自定义提交信息和冲突警告。 |
-| **提交日志 (Commit Log)** | 浏览完整历史。按 hash / 作者 / 消息 / 代码内容搜索。Soft/Hard Reset、Revert、Squash 合并提交。将单个文件还原到任意历史版本。 |
+| **提交日志 (Commit Log)** | 浏览完整历史。按 hash / 作者 / 消息 / 代码内容搜索。Soft/Hard Reset、Revert、Squash 合并提交。Squash 后会显示独立结果区（新 commit + 一键 Force Push）。将单个文件还原到任意历史版本。 |
 | **冲突 (Conflicts)** | 可视化冲突解决，上下文默认收缩、已解决标记横幅、逐步弹窗引导 commit 和 push。 |
 | **暂存 (Stash)** | 列出、查看、Pop 或删除 stash 条目。支持分页。 |
-| **远端 (Remote)** | Fetch、Pull、Push — 全部支持实时流式日志弹窗。Force Push（`--force-with-lease`）。自动 SSH/HTTPS 切换。 |
+| **远端 (Remote)** | Fetch、Pull、Push — 全部支持实时流式日志弹窗。Fetch 会自动修复本地 `cannot lock ref`/OID 不一致问题（仅清理本地并重试，不改远端）；若遇到大小写仅不同的分支名冲突（大小写不敏感文件系统），会自动做本地排除后重试。Force Push（`--force-with-lease`）。自动 SSH/HTTPS 切换。 |
 | **🤖 AI 助手** | 浮动 AI 聊天面板 — 直接对话布置任务。自动注入当前页面实时上下文。**聊天模式**快速操作：分析冲突、接受我方/他方/双方、中止合并、建议提交、解释变更、最近提交、分析分支、Stash 帮助、清理建议。**Diff 模式**：逐文件 diff 视图 + 内联 Analyze 按钮 + AI 建议面板。支持 Claude、GPT-5、Gemini、DeepSeek、Qwen、Ollama。 |
 | **配置 (Config)** | 通过 `config.ini` 自定义应用名称和版本号。 |
 

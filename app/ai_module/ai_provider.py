@@ -24,6 +24,7 @@ _AI_JOBS_LOCK = threading.Lock()
 PROVIDER_BASE_URLS = {
     "openai":    "https://api.openai.com/v1",
     "anthropic": "https://api.anthropic.com",
+    "google":    "https://generativelanguage.googleapis.com/v1beta/openai",
     "deepseek":  "https://api.deepseek.com/v1",
     "qwen":      "https://dashscope.aliyuncs.com/compatible-mode/v1",
     "ollama":    "http://localhost:11434/v1",

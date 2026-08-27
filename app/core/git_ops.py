@@ -18,8 +18,12 @@ _PUSH_JOBS = {}       # {job_id: {lines:[], done:bool, ok:bool, error:str, authR
 _PUSH_JOBS_LOCK = threading.Lock()
 _MSGLOG_LOCK    = threading.Lock()
 
-# Local persistent log — never committed to the repo (.gitignored)
-_LOCAL_LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gitboard.log")
+# config.ini lives in app/ (_APP_DIR); gitboard.log stays at the repo root.
+_CORE_DIR     = os.path.dirname(os.path.abspath(__file__))  # app/core/
+_APP_DIR      = os.path.dirname(_CORE_DIR)                  # app/
+_PROJECT_ROOT = os.path.dirname(_APP_DIR)                   # repo root/
+
+_LOCAL_LOG_PATH = os.path.join(_PROJECT_ROOT, "gitboard.log")
 _LOCAL_LOG_LOCK = threading.Lock()
 
 def _write_local_log(section: str, lines):
@@ -67,7 +71,7 @@ def _get_git_env(extra=None):
 def _load_app_config():
     """Read config.ini next to this script. Returns (app_name, app_version, exact_set, contains_list, network_timeout)."""
     cfg = configparser.ConfigParser()
-    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+    cfg_path = os.path.join(_APP_DIR, "config.ini")
     if os.path.exists(cfg_path):
         cfg.read(cfg_path, encoding="utf-8")
     name    = cfg.get("app", "name",    fallback="Git Manage Board")
@@ -101,7 +105,7 @@ def save_network_timeout(seconds):
         return False, "Timeout must be a positive integer"
 
     cfg = configparser.ConfigParser()
-    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+    cfg_path = os.path.join(_APP_DIR, "config.ini")
     if os.path.exists(cfg_path):
         cfg.read(cfg_path, encoding="utf-8")
     if not cfg.has_section("git"):
@@ -115,7 +119,7 @@ def save_network_timeout(seconds):
 def get_gpg_sign():
     """Return whether GPG signing is enabled for commits."""
     cfg = configparser.ConfigParser()
-    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+    cfg_path = os.path.join(_APP_DIR, "config.ini")
     if os.path.exists(cfg_path):
         cfg.read(cfg_path, encoding="utf-8")
     return cfg.getboolean("git", "gpg_sign", fallback=False)
@@ -125,7 +129,7 @@ def save_gpg_sign(enabled):
     """Persist gpg_sign setting to config.ini. Returns (ok, value_or_error)."""
     enabled = bool(enabled)
     cfg = configparser.ConfigParser()
-    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+    cfg_path = os.path.join(_APP_DIR, "config.ini")
     if os.path.exists(cfg_path):
         cfg.read(cfg_path, encoding="utf-8")
     if not cfg.has_section("git"):
@@ -2176,6 +2180,117 @@ def _pull_request_total_count(state="in_review", search=""):
 
 
 _PR_AUTHOR_NAME_CACHE = {}
+_PR_FILES_CACHE = {}
+
+_MAIN_ENTRY_BASENAMES = {
+    # iOS / macOS
+    "appdelegate.swift", "appdelegate.m", "appdelegate.mm",
+    "scenedelegate.swift", "scenedelegate.m", "scenedelegate.mm",
+    "main.swift",
+    # Android / Kotlin / Java
+    "androidmanifest.xml", "mainactivity.kt", "mainactivity.java",
+    "mainapplication.kt", "mainapplication.java", "application.kt", "application.java",
+    # Python
+    "__main__.py", "main.py", "app.py", "manage.py", "wsgi.py", "asgi.py", "run.py",
+    # JS / TS / RN
+    "index.js", "index.ts", "index.tsx", "main.js", "main.ts", "main.tsx", "app.tsx",
+    # Flutter / Dart
+    "main.dart",
+    # ArkTS / HarmonyOS
+    "entryability.ets", "entryability.ts", "mainability.ets", "mainability.ts",
+    "app.ets", "module.json5", "app.json5",
+    # Backend / systems
+    "program.cs", "main.go", "main.rs",
+}
+
+_MAIN_ENTRY_PATH_SUFFIXES = (
+    "app/src/main/androidmanifest.xml",
+    "src/main/resources/application.yml",
+    "src/main/resources/application.yaml",
+    "src/main/resources/application.properties",
+    "lib/main.dart",
+    "entry/src/main/module.json5",
+    "entry/src/main/resources/base/profile/main_pages.json",
+)
+
+_MAIN_ENTRY_PATH_REGEXES = [
+    re.compile(r"(^|/)src/main/.*/(mainactivity|mainapplication|application)\.(kt|java)$"),
+    re.compile(r"(^|/)(ios|iphoneos|macos|app)/.*/(appdelegate|scenedelegate)\.(swift|m|mm)$"),
+    re.compile(r"(^|/)entry/src/main/ets/.*/(entryability|mainability)\.(ets|ts)$"),
+    re.compile(r"(^|/)src/main\.(py|js|ts|tsx)$"),
+]
+
+
+def _collect_pr_changed_files(pr_number):
+    num = str(pr_number or "").strip()
+    if not num:
+        return []
+    cached = _PR_FILES_CACHE.get(num)
+    if cached is not None:
+        return cached
+
+    files = []
+    out, _, rc = _run(["gh", "pr", "view", num, "--json", "files"])
+    if rc == 0:
+        try:
+            rows = ((json.loads(out or "{}") or {}).get("files") or [])
+        except Exception:
+            rows = []
+        for row in rows:
+            p = ((row or {}).get("path") or "").strip()
+            if p:
+                files.append(p)
+
+    if not files:
+        diff_out, _, diff_rc = pull_request_diff(num)
+        if diff_rc == 0 and diff_out:
+            for line in diff_out.splitlines():
+                m = re.match(r"^diff --git a/(.+?) b/(.+)$", line)
+                if m:
+                    files.append(m.group(2))
+
+    uniq = []
+    seen = set()
+    for p in files:
+        key = (p or "").strip()
+        if key and key not in seen:
+            seen.add(key)
+            uniq.append(key)
+    _PR_FILES_CACHE[num] = uniq
+    return uniq
+
+
+def _is_main_entry_file(file_path):
+    p = (file_path or "").replace("\\", "/").strip().lower()
+    if not p:
+        return False
+    base = p.rsplit("/", 1)[-1]
+    if base in _MAIN_ENTRY_BASENAMES:
+        return True
+    for suffix in _MAIN_ENTRY_PATH_SUFFIXES:
+        if p.endswith(suffix):
+            return True
+    for rgx in _MAIN_ENTRY_PATH_REGEXES:
+        if rgx.search(p):
+            return True
+    return False
+
+
+def _build_pr_risk_info(pr_number):
+    files = _collect_pr_changed_files(pr_number)
+    files_changed = len(files)
+    main_entry_files = [p for p in files if _is_main_entry_file(p)]
+    main_entry_changed = bool(main_entry_files)
+    too_many_files = files_changed > 10
+    return {
+        "is_risky": bool(main_entry_changed or too_many_files),
+        "main_entry_changed": main_entry_changed,
+        "too_many_files": too_many_files,
+        "files_changed": files_changed,
+        "main_entry_files": main_entry_files[:5],
+    }
+
+
 def _author_name_from_commit(head_sha):
     sha = (head_sha or "").strip()
     if not sha:
@@ -2277,6 +2392,8 @@ def get_pull_requests(page=1, per_page=10, state="in_review", search=""):
     else:
         skip = max(0, (page - 1) * per_page)
         page_items = prs[skip:skip + per_page]
+    for pr in page_items:
+        pr["risk"] = _build_pr_risk_info(pr.get("number"))
     return {
         "pull_requests": page_items,
         "total": total,
@@ -2351,6 +2468,105 @@ def drop_commit(hash):
     return _run(["git", "rebase", "--onto", hash + "^", hash])
 
 
+def remove_files_from_commit(commit_hash, file_list):
+    """Remove specific files from a commit, restoring their changes to working tree.
+
+    For HEAD commit: git reset <parent> -- <files>, then git commit --amend --no-edit.
+    For older commits: git rebase -i with exec commands to amend the target commit.
+
+    Returns (ok: bool, message: str).
+    """
+    import tempfile, stat as _stat
+
+    if not file_list:
+        return False, "No files specified"
+
+    if is_rebase_in_progress():
+        return False, "Another rebase is already in progress. Please finish or abort it first."
+
+    # Resolve full hash
+    full_hash_out, _, rc = _run(["git", "rev-parse", "--verify", commit_hash])
+    if rc != 0:
+        return False, f"Commit not found: {commit_hash}"
+    full_hash = full_hash_out.strip()
+
+    # Get parent commit
+    parent_out, _, rc = _run(["git", "rev-parse", full_hash + "^"])
+    if rc != 0:
+        return False, "Cannot remove files from root commit (no parent)"
+    parent = parent_out.strip()
+
+    # Check if this is the HEAD commit
+    head_out, _, _ = _run(["git", "rev-parse", "HEAD"])
+    is_head = head_out.strip() == full_hash
+
+    if is_head:
+        # Simple path: reset files to parent state in index (leaves working tree as-is), then amend
+        for f in file_list:
+            out, err, rc2 = _run(["git", "reset", parent, "--", f])
+            if rc2 != 0:
+                return False, f"Failed to reset '{f}': {err or out}"
+        out, err, rc2 = _run(["git", "commit", "--amend", "--no-edit"])
+        if rc2 != 0:
+            return False, f"Failed to amend commit: {err or out}"
+        return True, f"Removed {len(file_list)} file(s) from HEAD commit"
+
+    # Non-HEAD: use rebase -i with exec to amend the target commit
+    files_repr = repr(list(file_list))
+    target_repr = repr(full_hash)
+
+    seq_script = (
+        "#!/usr/bin/env python3\n"
+        "import sys, re, shlex\n"
+        f"target = {target_repr}\n"
+        f"files  = {files_repr}\n"
+        "def match(todo_h, full_h):\n"
+        "    return full_h.startswith(todo_h) or todo_h.startswith(full_h[:12])\n"
+        "lines = open(sys.argv[1]).readlines()\n"
+        "out = []\n"
+        "for ln in lines:\n"
+        "    out.append(ln)\n"
+        "    m = re.match(r'^pick(\\s+)(\\S+)(.*)', ln.rstrip())\n"
+        "    if m and match(m.group(2), target):\n"
+        "        for f in files:\n"
+        "            out.append('exec git reset HEAD~1 -- ' + shlex.quote(f) + '\\n')\n"
+        "        out.append('exec git commit --amend --no-edit\\n')\n"
+        "open(sys.argv[1], 'w').writelines(out)\n"
+    )
+
+    seq_f = tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, prefix="git_rmf_seq_")
+    seq_editor_path = seq_f.name
+    seq_f.write(seq_script)
+    seq_f.close()
+    os.chmod(seq_editor_path, os.stat(seq_editor_path).st_mode | _stat.S_IEXEC | _stat.S_IXGRP | _stat.S_IXOTH)
+
+    # Auto-stash uncommitted changes so rebase doesn't refuse to start
+    stash_out, _, stash_rc = _run(["git", "stash", "push", "--include-untracked", "-m", "gitboard-rmfiles-autostash"])
+    did_stash = stash_rc == 0 and "No local changes" not in stash_out
+
+    try:
+        env = {"GIT_SEQUENCE_EDITOR": seq_editor_path}
+        out, err, rc = _run(["git", "rebase", "-i", parent], env=env, timeout=180)
+        if rc != 0:
+            _run(["git", "rebase", "--abort"])
+            if did_stash:
+                _run(["git", "stash", "pop"])
+            return False, err or out or "Rebase failed"
+        if did_stash:
+            _run(["git", "stash", "pop"])
+        return True, f"Removed {len(file_list)} file(s) from commit {full_hash[:7]}"
+    except Exception as e:
+        _run(["git", "rebase", "--abort"])
+        if did_stash:
+            _run(["git", "stash", "pop"])
+        return False, str(e)
+    finally:
+        try:
+            os.unlink(seq_editor_path)
+        except Exception:
+            pass
+
+
 def squash_commits(from_h, to_h, msg):
     """Squash commits from from_h to to_h into a single commit with msg."""
     _, _, rc = _run(["git", "rev-parse", "--verify", from_h + "^"])
@@ -2361,14 +2577,90 @@ def squash_commits(from_h, to_h, msg):
     return _run(["git", "commit", "-m", msg])
 
 
+def squash_conflict_check(hashes):
+    """Fast pre-selection check for non-adjacent squash file conflicts.
+
+    Returns a dict:
+      {conflict: False}
+      {conflict: True, files: [...sorted...], suggested_uncheck: hash_str}
+
+    `suggested_uncheck` is the most-recently-added (last in log order) selected
+    commit that contributes to the conflict — a sensible default for the UI to
+    auto-deselect when the user confirms the warning.
+    """
+    if not hashes or len(hashes) < 2:
+        return {"conflict": False}
+
+    selected_set = set(h.strip() for h in hashes)
+
+    log_out, _, rc = _run(["git", "log", "--format=%H", "HEAD"])
+    if rc != 0:
+        return {"conflict": False}
+    all_hashes = list(reversed([h.strip() for h in log_out.strip().splitlines() if h.strip()]))
+
+    present = [h for h in all_hashes if h in selected_set]
+    if len(present) < 2:
+        return {"conflict": False}
+
+    oldest_selected = present[0]
+    mb_out, _, mb_rc = _run(["git", "rev-parse", oldest_selected + "^"])
+    if mb_rc != 0:
+        return {"conflict": False}
+    rebase_base = mb_out.strip()
+
+    range_out, _, _ = _run(["git", "log", "--format=%H", f"{rebase_base}..HEAD"])
+    range_hashes = list(reversed([h.strip() for h in range_out.strip().splitlines() if h.strip()]))
+
+    selected_in_range = [h for h in range_hashes if h in selected_set]
+    if len(selected_in_range) < 2:
+        return {"conflict": False}
+
+    first_pos = range_hashes.index(selected_in_range[0])
+    last_pos  = range_hashes.index(selected_in_range[-1])
+    is_adjacent = all(h in selected_set for h in range_hashes[first_pos:last_pos + 1])
+    if is_adjacent:
+        return {"conflict": False}
+
+    def _files_for(h):
+        out, _, _ = _run(["git", "diff-tree", "--no-commit-id", "-r", "--name-only", h])
+        return set(out.strip().splitlines()) if out.strip() else set()
+
+    interleaved = [h for h in range_hashes[first_pos:last_pos + 1] if h not in selected_set]
+    interleaved_files = set()
+    for h in interleaved:
+        interleaved_files |= _files_for(h)
+
+    if not interleaved_files:
+        return {"conflict": False}
+
+    # For each extra selected commit, find which ones overlap with interleaved
+    conflict_files = set()
+    offenders = []  # selected commits (excl. oldest) that cause conflicts
+    for h in selected_in_range[1:]:
+        overlap = _files_for(h) & interleaved_files
+        if overlap:
+            conflict_files |= overlap
+            offenders.append(h)
+
+    if not conflict_files:
+        return {"conflict": False}
+
+    # Suggest unchecking the newest offender (last in log = most recent commit)
+    suggested = offenders[-1] if offenders else selected_in_range[-1]
+    return {
+        "conflict": True,
+        "files": sorted(conflict_files),
+        "suggested_uncheck": suggested,
+    }
+
+
 def squash_selected_commits(hashes, msg, gpg_sign=False):
     """Squash a specific set of commits (may be non-adjacent) into one commit.
 
     Adjacent selection  → fast path: git reset --soft (no conflict risk).
     Non-adjacent        → rebase -i: keep the oldest selected commit in place
-                          (mark as `edit`), cherry-pick every other selected
-                          commit's diff onto it via `exec`, then `drop` them at
-                          their original position.  Middle commits are plain
+                          (mark as `pick` + trailing `exec` to cherry-pick extras
+                          and amend), then `drop` them at their original position.  Middle commits are plain
                           `pick` and stay in their original relative order.
 
     Returns (ok: bool, message: str, squash_commit_hash: str).
@@ -2484,6 +2776,46 @@ def squash_selected_commits(hashes, msg, gpg_sign=False):
     is_adjacent = all(h in selected_set for h in range_hashes[first_pos:last_pos + 1])
     touches_head = (last_pos == len(range_hashes) - 1)
 
+    # ── Non-adjacent preflight: detect file overlap ───────────────────────
+    # When commits are non-adjacent, the rebase must move selected commits out
+    # of their original position.  If any selected commit touches the same file
+    # as an intervening non-selected commit, git will produce a merge conflict.
+    # Detect this upfront and return a clear error instead of leaving the repo
+    # in a mid-rebase state.
+    if not is_adjacent:
+        def _files_for(h):
+            out, _, _ = _run(["git", "diff-tree", "--no-commit-id", "-r", "--name-only", h])
+            return set(out.strip().splitlines()) if out.strip() else set()
+
+        # Collect files touched by each intervening (non-selected) commit
+        # that sits between the first and last selected commit.
+        interleaved_non_selected = [
+            h for h in range_hashes[first_pos:last_pos + 1]
+            if h not in selected_set
+        ]
+        interleaved_files = set()
+        for h in interleaved_non_selected:
+            interleaved_files |= _files_for(h)
+
+        if interleaved_files:
+            # Check whether any selected commit (except oldest, which stays in
+            # place) touches files also touched by the intervening commits.
+            conflict_files = set()
+            for h in selected_in_range[1:]:
+                conflict_files |= _files_for(h) & interleaved_files
+            if conflict_files:
+                sample = sorted(conflict_files)[:5]
+                more = f" (+{len(conflict_files)-5} more)" if len(conflict_files) > 5 else ""
+                return False, (
+                    "Cannot squash: the selected commits cannot be reordered without conflicts.\n"
+                    "The commits you selected are separated by other commits that modify the same files.\n\n"
+                    f"Conflicting files: {', '.join(sample)}{more}\n\n"
+                    "💡 To squash these commits:\n"
+                    "  • Select only adjacent commits (no gaps), or\n"
+                    "  • Also select the intervening commits between them, or\n"
+                    "  • Cherry-pick the target commits onto a clean topic branch and squash there."
+                ), ""
+
     # `reset --soft rebase_base` only preserves "selected-only squash" when
     # the selected adjacent block reaches HEAD. Otherwise it would also include
     # newer non-selected commits.
@@ -2569,47 +2901,73 @@ def squash_selected_commits(hashes, msg, gpg_sign=False):
     # no new merge-commit objects are created referencing unsigned develop
     # parents — solving GitHub "require signed commits" push rejections.
     #
-    # Strategy:
-    #   oldest selected  → edit  (rebase pauses; we cherry-pick extras + amend)
-    #   other selected   → drop  (content already merged via cherry-pick above)
-    #   everything else  → pick  (unchanged, replayed in order)
-    # Middle non-selected non-merge commits survive unchanged.
+    # Strategy — reorder + squash (no cherry-pick):
+    #   Build the todo list so all selected commits appear together right after
+    #   the oldest selected position, in their original relative order, then use
+    #   `squash` to fold them into one.  Non-selected commits are re-inserted
+    #   after the squash block in their original relative order.
+    #
+    #   Concretely for commits [A B* C D* E] where * = selected, oldest = A:
+    #     pick A_hash   ← oldest selected
+    #     squash D_hash ← next selected (moved here from later)
+    #     exec git commit --amend -m "msg"   ← set final message
+    #     pick B_hash   ← non-selected, replayed after squash block
+    #     pick C_hash
+    #     pick E_hash
+    #
+    #   This avoids `git cherry-pick` entirely, so there is no risk of the
+    #   "your local changes would be overwritten by merge" error that arises
+    #   when cherry-pick sees files already modified by a previous `pick` step.
 
-    extra_selected = selected_in_range[1:]  # to be cherry-picked onto the first
+    extra_selected = selected_in_range[1:]  # to squash onto oldest
 
     gpg_amend = "-S " if gpg_sign else ""
     msg_q = _shell_quote(msg)
-
-    # exec commands inserted right after "edit oldest_selected"
-    exec_lines = []
-    for h in extra_selected:
-        exec_lines.append(f"exec git cherry-pick --no-commit {h}")
-    exec_lines.append(
-        f"exec git commit --amend {gpg_amend}--allow-empty -m {msg_q}"
-    )
-    exec_block = "\n".join(exec_lines)
-
+    exec_amend = f"exec git commit --amend {gpg_amend}--allow-empty -m {msg_q}"
 
     seq_script = (
         "#!/usr/bin/env python3\n"
         "import sys, re\n"
-        f"oldest = {repr(oldest_selected)}\n"
-        f"extra  = {repr(set(extra_selected))}\n"
-        f"exec_blk = {repr(exec_block)}\n"
+        f"oldest   = {repr(oldest_selected)}\n"
+        f"extra    = {repr(list(extra_selected))}\n"  # ordered oldest→newest
+        f"extra_s  = {repr(set(extra_selected))}\n"
+        f"amend_ln = {repr(exec_amend)}\n"
+        # Build a map: abbrev_from_todo → full_hash for extra
+        # We match by prefix (git uses variable-length abbrevs in todo).
+        "def match(todo_h, full_h):\n"
+        "    return full_h.startswith(todo_h) or todo_h.startswith(full_h[:12])\n"
         "lines = open(sys.argv[1]).readlines()\n"
-        "out   = []\n"
+        # Pass 1: collect the pick line text for each extra selected commit,
+        # keyed by its full hash so we can emit them in order.
+        "extra_line = {}\n"
         "for ln in lines:\n"
         "    m = re.match(r'^pick(\\s+)(\\S+)(.*)', ln.rstrip())\n"
         "    if m:\n"
         "        h = m.group(2)\n"
-        "        if oldest.startswith(h) or h.startswith(oldest[:12]):\n"
-        "            out.append('edit ' + h + m.group(3) + '\\n')\n"
-        "            out.append(exec_blk + '\\n')\n"
+        "        for e in extra_s:\n"
+        "            if match(h, e):\n"
+        "                extra_line[e] = ln\n"
+        "                break\n"
+        # Pass 2: rebuild the todo
+        "out = []\n"
+        "oldest_emitted = False\n"
+        "for ln in lines:\n"
+        "    m = re.match(r'^pick(\\s+)(\\S+)(.*)', ln.rstrip())\n"
+        "    if m:\n"
+        "        h = m.group(2)\n"
+        "        if match(h, oldest):\n"
+        "            out.append(ln)\n"  # keep as pick
+        "            for e in extra:\n"  # inject extras as squash, in order
+        "                el = extra_line.get(e)\n"
+        "                if el:\n"
+        "                    out.append(re.sub(r'^pick', 'squash', el))\n"
+        "            out.append(amend_ln + '\\n')\n"  # set final message
+        "            oldest_emitted = True\n"
         "            continue\n"
-        "        if any(e.startswith(h[:12]) or h.startswith(e[:12]) for e in extra):\n"
-        "            out.append('drop ' + h + m.group(3) + '\\n')\n"
-        "            continue\n"
+        "        if any(match(h, e) for e in extra_s):\n"
+        "            continue\n"  # drop from original position (already emitted above)
         "    out.append(ln)\n"
+        "open(sys.argv[1], 'w').writelines(out)\n"
         "open(sys.argv[1], 'w').writelines(out)\n"
     )
 
@@ -2632,6 +2990,11 @@ def squash_selected_commits(hashes, msg, gpg_sign=False):
     pre_head_na, _, _ = _run(["git", "rev-parse", "HEAD"])
     pre_head_na = (pre_head_na or "").strip()
 
+    # Auto-stash any uncommitted changes so `git rebase -i` doesn't refuse to
+    # start with "You have unstaged changes."
+    stash_out, _, stash_rc = _run(["git", "stash", "push", "--include-untracked", "-m", "gitboard-squash-autostash"])
+    did_stash = stash_rc == 0 and "No local changes" not in stash_out
+
     try:
         env = {
             "GIT_SEQUENCE_EDITOR": seq_editor_path,
@@ -2650,6 +3013,8 @@ def squash_selected_commits(hashes, msg, gpg_sign=False):
         )
         if rc != 0:
             _run(["git", "rebase", "--abort"])
+            if did_stash:
+                _run(["git", "stash", "pop"])
             _write_local_log("squash-selected", [
                 f"branch={branch}  mode=non-adjacent  rc={rc}  selected={len(hashes)}",
                 f"pre_head={pre_head_na[:12]}",
@@ -2678,14 +3043,15 @@ def squash_selected_commits(hashes, msg, gpg_sign=False):
         if not post_head_na or post_head_na == pre_head_na:
             if pre_head_na:
                 _run(["git", "reset", "--hard", pre_head_na])
+            if did_stash:
+                _run(["git", "stash", "pop"])
             details = (
                 "Squash failed: HEAD did not move after `git rebase -i`.\n"
                 f"details: branch={branch}, mode=non-adjacent, base={rebase_base[:12]}\n"
                 f"pre_head={pre_head_na[:12]}  post_head={post_head_na[:12] if post_head_na else '-'}\n"
                 f"merge_commits_in_range={len(merge_set)}\n"
                 "reason=rebase produced no history rewrite; the sequence editor "
-                "may have failed to match commits, or merge commits shielded the "
-                "selection from `drop`.\n"
+                "may have failed to match commits, or all commits were no-ops.\n"
                 "hint=check gitboard.log for the squash-selected entry; consider "
                 "flattening merges first or squashing on a topic branch that "
                 "contains only the target commits."
@@ -2696,11 +3062,15 @@ def squash_selected_commits(hashes, msg, gpg_sign=False):
         if remain:
             if pre_head_na:
                 _run(["git", "reset", "--hard", pre_head_na])
+            if did_stash:
+                _run(["git", "stash", "pop"])
             _write_local_log("squash-selected", [
                 f"branch={branch}  mode=non-adjacent  remain={len(remain)}",
                 "rolled back to pre_head",
             ])
             return False, _build_presence_failure_details(remain, "non-adjacent-rebase"), ""
+        if did_stash:
+            _run(["git", "stash", "pop"])
         return True, f"Squashed {len(selected_in_range)} non-adjacent commit(s) into 1", _resolve_new_squash_hash()
     finally:
         for p in (seq_editor_path, editor_path):
