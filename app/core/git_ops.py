@@ -919,7 +919,25 @@ def _run_gitop_streaming(job_id, op, mode=None, force=False):
 def current_branch():
     """Return the name of the current git branch."""
     out, _, rc = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
-    return out if rc == 0 else "unknown"
+    if rc != 0:
+        return "unknown"
+    branch = (out or "").strip()
+    if not branch or branch == "HEAD":
+        return branch or "unknown"
+    # Canonicalize by local refs to avoid accidental casing drift in display,
+    # e.g. showing "Feature/..." while the actual local ref is "feature/...".
+    refs_out, _, refs_rc = _run(["git", "for-each-ref", "--format=%(refname:short)", "refs/heads"])
+    if refs_rc == 0 and refs_out:
+        refs = [r.strip() for r in refs_out.splitlines() if r.strip()]
+        exact = [r for r in refs if r == branch]
+        if exact:
+            return exact[0]
+        lower = branch.lower()
+        ci = [r for r in refs if r.lower() == lower]
+        if ci:
+            lower_pref = [r for r in ci if r == r.lower()]
+            return lower_pref[0] if lower_pref else ci[0]
+    return branch
 
 
 def display_branch():
