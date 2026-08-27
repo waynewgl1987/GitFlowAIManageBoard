@@ -487,7 +487,7 @@ input[type="checkbox"]{width:23px;height:23px;cursor:pointer;accent-color:var(--
 .loading-live-track{position:relative;width:100%;height:8px;background:#e2e8f0;border-radius:999px;overflow:hidden}
 .loading-live-fill{display:block;height:100%;width:0;background:linear-gradient(90deg,#60a5fa,#2563eb);border-radius:999px;transition:width .18s linear}
 .skeleton-stack{display:flex;flex:1;min-height:0;flex-direction:column;gap:8px;margin-top:4px;width:100%}
-.skeleton-line{display:block;height:34px;border-radius:8px;background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%);background-size:220% 100%;animation:skeletonShift 1.1s linear infinite}
+.skeleton-line{display:block;height:34px;border-radius:8px;background:linear-gradient(90deg,#e2e8f0 20%,#d7e4ff 50%,#e2e8f0 80%);background-size:220% 100%;animation:skeletonShift 3.8s ease-in-out infinite}
 .skeleton-line.w-100{width:100%}
 .skeleton-line.w-92{width:92%}
 .skeleton-line.w-86{width:86%}
