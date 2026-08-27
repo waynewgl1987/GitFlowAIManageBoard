@@ -302,7 +302,6 @@ var T = {
   force_push_btn: {en:'Force Push Now', zh:'立即 Force Push'},
   force_push_later: {en:'Later', zh:'稍后手动操作'},
   squash_tip: {en:'💡 Tip: Check 2 or more commit checkboxes to merge them into one commit (Squash)', zh:'💡 提示：勾选 2 个或以上 commit 的 checkbox，可将它们合并为一个新 commit（Squash）'},
-  log_scroll_hint: {en:'↑ scroll up to see more commits ↑', zh:'↑ 向上滚动查看更多提交 ↑'},
   squash_panel_title: {en:'Squash Commits', zh:'Squash 合并'},
   squash_nonadj_note: {en:'Non-adjacent commits selected — they will be grouped at the oldest position via interactive rebase. Only these commits are squashed; others are NOT affected.', zh:'所选 commit 不相邻，将通过 interactive rebase 把它们集中后再合并，其余 commit 顺序不变、不受影响。'},
   create_branch_btn: {en:'+ Create Branch', zh:'+ 新建分支'},
