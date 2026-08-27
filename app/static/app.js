@@ -871,11 +871,7 @@ function _enhanceLoadingBar(el){
   var rowCount=Math.max(3,Math.floor((targetH-headAndTrack)/rowH));
   var rowsHtml='';
   for(var i=0;i<rowCount;i++){
-    var cls='w-100';
-    if(i%4===1) cls='w-92';
-    else if(i%4===2) cls='w-78';
-    else if(i%4===3) cls='w-86';
-    rowsHtml+='<span class="skeleton-line '+cls+'"></span>';
+    rowsHtml+='<span class="skeleton-line w-100"></span>';
   }
   el.dataset.loadingEnhanced='1';
   el.innerHTML=
