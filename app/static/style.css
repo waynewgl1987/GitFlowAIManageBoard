@@ -545,6 +545,8 @@ mark{background:#fef3c7;border-radius:2px;padding:0 1px}
   white-space:nowrap;
   line-height:1.2;
   min-width:0;
+  text-transform:none !important;
+  font-variant-caps:normal;
 }
 @keyframes branch-pulse{
   0%,100%{box-shadow:0 0 0 3px rgba(99,102,241,.25),0 4px 12px rgba(29,78,216,.4)}
