@@ -1143,6 +1143,9 @@ function _setModalLayout(stylePatch){
 }
 
 function closeModal() {
+  if(typeof _cancelCommitAIPanelRequests==='function' && document.getElementById('commit-ai-compare-root')){
+    _cancelCommitAIPanelRequests();
+  }
   if(_modalRestoreFn)_modalRestoreFn();
   document.getElementById('modal-bg').classList.remove('show');
   modalCallback=null;
@@ -4491,9 +4494,37 @@ var prDebounceTimer=null;
 var prState='in_review';
 var currentPRData=null;
 var _prDiffCache={}; // prNumber -> unified diff text
+var _prAIAnalysisRequests={}; // prNumber -> in-flight PR analysis request
 var _logCommitMap={}; // full-hash -> commit row data
 var _commitFileDiffStore={}; // key: "<commit>::<file>" -> file diff text for that commit
+var _commitFullDiffStore={}; // full-hash -> full commit diff
 var _commitAIPanelState=null;
+var _commitAIAnalysisRequest=null;
+
+function _cancelCommitAIPanelRequests(){
+  if(_commitAIAnalysisRequest && _commitAIAnalysisRequest.controller){
+    _commitAIAnalysisRequest.controller.abort();
+  }
+  _commitAIAnalysisRequest=null;
+  var st=_commitAIPanelState;
+  if(st){
+    if(st.historyController) st.historyController.abort();
+    if(st.selectionController) st.selectionController.abort();
+  }
+  _commitAIPanelState=null;
+}
+
+function _updateCommitAICloseButton(st){
+  if(!st || _commitAIPanelState!==st)return;
+  var btn=document.getElementById('commit-ai-close-btn');
+  var loading=st.currentDiffLoading || st.historyLoading || !!st.selectionController;
+  if(btn){
+    btn.textContent=loading?_aiCmpText('取消','Cancel'):_aiCmpText('关闭','Close');
+    btn.title=loading
+      ?_aiCmpText('取消加载并关闭弹窗','Cancel loading and close this dialog')
+      :_aiCmpText('关闭弹窗','Close this dialog');
+  }
+}
 function onLogSearchInput(){
   var val=document.getElementById('log-search').value;
   document.getElementById('log-search-btn').style.display=val?'inline-block':'none';
@@ -4738,7 +4769,7 @@ function renderPullRequests(data){
     row+='<td class="log-status">'+statusCell+'</td>';
     row+='<td class="log-actions">'
       +'<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();window.open(\''+escapeJS(pr.url||'')+'\',\'_blank\')">'+t('prs_view')+'</button>'
-      +'<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();openPRAIAnalysis('+Number(pr.number||0)+',\''+escapeAttr(pr.head_sha||'')+'\')">🤖 '+_aiCmpText('AI 分析','AI Analysis')+'</button>'
+      +'<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();openPRAIAnalysis('+Number(pr.number||0)+',\''+escapeAttr(pr.head_sha||'')+'\',this)">🤖 '+_aiCmpText('AI 分析','AI Analysis')+'</button>'
       +'</td>';
     row+='<td style="text-align:center"><span class="file-toggle" id="pr-toggle-'+idx+'">▶</span></td>';
     row+='</tr>';
@@ -4840,26 +4871,62 @@ function openPRAICompareFile(filePath, headSha, prNumber){
   _openCommitAIComparePanel({mode:'file',filePath:filePath,commitHash:headSha||('pr-'+prNumber),currentDiff:currentDiff});
 }
 
-function openPRAIAnalysis(prNumber, headSha){
+function openPRAIAnalysis(prNumber, headSha, triggerBtn){
   var key=''+prNumber;
+  if(_prAIAnalysisRequests[key])return;
+  var request={button:triggerBtn||null};
+  _prAIAnalysisRequests[key]=request;
+  if(triggerBtn){
+    triggerBtn.disabled=true;
+    triggerBtn.setAttribute('aria-busy','true');
+    triggerBtn.innerHTML='<span class="spinner" aria-hidden="true" style="width:12px;height:12px;margin-right:5px;border-color:rgba(255,255,255,.55);border-top-color:#fff"></span>'
+      +_aiCmpText('正在加载 PR...','Loading PR...');
+  }
+
+  var finish=function(){
+    if(request.button && request.button.isConnected){
+      request.button.disabled=false;
+      request.button.removeAttribute('aria-busy');
+      request.button.innerHTML='🤖 '+_aiCmpText('AI 分析','AI Analysis');
+    }
+    if(_prAIAnalysisRequests[key]===request)delete _prAIAnalysisRequests[key];
+  };
   var openWithDiff=function(diffText){
     if(!diffText||!diffText.trim()){
       addMsg('❌ '+_aiCmpText('无法加载该 PR 的代码改动。','Cannot load this PR diff.'),'error');
+      finish();
       return;
     }
-    _openCommitAIComparePanel({mode:'commit',filePath:'',commitHash:headSha||('pr-'+prNumber),currentDiff:diffText});
+    try{
+      _openCommitAIComparePanel({mode:'commit',filePath:'',commitHash:headSha||('pr-'+prNumber),currentDiff:diffText});
+    }finally{
+      finish();
+    }
   };
-  if(_prDiffCache[key]){
-    openWithDiff(_prDiffCache[key]);
-    return;
-  }
-  apiGet('/api/pull-request-diff?number='+encodeURIComponent(prNumber),function(data){
-    if(!data||!data.ok){
-      addMsg('❌ '+((data&&data.error)||_aiCmpText('加载失败','Load failed')),'error');
+
+  // Paint the button spinner before reading cache or starting the request.
+  requestAnimationFrame(function(){
+    if(_prAIAnalysisRequests[key]!==request)return;
+    if(_prDiffCache[key]){
+      openWithDiff(_prDiffCache[key]);
       return;
     }
-    _prDiffCache[key]=data.diff||'';
-    openWithDiff(_prDiffCache[key]);
+    fetch(API_BASE+'/api/pull-request-diff?number='+encodeURIComponent(prNumber))
+      .then(function(r){
+        if(!r.ok)throw new Error('HTTP '+r.status);
+        return r.json();
+      })
+      .then(function(data){
+        if(!data||!data.ok){
+          throw new Error((data&&data.error)||_aiCmpText('加载失败','Load failed'));
+        }
+        _prDiffCache[key]=data.diff||'';
+        openWithDiff(_prDiffCache[key]);
+      })
+      .catch(function(e){
+        addMsg('❌ '+_aiCmpText('PR 代码改动加载失败: ','Failed to load PR diff: ')+(e.message||e),'error');
+        finish();
+      });
   });
 }
 
@@ -4937,7 +5004,7 @@ function renderLog(data){
     row+='<td class="log-actions">';
     row+='<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();showResetModal(\''+c.hash+'\',\''+c.short_hash+'\')">Reset</button>';
     row+='<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();showRevertModal(\''+c.hash+'\',\''+c.short_hash+'\')">Revert</button>';
-    row+='<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();openCommitAIAnalysis(\''+escapeAttr(c.hash)+'\')" title="'+escapeAttr(_aiCmpText('分析这个 commit 的全部代码改动','Analyze all code changes in this commit'))+'">🤖 '+_aiCmpText('AI 分析','AI Analysis')+'</button>';
+    row+='<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();openCommitAIAnalysis(\''+escapeAttr(c.hash)+'\',this)" title="'+escapeAttr(_aiCmpText('分析这个 commit 的全部代码改动','Analyze all code changes in this commit'))+'">🤖 '+_aiCmpText('AI 分析','AI Analysis')+'</button>';
     row+='</td>';
     row+='<td style="text-align:center"><span class="file-toggle" id="log-toggle-'+idx+'">▶</span></td>';
     row+='</tr>';
@@ -5270,6 +5337,12 @@ function _buildAIDiffSectionList(diffText, forcedTitle){
 
 function _renderAIDiffComparisonSections(st){
   if(!st) return '';
+  if(st.currentDiffLoading){
+    return '<div style="padding:14px;color:#64748b;font-size:12px">'+_aiCmpText('正在加载当前提交 diff...','Loading current commit diff...')+'</div>';
+  }
+  if(st.currentDiffError){
+    return '<div style="padding:14px;color:#b91c1c;font-size:12px">'+escapeHtml(st.currentDiffError)+'</div>';
+  }
   var forcedTitle=st.mode==='file' ? st.filePath : '';
   var currSections=_buildAIDiffSectionList(st.currentDiff||'', forcedTitle);
   var histSections=_buildAIDiffSectionList(st.selectedHistoryDiff||'', forcedTitle);
@@ -5289,6 +5362,7 @@ function _renderAIDiffComparisonSections(st){
   if(!order.length){
     return '<div style="padding:10px;color:#94a3b8;font-size:12px">'+_aiCmpText('无可用 diff。','No diff available.')+'</div>';
   }
+  st.comparisonSections=[];
   var html='<div style="font-size:11px;color:#64748b;margin-bottom:6px">'+_aiCmpText('按文件分段对比（默认折叠）','Sectioned comparison by file (collapsed by default)')+'</div>';
   if(!st.selectedHistoryDiff){
     html+='<div style="font-size:11px;color:#64748b;margin-bottom:8px">'+_aiCmpText('请在左侧选择历史提交后查看逐段对比。','Select a historical commit on the left to view section-by-section comparison.')+'</div>';
@@ -5297,23 +5371,35 @@ function _renderAIDiffComparisonSections(st){
     var title=order[k];
     var curText=currMap[title]||'';
     var oldText=histMap[title]||'';
+    st.comparisonSections.push({current:curText,history:oldText});
     var bodyId='commit-ai-cmp-sec-'+k;
     html+='<div style="border:1px solid #dbe3f1;border-radius:8px;background:#fbfdff;overflow:hidden;margin-bottom:8px;box-shadow:none">';
-    html+='<div style="display:flex;align-items:center;padding:8px 10px;background:#f3f7ff;cursor:pointer" onclick="toggleDiffFile(\''+bodyId+'\',this)">';
+    html+='<div style="display:flex;align-items:center;padding:8px 10px;background:#f3f7ff;cursor:pointer" onclick="_toggleCommitAIDiffSection('+k+',\''+bodyId+'\',this)">';
     html+='<span class="file-toggle" id="'+bodyId+'-toggle">▶</span>';
     html+='<b style="margin-left:8px;color:#1d4ed8;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">'+escapeHtml(title)+'</b>';
     html+='<span style="flex-shrink:0;font-size:10px;color:#64748b;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:1px 6px;margin-right:4px">'+_aiCmpText('当前 ','Current ')+(curText?curText.split('\n').length:0)+'</span>';
     html+='<span style="flex-shrink:0;font-size:10px;color:#64748b;background:#ecfeff;border:1px solid #a5f3fc;border-radius:10px;padding:1px 6px">'+_aiCmpText('历史 ','History ')+(oldText?oldText.split('\n').length:0)+'</span>';
     html+='</div>';
-    html+='<div id="'+bodyId+'" style="display:none;padding:8px 10px;background:#fbfdff;overflow:auto">';
-    html+='<div style="font-size:11px;color:#0f766e;margin-bottom:6px;font-weight:700">'+_aiCmpText('当前提交','Current Commit')+'</div>';
-    html+=(curText?('<div class="diff-block">'+highlightDiff(curText)+'</div>'):('<div style="padding:8px;color:#94a3b8;font-size:12px">'+_aiCmpText('当前提交该 section 无改动','No changes in this section for current commit')+'</div>'));
-    html+='<div style="height:8px"></div>';
-    html+='<div style="font-size:11px;color:#0369a1;margin-bottom:6px;font-weight:700">'+_aiCmpText('历史提交','Historical Commit')+'</div>';
-    html+=(oldText?('<div class="diff-block">'+highlightDiff(oldText)+'</div>'):('<div style="padding:8px;color:#94a3b8;font-size:12px">'+_aiCmpText('历史提交该 section 无改动','No changes in this section for historical commit')+'</div>'));
-    html+='</div></div>';
+    html+='<div id="'+bodyId+'" style="display:none;padding:8px 10px;background:#fbfdff;overflow:auto"></div></div>';
   }
   return html;
+}
+
+function _toggleCommitAIDiffSection(index, bodyId, header){
+  var body=document.getElementById(bodyId);
+  if(!body)return;
+  var opening=body.style.display==='none';
+  toggleDiffFile(bodyId,header);
+  if(!opening || body.getAttribute('data-rendered')==='1')return;
+  var st=_commitAIPanelState;
+  var section=st&&st.comparisonSections&&st.comparisonSections[index];
+  if(!section)return;
+  var html='<div style="font-size:11px;color:#0f766e;margin-bottom:6px;font-weight:700">'+_aiCmpText('当前提交','Current Commit')+'</div>';
+  html+=section.current?('<div class="diff-block">'+highlightDiff(section.current)+'</div>'):('<div style="padding:8px;color:#94a3b8;font-size:12px">'+_aiCmpText('当前提交该 section 无改动','No changes in this section for current commit')+'</div>');
+  html+='<div style="height:8px"></div><div style="font-size:11px;color:#0369a1;margin-bottom:6px;font-weight:700">'+_aiCmpText('历史提交','Historical Commit')+'</div>';
+  html+=section.history?('<div class="diff-block">'+highlightDiff(section.history)+'</div>'):('<div style="padding:8px;color:#94a3b8;font-size:12px">'+_aiCmpText('历史提交该 section 无改动','No changes in this section for historical commit')+'</div>');
+  body.innerHTML=html;
+  body.setAttribute('data-rendered','1');
 }
 
 function _renderCommitAIComparisonDiffs(){
@@ -5384,18 +5470,90 @@ function openCommitAICompare(filePath, commitHash){
   _openCommitAIComparePanel({mode:'file',filePath:filePath,commitHash:commitHash,currentDiff:currentDiff});
 }
 
-function openCommitAIAnalysis(commitHash){
-  apiGet('/api/commit-diff?commit='+encodeURIComponent(commitHash),function(data){
-    var diff=(data&&data.diff)||'';
-    if(!diff.trim()){
-      addMsg('❌ '+_aiCmpText('无法加载该 commit 的 diff。','Cannot load commit diff.'),'error');
-      return;
+function openCommitAIAnalysis(commitHash, triggerBtn){
+  if(_commitAIAnalysisRequest && _commitAIAnalysisRequest.commitHash===commitHash) return;
+  if(_commitAIAnalysisRequest && _commitAIAnalysisRequest.controller){
+    if(_commitAIAnalysisRequest.button && _commitAIAnalysisRequest.button.isConnected){
+      _commitAIAnalysisRequest.button.disabled=false;
+      _commitAIAnalysisRequest.button.innerHTML='🤖 '+_aiCmpText('AI 分析','AI Analysis');
     }
-    _openCommitAIComparePanel({mode:'commit',filePath:'',commitHash:commitHash,currentDiff:diff});
+    _commitAIAnalysisRequest.controller.abort();
+  }
+
+  var controller=new AbortController();
+  var request={commitHash:commitHash,controller:controller,button:triggerBtn||null};
+  _commitAIAnalysisRequest=request;
+  if(triggerBtn){
+    triggerBtn.disabled=true;
+    triggerBtn.innerHTML='🤖 '+_aiCmpText('加载中...','Loading...')
+      +' <span aria-hidden="true" style="display:inline-block;width:12px;height:12px;margin-left:5px;vertical-align:-2px;border:2px solid rgba(255,255,255,.55);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite"></span>';
+  }
+
+  // Let the browser paint the button loading state before constructing the large modal.
+  requestAnimationFrame(function(){
+    setTimeout(function(){
+      if(_commitAIAnalysisRequest!==request || controller.signal.aborted) return;
+      var cached=_commitFullDiffStore[commitHash];
+      _openCommitAIComparePanel({
+        mode:'commit',
+        filePath:'',
+        commitHash:commitHash,
+        currentDiff:cached||'',
+        currentDiffLoading:!cached
+      });
+      if(cached){
+        if(request.button && request.button.isConnected){
+          request.button.disabled=false;
+          request.button.innerHTML='🤖 '+_aiCmpText('AI 分析','AI Analysis');
+        }
+        if(_commitAIAnalysisRequest===request) _commitAIAnalysisRequest=null;
+        return;
+      }
+
+      var st=_commitAIPanelState;
+      fetch(API_BASE+'/api/commit-diff?commit='+encodeURIComponent(commitHash),{signal:controller.signal})
+        .then(function(r){
+          if(!r.ok) throw new Error('HTTP '+r.status);
+          return r.json();
+        })
+        .then(function(data){
+          if(_commitAIPanelState!==st) return;
+          var diff=(data&&data.diff)||'';
+          st.currentDiffLoading=false;
+          if(!diff.trim()){
+            st.currentDiffError=_aiCmpText('无法加载该 commit 的 diff。','Cannot load commit diff.');
+          }else{
+            st.currentDiff=diff;
+            _commitFullDiffStore[commitHash]=diff;
+          }
+          var purposeBtn=document.getElementById('commit-ai-purpose-btn');
+          if(purposeBtn) purposeBtn.disabled=!st.currentDiff;
+          _renderCommitAIComparisonDiffs();
+          _updateCommitAICloseButton(st);
+        })
+        .catch(function(e){
+          if(e.name==='AbortError' || _commitAIPanelState!==st) return;
+          st.currentDiffLoading=false;
+          st.currentDiffError=_aiCmpText('加载 commit diff 失败: ','Failed to load commit diff: ')+e.message;
+          _renderCommitAIComparisonDiffs();
+          _updateCommitAICloseButton(st);
+        })
+        .finally(function(){
+          if(request.button && request.button.isConnected){
+            request.button.disabled=false;
+            request.button.innerHTML='🤖 '+_aiCmpText('AI 分析','AI Analysis');
+          }
+          if(_commitAIAnalysisRequest===request) _commitAIAnalysisRequest=null;
+        });
+    },250);
   });
 }
 
 function _openCommitAIComparePanel(opts){
+  if(_commitAIPanelState){
+    if(_commitAIPanelState.historyController) _commitAIPanelState.historyController.abort();
+    if(_commitAIPanelState.selectionController) _commitAIPanelState.selectionController.abort();
+  }
   var mode=(opts&&opts.mode)||'file';
   var filePath=(opts&&opts.filePath)||'';
   var commitHash=(opts&&opts.commitHash)||'';
@@ -5405,6 +5563,8 @@ function _openCommitAIComparePanel(opts){
     filePath:filePath,
     currentCommitHash:commitHash,
     currentDiff:currentDiff,
+    currentDiffLoading:!!(opts&&opts.currentDiffLoading),
+    currentDiffError:'',
     selectedHistoryCommit:null,
     selectedHistoryDiff:'',
     historyPage:0,
@@ -5429,7 +5589,7 @@ function _openCommitAIComparePanel(opts){
   document.getElementById('modal-title').innerHTML='🤖 '+_aiCmpText('AI 对比面板','AI Compare Panel')
     +' <span style="font-size:12px;font-weight:500;color:#64748b">— '+escapeHtml(mode==='file'?filePath:_aiCmpText('整个 Commit','Entire Commit'))+'</span>';
   document.getElementById('modal-msg').innerHTML=
-    '<div id="commit-ai-compare-root" style="height:76vh;display:flex;gap:10px;overflow:hidden">'
+    '<div id="commit-ai-compare-root" style="height:76vh;display:flex;gap:10px;overflow:hidden;position:relative">'
       +'<div style="width:31%;min-width:300px;border:1px solid #e5e7eb;border-radius:10px;display:flex;flex-direction:column;overflow:hidden;background:#fff">'
         +'<div style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;font-weight:700;color:#0f172a">🕘 '+(mode==='file'?_aiCmpText('文件历史提交','File History Commits'):_aiCmpText('分支历史提交','Branch History Commits'))+'</div>'
         +'<div id="commit-ai-history-progress" style="padding:8px 12px;border-bottom:1px solid #f1f5f9;background:#f8fafc;display:none">'
@@ -5450,7 +5610,7 @@ function _openCommitAIComparePanel(opts){
           +'<div id="commit-ai-compare-sections"></div>'
         +'</div>'
         +'<div style="padding:8px 12px;border-top:1px solid #f1f5f9;background:#f8fafc">'
-          +'<button id="commit-ai-purpose-btn" class="btn btn-success" style="padding:5px 10px;font-size:12px" onclick="runCurrentCommitPurposeAnalysis()">🎯 '+(mode==='file'?_aiCmpText('分析修改目的与合理性','Analyze purpose & reasonableness'):_aiCmpText('分析该 Commit 目的与合理性','Analyze this commit purpose & reasonableness'))+'</button>'
+          +'<button id="commit-ai-purpose-btn" class="btn btn-success" style="padding:5px 10px;font-size:12px" onclick="runCurrentCommitPurposeAnalysis()"'+(currentDiff?'':' disabled')+'>🎯 '+(mode==='file'?_aiCmpText('分析修改目的与合理性','Analyze purpose & reasonableness'):_aiCmpText('分析该 Commit 目的与合理性','Analyze this commit purpose & reasonableness'))+'</button>'
         +'</div>'
       +'</div>'
       +'<div style="width:35%;min-width:340px;border:1px solid #e5e7eb;border-radius:10px;display:flex;flex-direction:column;overflow:hidden;background:#fff">'
@@ -5477,10 +5637,11 @@ function _openCommitAIComparePanel(opts){
   var btnsDiv=document.getElementById('modal-btns');
   btnsDiv.innerHTML='';
   var closeBtn=document.createElement('button');
+  closeBtn.id='commit-ai-close-btn';
   closeBtn.className='btn btn-secondary';
-  closeBtn.textContent=_aiCmpText('关闭','Close');
   closeBtn.onclick=closeModal;
   btnsDiv.appendChild(closeBtn);
+  _updateCommitAICloseButton(_commitAIPanelState);
   document.getElementById('modal-bg').classList.add('show');
 
   var listEl=document.getElementById('commit-ai-history-list');
@@ -5494,6 +5655,7 @@ function _openCommitAIComparePanel(opts){
   }
   _commitAIPanelState.chatHistory=[{
     role:'assistant',
+    uiOnly:true,
     text:(mode==='file'
       ?_aiCmpText('请选择左侧历史提交后点击“分析”，或点击中间底部按钮分析当前提交目的与合理性。分析完成后可在底部继续对话。','Select a historical commit on the left and click "Analyze", or use the middle-bottom button to analyze current commit purpose/reasonableness. After analysis, continue chatting below.')
       :_aiCmpText('请选择左侧历史提交后点击“分析”，对比整个 Commit 的改动；或点击中间底部按钮分析当前 Commit 的目的与合理性。分析完成后可在底部继续对话。','Select a historical commit on the left and click "Analyze" to compare full commit changes; or use the middle-bottom button to analyze current commit purpose/reasonableness. After analysis, continue chatting below.'))
@@ -5536,7 +5698,9 @@ function _renderCommitAIHistoryList(){
   var listEl=document.getElementById('commit-ai-history-list');
   if(!st||!listEl)return;
   if(!st.historyItems.length){
-    listEl.innerHTML='<div style="padding:14px;color:#64748b;font-size:12px">'+(st.mode==='file'?_aiCmpText('该文件没有历史提交记录。','No history commits found for this file.'):_aiCmpText('未找到历史提交记录。','No history commits found.'))+'</div>';
+    listEl.innerHTML='<div style="padding:14px;color:'+(st.historyError?'#b91c1c':'#64748b')+';font-size:12px">'
+      +(st.historyError?escapeHtml(st.historyError):(st.historyLoading?_aiCmpText('正在加载历史提交...','Loading history commits...'):(st.mode==='file'?_aiCmpText('该文件没有历史提交记录。','No history commits found for this file.'):_aiCmpText('未找到历史提交记录。','No history commits found.'))))
+      +'</div>';
     return;
   }
   var html='';
@@ -5551,6 +5715,8 @@ function _renderCommitAIHistoryList(){
   });
   if(st.historyLoading){
     html+='<div style="padding:10px 12px;font-size:12px;color:#64748b">'+_aiCmpText('加载更多中…','Loading more…')+'</div>';
+  }else if(st.historyError){
+    html+='<div style="padding:10px 12px;font-size:12px;color:#b91c1c">'+escapeHtml(st.historyError)+'</div>';
   }else if(st.historyDone){
     html+='<div style="padding:10px 12px;font-size:12px;color:#94a3b8">'+_aiCmpText('已加载全部 ','Loaded all ')+st.historyItems.length+_aiCmpText(' 条提交。',' commits.')+'</div>';
   }else{
@@ -5563,32 +5729,66 @@ function _loadMoreCommitAIHistory(){
   var st=_commitAIPanelState;
   if(!st||st.historyLoading||st.historyDone)return;
   st.historyLoading=true;
-  st.historyPage+=1;
+  st.historyError='';
+  _updateCommitAICloseButton(st);
+  var nextPage=st.historyPage+1;
   var progressWrap=document.getElementById('commit-ai-history-progress');
   if(progressWrap) progressWrap.style.display='block';
   var timer=_startAutoProgress('commit-ai-history-progress',_aiCmpText('加载历史提交','Loading history commits'));
 
   var historyUrl=(st.mode==='file')
-    ?('/api/file-commits?file='+encodeURIComponent(st.filePath)+'&page='+st.historyPage+'&per_page='+st.historyPerPage)
-    :('/api/commits?page='+st.historyPage+'&per_page='+st.historyPerPage+'&order=desc');
-  apiGet(historyUrl,function(data){
-    _stopAutoProgress(timer,'commit-ai-history-progress',_aiCmpText('历史提交加载完成','History loaded'));
-    setTimeout(function(){ if(progressWrap) progressWrap.style.display='none'; },300);
-    st.historyLoading=false;
-    st.historyTotal=data.total||0;
-    var items=data.commits||[];
-    for(var i=0;i<items.length;i++) st.historyItems.push(items[i]);
-    if(!items.length || st.historyItems.length>=st.historyTotal) st.historyDone=true;
-    _renderCommitAIHistoryList();
-    if(!st.selectedHistoryCommit && st.historyItems.length){
-      selectCommitAIHistory(st.historyItems[0].hash);
-    }
-  });
+    ?('/api/file-commits?file='+encodeURIComponent(st.filePath)+'&page='+nextPage+'&per_page='+st.historyPerPage)
+    :('/api/commit-history?page='+nextPage+'&per_page='+st.historyPerPage);
+  var controller=new AbortController();
+  st.historyController=controller;
+  fetch(API_BASE+historyUrl,{signal:controller.signal})
+    .then(function(r){
+      if(!r.ok) return r.json().catch(function(){return {};}).then(function(d){throw new Error(d.error||('HTTP '+r.status));});
+      return r.json();
+    })
+    .then(function(data){
+      if(_commitAIPanelState!==st) return;
+      var items=Array.isArray(data.commits)?data.commits:[];
+      st.historyPage=nextPage;
+      st.historyTotal=Number(data.total)||0;
+      var seen={};
+      for(var i=0;i<st.historyItems.length;i++) seen[st.historyItems[i].hash]=true;
+      for(var j=0;j<items.length;j++){
+        if(!seen[items[j].hash]){
+          st.historyItems.push(items[j]);
+          seen[items[j].hash]=true;
+        }
+      }
+      st.historyDone=items.length<st.historyPerPage ||
+        (st.historyTotal>0 && st.historyItems.length>=st.historyTotal);
+      if(!st.selectedHistoryCommit && st.historyItems.length){
+        selectCommitAIHistory(st.historyItems[0].hash);
+      }
+    })
+    .catch(function(e){
+      if(e.name==='AbortError' || _commitAIPanelState!==st) return;
+      st.historyError=_aiCmpText('历史提交加载失败: ','Failed to load history: ')+e.message;
+    })
+    .finally(function(){
+      if(_commitAIPanelState!==st){
+        clearInterval(timer);
+        return;
+      }
+      st.historyLoading=false;
+      st.historyController=null;
+      _stopAutoProgress(timer,'commit-ai-history-progress',st.historyError?_aiCmpText('加载失败','Failed'):_aiCmpText('历史提交加载完成','History loaded'));
+      setTimeout(function(){
+        if(_commitAIPanelState===st && progressWrap) progressWrap.style.display='none';
+      },300);
+      _renderCommitAIHistoryList();
+      _updateCommitAICloseButton(st);
+    });
 }
 
 function selectCommitAIHistory(hash){
   var st=_commitAIPanelState;
   if(!st)return;
+  if(st.selectionController) st.selectionController.abort();
   var item=null;
   for(var i=0;i<st.historyItems.length;i++){
     if(st.historyItems[i].hash===hash){ item=st.historyItems[i]; break; }
@@ -5609,7 +5809,14 @@ function selectCommitAIHistory(hash){
   var diffUrl=(st.mode==='file')
     ?('/api/file-commit-diff?commit='+encodeURIComponent(hash)+'&file='+encodeURIComponent(st.filePath))
     :('/api/commit-diff?commit='+encodeURIComponent(hash));
-  apiGet(diffUrl,function(data){
+  var controller=new AbortController();
+  st.selectionController=controller;
+  _updateCommitAICloseButton(st);
+  fetch(API_BASE+diffUrl,{signal:controller.signal}).then(function(r){
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(function(data){
+    if(_commitAIPanelState!==st || st.selectedHistoryCommit!==item)return;
     st.selectedHistoryDiff=(data.diff||'').trim();
     _renderCommitAIComparisonDiffs();
     if(info) info.textContent=_aiCmpText('已选: ','Selected: ')+(item.short_hash||hash.substring(0,7))+' — '+(item.message||'');
@@ -5622,6 +5829,15 @@ function selectCommitAIHistory(hash){
           +_aiCmpText('历史提交 <code>','Historical commit <code>')+escapeHtml(item.short_hash||hash.substring(0,7))+'</code>'+(st.mode==='file'?_aiCmpText(' 已加载。点击<b>分析</b>与当前提交 diff 对比。',' loaded. Click <b>Analyze</b> to compare with current commit diff.'):_aiCmpText(' 已加载。点击<b>分析</b>与当前 Commit 全量 diff 对比。',' loaded. Click <b>Analyze</b> to compare with current commit full diff.'))
           +'</div>';
       }
+    }
+  }).catch(function(e){
+    if(e.name==='AbortError' || _commitAIPanelState!==st || st.selectedHistoryCommit!==item)return;
+    if(info) info.textContent=_aiCmpText('历史提交 diff 加载失败: ','Failed to load historical diff: ')+e.message;
+    if(result) result.innerHTML='<div style="color:#b91c1c">'+escapeHtml(info.textContent)+'</div>';
+  }).finally(function(){
+    if(_commitAIPanelState===st && st.selectionController===controller){
+      st.selectionController=null;
+      _updateCommitAICloseButton(st);
     }
   });
 }
@@ -5851,10 +6067,21 @@ function sendCommitAIFollowup(){
     role:'system',
     content:'You are continuing an in-context code analysis conversation. Keep continuity with prior analysis and user follow-up context. '+_aiLangInstruction()
   }];
-  var turns=st.chatHistory.slice(-12);
+  // Exclude the user message we just appended (it will be re-added with context below),
+  // and drop UI-only placeholder messages (never actually said by the model).
+  var turns=st.chatHistory.slice(0,-1).slice(-12).filter(function(t){ return !t.uiOnly; });
   for(var i=0;i<turns.length;i++){
     var t=turns[i];
-    if(t.role==='user' || t.role==='assistant'){
+    if(t.role!=='user' && t.role!=='assistant') continue;
+    // Many chat templates (e.g. Qwen/Ollama) require the first turn after "system" to
+    // be "user" and roles to strictly alternate. If the history starts with (or ends up
+    // with two consecutive) assistant messages, synthesize a user turn / merge instead.
+    if(messages.length===1 && t.role==='assistant'){
+      messages.push({role:'user',content:_aiCmpText('（触发了一次分析）','(triggered an analysis)')});
+    }
+    if(messages.length>1 && messages[messages.length-1].role===t.role){
+      messages[messages.length-1].content+='\n'+(t.text||'');
+    } else {
       messages.push({role:t.role,content:t.text||''});
     }
   }

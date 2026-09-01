@@ -14,7 +14,7 @@ _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 if _APP_DIR not in sys.path:
     sys.path.insert(0, _APP_DIR)
 
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 from core.git_ops import PORT, _MSGLOG, _PUSH_JOBS, current_branch
@@ -102,8 +102,10 @@ class Handler(BaseHTTPRequestHandler):
 
 _QUIET_ERRORS = (ConnectionResetError, BrokenPipeError, ConnectionAbortedError)
 
-class QuietServer(HTTPServer):
-    """HTTPServer that silently ignores client-disconnect errors."""
+class QuietServer(ThreadingHTTPServer):
+    """Concurrent HTTP server that silently ignores client-disconnect errors."""
+    daemon_threads = True
+
     def handle_error(self, request, client_address):
         if sys.exc_info()[0] in _QUIET_ERRORS:
             return

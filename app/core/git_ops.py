@@ -2068,6 +2068,47 @@ def _attach_release_refs(commits: list) -> list:
     return commits
 
 
+def get_commit_history(page=1, per_page=20):
+    """Return lightweight commit history for selectors and comparison panels."""
+    branch = current_branch()
+    page = max(1, page)
+    per_page = max(1, per_page)
+    skip = (page - 1) * per_page
+    fmt = "--pretty=format:%H||%an||%ad||%s"
+    date_fmt = "--date=format:%Y-%m-%d %H:%M"
+
+    count_out, count_err, count_rc = _run(["git", "rev-list", "--count", branch])
+    if count_rc != 0:
+        return {"ok": False, "error": count_err or "Unable to count commits"}
+
+    out, err, rc = _run([
+        "git", "log", branch, date_fmt, fmt,
+        "--skip", str(skip), "-n", str(per_page),
+    ])
+    if rc != 0:
+        return {"ok": False, "error": err or "Unable to load commit history"}
+
+    commits = []
+    for line in out.splitlines():
+        parts = line.split("||", 3)
+        if len(parts) == 4:
+            commits.append({
+                "hash": parts[0],
+                "short_hash": parts[0][:7],
+                "author": parts[1],
+                "date": parts[2],
+                "message": parts[3],
+            })
+    total = int(count_out.strip()) if count_out.strip().isdigit() else len(commits)
+    return {
+        "ok": True,
+        "commits": commits,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+    }
+
+
 def get_commit_log(page=1, per_page=10, search="", order="desc", unsigned_only=False):
     """Return paginated commit log with optional search.
 

@@ -36,7 +36,7 @@ from core.git_ops import (
     get_conflicts, get_conflict_detail,
     _get_merge_type, _get_merge_default_msg,
     resolve_conflict, get_file_commits,
-    get_uncommitted_changes, get_commit_log, get_pull_requests,
+    get_uncommitted_changes, get_commit_history, get_commit_log, get_pull_requests,
     is_valid_commit_path,
     reset_to, revert_commit, drop_commit, remove_files_from_commit, squash_commits, squash_selected_commits, squash_conflict_check, abort_merge_or_rebase,
     rebase_abort, rebase_skip, rebase_continue,
@@ -482,6 +482,12 @@ def handle_get(path, params, send_json, send_stream=None):
     elif path == "/api/commit-diff":
         commit = params.get("commit", [""])[0]
         send_json({"diff": commit_diff(commit)})
+        return True
+
+    elif path == "/api/commit-history":
+        page = int(params.get("page", ["1"])[0])
+        per_page = int(params.get("per_page", ["20"])[0])
+        send_json(get_commit_history(page, per_page))
         return True
 
     elif path == "/api/commit-files":
