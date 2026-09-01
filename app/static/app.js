@@ -5574,7 +5574,9 @@ function _openCommitAIComparePanel(opts){
     historyDone:false,
     historyItems:[],
     chatHistory:[],
-    chatLoading:false
+    chatLoading:false,
+    unreadBaseline:null,
+    unreadCount:0
   };
 
   _setModalLayout({
@@ -5623,7 +5625,10 @@ function _openCommitAIComparePanel(opts){
           +'<div style="height:6px;background:#e2e8f0;border-radius:999px;overflow:hidden"><div id="commit-ai-analyze-progress-bar" style="height:100%;width:0;background:linear-gradient(90deg,#34d399,#059669)"></div></div>'
           +'<div id="commit-ai-analyze-progress-label" style="font-size:11px;color:#64748b;margin-top:4px">'+_aiCmpText('分析中...','Analyzing...')+'</div>'
         +'</div>'
-        +'<div id="commit-ai-result" style="flex:1;overflow-y:auto;padding:12px;color:#0f172a;font-size:13px;line-height:1.7;background:#fff"></div>'
+        +'<div style="flex:1;position:relative;overflow:hidden;display:flex">'
+          +'<div id="commit-ai-result" style="flex:1;overflow-y:auto;padding:12px;color:#0f172a;font-size:13px;line-height:1.7;background:#fff"></div>'
+          +'<button id="commit-ai-newmsg-btn" class="commit-ai-newmsg-btn" onclick="_scrollCommitAIChatToBottom()"><span id="commit-ai-newmsg-count">0</span> '+_aiCmpText('条新消息','new messages')+' ↓</button>'
+        +'</div>'
         +'<div style="padding:8px 12px;border-top:1px solid #f1f5f9;background:#f8fafc">'
           +'<div style="font-size:11px;color:#64748b;margin-bottom:6px">'+_aiCmpText('基于当前分析继续追问','Ask follow-up based on current analysis')+'</div>'
           +'<div style="display:flex;gap:8px;align-items:flex-end">'
@@ -5653,6 +5658,18 @@ function _openCommitAIComparePanel(opts){
       }
     });
   }
+  var resultEl=document.getElementById('commit-ai-result');
+  if(resultEl){
+    resultEl.addEventListener('scroll',function(){
+      var st=_commitAIPanelState;
+      if(!st)return;
+      if(resultEl.scrollTop+resultEl.clientHeight >= resultEl.scrollHeight-32){
+        st.unreadBaseline=st.chatHistory.length;
+        st.unreadCount=0;
+        _updateCommitAINewMsgIndicator();
+      }
+    });
+  }
   _commitAIPanelState.chatHistory=[{
     role:'assistant',
     uiOnly:true,
@@ -5665,15 +5682,20 @@ function _openCommitAIComparePanel(opts){
   _loadMoreCommitAIHistory();
 }
 
-function _renderCommitAIChat(){
+function _renderCommitAIChat(opts){
   var st=_commitAIPanelState;
   var result=document.getElementById('commit-ai-result');
   if(!st||!result)return;
+  opts=opts||{};
+
+  var hadContent=result.childNodes.length>0;
+  var prevScrollTop=result.scrollTop;
+
   var html='';
   for(var i=0;i<st.chatHistory.length;i++){
     var m=st.chatHistory[i];
     var isUser=m.role==='user';
-    html+='<div style="margin-bottom:10px;display:flex;justify-content:'+(isUser?'flex-end':'flex-start')+'">'
+    html+='<div data-msg-idx="'+i+'" style="margin-bottom:10px;display:flex;justify-content:'+(isUser?'flex-end':'flex-start')+'">'
       +'<div style="max-width:92%;padding:8px 10px;border-radius:8px;border:1px solid '+(isUser?'#bfdbfe':'#e2e8f0')+';background:'+(isUser?'#eff6ff':'#f8fafc')+'">'
       +'<div style="font-size:11px;color:#64748b;margin-bottom:4px">'+(isUser?_aiCmpText('你','You'):'AI')+'</div>'
       +'<div style="white-space:pre-wrap;line-height:1.65">'+escapeHtml(m.text||'').replace(/\n/g,'<br>')+'</div>'
@@ -5683,14 +5705,61 @@ function _renderCommitAIChat(){
     html+='<div class="commit-ai-thinking">'+_aiCmpText('AI 正在思考...','AI is thinking...')+'</div>';
   }
   result.innerHTML=html;
+
+  if(opts.anchorLastMessage){
+    // A message we just sent ourselves: keep it in view (never jump to the bottom),
+    // so any incoming AI reply won't yank the viewport away from what we just typed.
+    var lastIdx=st.chatHistory.length-1;
+    var target=result.querySelector('[data-msg-idx="'+lastIdx+'"]');
+    result.scrollTop=target?Math.max(0,target.offsetTop-8):0;
+    st.unreadBaseline=st.chatHistory.length;
+    st.unreadCount=0;
+  } else if(!hadContent){
+    // First render (panel just opened): nothing to preserve, show from top.
+    result.scrollTop=0;
+    st.unreadBaseline=st.chatHistory.length;
+    st.unreadCount=0;
+  } else {
+    // Never auto-scroll for incoming AI messages/thinking updates: keep the view exactly
+    // where the user left it (typically anchored on their own last message).
+    result.scrollTop=prevScrollTop;
+    if(st.unreadBaseline==null) st.unreadBaseline=st.chatHistory.length;
+    st.unreadCount=Math.max(0,st.chatHistory.length-st.unreadBaseline);
+  }
+  _updateCommitAINewMsgIndicator();
+}
+
+function _updateCommitAINewMsgIndicator(){
+  var st=_commitAIPanelState;
+  var btn=document.getElementById('commit-ai-newmsg-btn');
+  var countEl=document.getElementById('commit-ai-newmsg-count');
+  if(!btn)return;
+  var count=(st&&st.unreadCount)||0;
+  if(count>1){
+    if(countEl) countEl.textContent=count;
+    btn.style.display='flex';
+  } else {
+    btn.style.display='none';
+  }
+}
+
+function _scrollCommitAIChatToBottom(){
+  var st=_commitAIPanelState;
+  var result=document.getElementById('commit-ai-result');
+  if(!result)return;
   result.scrollTop=result.scrollHeight;
+  if(st){
+    st.unreadBaseline=st.chatHistory.length;
+    st.unreadCount=0;
+  }
+  _updateCommitAINewMsgIndicator();
 }
 
 function _appendCommitAIChat(role,text){
   var st=_commitAIPanelState;
   if(!st)return;
   st.chatHistory.push({role:role,text:text||''});
-  _renderCommitAIChat();
+  _renderCommitAIChat(role==='user'?{anchorLastMessage:true}:null);
 }
 
 function _renderCommitAIHistoryList(){
