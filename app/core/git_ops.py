@@ -13,10 +13,13 @@ def _shell_quote(s):
 
 PORT    = 8989
 PROJECT_PATH = os.getcwd()  # current git project directory
-_MSGLOG = []          # in-memory operation log
-_PUSH_JOBS = {}       # {job_id: {lines:[], done:bool, ok:bool, error:str, authRequired:bool}}
-_PUSH_JOBS_LOCK = threading.Lock()
-_MSGLOG_LOCK    = threading.Lock()
+
+# Import shared state from server_state; re-exported here so existing code that
+# does `from core.git_ops import _MSGLOG, _PUSH_JOBS, …` continues to work.
+from core.server_state import (
+    _MSGLOG, _MSGLOG_LOCK,
+    _PUSH_JOBS, _PUSH_JOBS_LOCK,
+)
 
 # config.ini lives in app/ (_APP_DIR); gitboard.log stays at the repo root.
 _CORE_DIR     = os.path.dirname(os.path.abspath(__file__))  # app/core/

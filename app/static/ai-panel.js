@@ -458,9 +458,8 @@ function _sendToAI(userText, systemExtra) {
 
   var sendBtn = document.getElementById('ai-send-btn');
   if (sendBtn) sendBtn.disabled = true;
-  _showThinking();
+  var thinkingEl = _showThinking();
 
-  // Gather live page context, then send
   _gatherPageContext(function(freshCtx) {
     var systemPrompt = _buildSystemPrompt(freshCtx) + (systemExtra || '');
     var messages = [{ role: 'system', content: systemPrompt }];
@@ -475,32 +474,142 @@ function _sendToAI(userText, systemExtra) {
     }
     messages.push({ role: 'user', content: userText });
 
-    fetch('/api/ai/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        provider: cfg.provider,
-        api_key:  cfg.api_key,
-        base_url: cfg.base_url,
-        model:    cfg.model,
-        messages: messages,
-      }),
-    })
-    .then(function(r){ return r.json(); })
-    .then(function(data){
-      if (!data.ok) {
-        _removeThinking();
-        _appendErrorMsg('assistant', t('ai_error') + (data.error || t('ai_unknown_error')), null, userText);
-        if (sendBtn) sendBtn.disabled = false;
-        return;
+    // Use SSE streaming endpoint for real-time response
+    _streamFromAI({
+      provider: cfg.provider,
+      api_key:  cfg.api_key,
+      base_url: cfg.base_url,
+      model:    cfg.model,
+      messages: messages,
+    }, sendBtn, userText);
+  });
+}
+
+// ── SSE streaming consumer (typewriter effect) ────────────────────────────
+function _streamFromAI(payload, sendBtn, userText) {
+  var cfg = getAIConfig();
+  var meta = (AI_PROVIDERS[cfg.provider] && AI_PROVIDERS[cfg.provider].name || cfg.provider) + ' · ' + cfg.model;
+
+  var hist = document.getElementById('ai-chat-history');
+  var streamDiv = null;
+  var streamBubble = null;
+  var accumulated = '';
+  var finished = false;
+
+  function _ensureStreamBubble() {
+    if (streamDiv) return;
+    _removeThinking();
+    streamDiv = document.createElement('div');
+    streamDiv.className = 'ai-msg assistant';
+    streamBubble = document.createElement('div');
+    streamBubble.className = 'ai-bubble';
+    streamDiv.appendChild(streamBubble);
+    if (hist) {
+      hist.appendChild(streamDiv);
+      hist.scrollTop = hist.scrollHeight;
+    }
+  }
+
+  function _finalize(ok, errorText) {
+    if (finished) return;
+    finished = true;
+    if (sendBtn) sendBtn.disabled = false;
+    _removeThinking();
+
+    if (!ok) {
+      // Remove the (possibly empty) streaming div then show a proper error bubble
+      if (streamDiv && !accumulated) streamDiv.remove();
+      _appendErrorMsg('assistant', '❌ ' + (errorText || t('ai_llm_failed')), meta, userText);
+      return;
+    }
+
+    if (!streamDiv) {
+      // Fallback: bubble was never created
+      _appendMsg('assistant', accumulated, meta);
+      return;
+    }
+
+    // Final render: upgrade raw text to full markdown
+    if (streamBubble) {
+      streamBubble.innerHTML = _renderMarkdown(accumulated);
+    }
+    // Append meta line
+    var metaEl = document.createElement('div');
+    metaEl.className = 'ai-meta';
+    metaEl.textContent = meta;
+    if (streamDiv) streamDiv.appendChild(metaEl);
+
+    // Persist to history
+    _aiHistory.push({ role: 'assistant', content: accumulated });
+    if (hist) hist.scrollTop = hist.scrollHeight;
+  }
+
+  fetch('/api/ai/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  .then(function(resp) {
+    if (!resp.ok) {
+      return resp.json().then(function(errData) {
+        throw new Error(errData.error || ('HTTP ' + resp.status));
+      });
+    }
+    var reader = resp.body.getReader();
+    var decoder = new TextDecoder('utf-8');
+    var buffer = '';
+
+    function _processBuffer() {
+      // SSE events are separated by \n\n
+      var parts = buffer.split('\n\n');
+      buffer = parts.pop(); // keep any incomplete trailing fragment
+      for (var i = 0; i < parts.length; i++) {
+        var part = parts[i].trim();
+        if (!part) continue;
+        if (part.startsWith('data: ')) {
+          var jsonStr = part.slice(6);
+          try {
+            var obj = JSON.parse(jsonStr);
+            if (obj.error) {
+              _finalize(false, obj.error);
+              return;
+            }
+            if (obj.chunk) {
+              accumulated += obj.chunk;
+              _ensureStreamBubble();
+              // During streaming: show plain text; markdown rendered on done
+              if (streamBubble) {
+                streamBubble.textContent = accumulated;
+                if (hist) hist.scrollTop = hist.scrollHeight;
+              }
+            }
+            if (obj.done) {
+              _finalize(true, null);
+            }
+          } catch (e) {
+            // Ignore JSON parse errors for incomplete chunks
+          }
+        }
       }
-      _pollChatJob(data.jobId, sendBtn, userText);
-    })
-    .catch(function(e){
-      _removeThinking();
-      _appendErrorMsg('assistant', t('ai_network_error') + e.message, null, userText);
-      if (sendBtn) sendBtn.disabled = false;
-    });
+    }
+
+    function _pump() {
+      return reader.read().then(function(result) {
+        if (result.done) {
+          // Stream ended — finalize if not already signalled via done:true
+          if (!finished) _finalize(accumulated.length > 0, accumulated.length === 0 ? 'Stream ended unexpectedly' : null);
+          return;
+        }
+        buffer += decoder.decode(result.value, { stream: true });
+        _processBuffer();
+        return _pump();
+      });
+    }
+
+    return _pump();
+  })
+  .catch(function(e) {
+    if (!finished) _finalize(false, e.message || t('ai_network_error'));
   });
 }
 

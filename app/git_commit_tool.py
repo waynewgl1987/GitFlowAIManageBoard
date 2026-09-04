@@ -17,7 +17,8 @@ if _APP_DIR not in sys.path:
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
-from core.git_ops import PORT, _MSGLOG, _PUSH_JOBS, current_branch
+from core.server_state import PORT, _MSGLOG, _PUSH_JOBS
+from core.git_ops import current_branch
 from core.api_handlers import handle_get, handle_post
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -86,6 +87,49 @@ class Handler(BaseHTTPRequestHandler):
         if not handled:
             self._send(404, "text/plain", "Not found")
 
+    def _handle_ai_stream(self, data):
+        """Handle SSE streaming for AI chat responses."""
+        from ai_module.ai_provider import call_llm_stream
+
+        provider = data.get("provider", "openai")
+        api_key  = data.get("api_key", "")
+        base_url = data.get("base_url", "")
+        model    = data.get("model", "")
+        messages = data.get("messages", [])
+
+        if not messages:
+            self._json({"ok": False, "error": "messages required"}, 400)
+            return
+
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("X-Accel-Buffering", "no")
+            self.end_headers()
+        except Exception:
+            return
+
+        def _write(payload: str):
+            try:
+                line = f"data: {payload}\n\n"
+                self.wfile.write(line.encode("utf-8"))
+                self.wfile.flush()
+            except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
+                raise
+
+        try:
+            for chunk_json in call_llm_stream(provider, api_key, base_url, model, messages):
+                _write(chunk_json)
+        except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
+            pass  # Client disconnected — normal
+        except Exception as e:
+            import json as _json
+            try:
+                _write(_json.dumps({"error": str(e), "done": True}))
+            except Exception:
+                pass
+
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length)
@@ -95,6 +139,12 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": False, "error": "Invalid JSON"}, 400)
             return
         path = urlparse(self.path).path
+
+        # SSE streaming endpoint — handled here, not in api_handlers
+        if path == "/api/ai/stream":
+            self._handle_ai_stream(data)
+            return
+
         handled = handle_post(path, data, self._json)
         if not handled:
             self._json({"ok": False, "error": "unknown endpoint"}, 404)
@@ -114,11 +164,13 @@ class QuietServer(ThreadingHTTPServer):
 
 def main():
     import core.git_ops as git_ops
+    import core.server_state as server_state
     port = git_ops.PORT
     while True:
         try:
             server = QuietServer(("127.0.0.1", port), Handler)
             git_ops.PORT = port
+            server_state.PORT = port  # 同步到 server_state
             break
         except (socket.error, OSError):
             port += 1

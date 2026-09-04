@@ -12,8 +12,10 @@ from ai_module.ai_provider import (
     start_chat_job, get_job_status,
     call_llm,
 )
+from core.server_state import PORT, _MSGLOG, _MSGLOG_LOCK, _PUSH_JOBS, _PUSH_JOBS_LOCK
+from core.async_jobs import create_job as _create_job, update_job as _update_job, get_job as _get_job
 from core.git_ops import (
-    PORT, set_project_path, _MSGLOG, _MSGLOG_LOCK, _PUSH_JOBS, _PUSH_JOBS_LOCK,
+    set_project_path,
     _run, _run_push_streaming, _run_gitop_streaming,
     _write_local_log,
     current_branch, display_branch, get_project_info,
@@ -44,8 +46,7 @@ from core.git_ops import (
     get_git_graph,
 )
 
-_AI_AUTOFIX_JOBS = {}
-_AI_AUTOFIX_LOCK = threading.Lock()
+_AUTOFIX_NS = "autofix"
 _AI_AUTOFIX_TIMEOUT = 180
 _ALLOWED_GIT_SUBCOMMANDS = {
     "fetch", "pull", "push", "rebase", "merge", "checkout", "switch",
@@ -55,17 +56,11 @@ _ALLOWED_GIT_SUBCOMMANDS = {
 
 
 def _set_autofix_job(job_id, patch):
-    with _AI_AUTOFIX_LOCK:
-        cur = dict(_AI_AUTOFIX_JOBS.get(job_id, {}))
-        cur.update(patch)
-        _AI_AUTOFIX_JOBS[job_id] = cur
-        return dict(cur)
+    return _update_job(_AUTOFIX_NS, job_id, patch)
 
 
 def _get_autofix_job(job_id):
-    with _AI_AUTOFIX_LOCK:
-        d = _AI_AUTOFIX_JOBS.get(job_id)
-        return dict(d) if d else None
+    return _get_job(_AUTOFIX_NS, job_id)
 
 
 def _extract_json_object(text):
@@ -1480,9 +1475,8 @@ def handle_post(path, data, send_json):
         if provider == "custom" and not str(base_url or "").strip():
             send_json({"ok": False, "error": "base_url is required for custom provider"}, 400)
             return True
-        job_id = str(_uuid4())[:8]
-        _set_autofix_job(job_id, {
-            "jobId": job_id,
+        job_id = _create_job(_AUTOFIX_NS, {
+            "jobId": None,  # filled in after creation below
             "created_at": int(time.time()),
             "done": False,
             "ok": False,
@@ -1492,6 +1486,8 @@ def handle_post(path, data, send_json):
             "error": "",
             "operation": op_name,
         })
+        # backfill jobId field with the assigned id
+        _update_job(_AUTOFIX_NS, job_id, {"jobId": job_id})
         threading.Thread(
             target=_autofix_analyze_job,
             args=(job_id, provider, api_key, base_url, model, op_name, err_text, ui_lang),
