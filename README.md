@@ -431,7 +431,9 @@ GitAutoManageBoard/
 │   ├── git_commit_tool.py  # Entry point — HTTP server, request routing, static file serving.
 │   │                       # Class Handler (BaseHTTPRequestHandler):
 │   │                       #   do_GET  → serves /static/* files + delegates to handle_get()
-│   │                       #   do_POST → delegates to handle_post()
+│   │                       #   do_POST → SSE branch for /api/ai/stream (_handle_ai_stream),
+│   │                       #             then delegates remaining routes to handle_post()
+│   │                       #   _handle_ai_stream() — streams AI response via text/event-stream
 │   │                       # main() finds a free port starting at 8989, starts HTTPServer,
 │   │                       # opens the browser automatically.
 │   │
@@ -442,9 +444,28 @@ GitAutoManageBoard/
 │   │
 │   ├── core/               # Internal backend modules.
 │   │   │
-│   │   ├── git_ops.py      # All Git operations and shared server state.
-│   │   │                   # Globals: PORT, _MSGLOG (in-session log), _PUSH_JOBS (streaming
-│   │   │                   #   job registry), _PUSH_JOBS_LOCK, _MSGLOG_LOCK (thread safety)
+│   │   ├── server_state.py # Centralised shared server state (NEW).
+│   │   │                   # Single source of truth for mutable globals:
+│   │   │                   #   PORT             — HTTP port (auto-incremented from 8989)
+│   │   │                   #   _MSGLOG / _MSGLOG_LOCK   — in-session operation log
+│   │   │                   #   _PUSH_JOBS / _PUSH_JOBS_LOCK — streaming job registry
+│   │   │                   # Both git_ops and api_handlers import from here, eliminating
+│   │   │                   # cross-module private-variable coupling.
+│   │   │
+│   │   ├── async_jobs.py   # Unified async job registry (NEW).
+│   │   │                   # Namespace-isolated, thread-safe store for all async jobs:
+│   │   │                   #   namespace "push"    — push / fetch / pull streaming jobs
+│   │   │                   #   namespace "autofix" — AI git-autofix jobs
+│   │   │                   # Public API:
+│   │   │                   #   create_job(ns, data) → job_id
+│   │   │                   #   update_job(ns, id, patch) → dict
+│   │   │                   #   get_job(ns, id) → dict | None
+│   │   │                   #   purge_expired(ns) — TTL-based cleanup
+│   │   │
+│   │   ├── git_ops.py      # All Git operations (git subprocess wrappers only).
+│   │   │                   # No longer owns global state — re-imports from server_state
+│   │   │                   # for backward compatibility (from core.git_ops import _PUSH_JOBS
+│   │   │                   # still works).
 │   │   │                   # Core helpers:
 │   │   │                   #   _get_git_env()         — unified git env (disables prompts)
 │   │   │                   #   _run()                 — synchronous git subprocess wrapper
@@ -458,10 +479,11 @@ GitAutoManageBoard/
 │   │   │                   #   stash_list/pop/drop, resolve_conflict, pull_current, fetch ...
 │   │   │
 │   │   └── api_handlers.py # REST API endpoint dispatcher (GET + POST).
+│   │                       #   Imports shared state from server_state (not git_ops internals).
+│   │                       #   AI autofix jobs managed via async_jobs (namespace "autofix").
 │   │                       #   handle_get(path, params, send_json)  — all GET /api/* routes
 │   │                       #   handle_post(path, data, send_json)   — all POST /api/* routes
-│   │                       # Also contains the AI autofix orchestration pipeline
-│   │                       # (_autofix_analyze_job, _autofix_apply_job).
+│   │                       #   _autofix_analyze_job / _autofix_apply_job — AI fix pipeline
 │   │
 │   ├── ai_module/
 │   │   ├── __init__.py
@@ -469,21 +491,28 @@ GitAutoManageBoard/
 │   │                       # Supports: OpenAI-compatible, Anthropic, Ollama, DeepSeek,
 │   │                       #   Qwen, Google, and any custom OpenAI-compatible endpoint.
 │   │                       # Public API:
-│   │                       #   call_llm(...)        — synchronous LLM call → (ok, text)
-│   │                       #   test_provider(...)   — test connectivity
-│   │                       #   start_chat_job(...)  — async LLM call → job_id
-│   │                       #   get_job_status(id)   — poll async job result
+│   │                       #   call_llm(...)          — synchronous LLM call → (ok, text)
+│   │                       #   call_llm_stream(...)   — generator for SSE streaming chunks
+│   │                       #                            yields {"chunk":"..."} per token,
+│   │                       #                            {"done":true,"ok":true} at end
+│   │                       #   test_provider(...)     — test connectivity
+│   │                       #   start_chat_job(...)    — async LLM call → job_id (legacy)
+│   │                       #   get_job_status(id)     — poll async job result (legacy)
 │   │
 │   └── static/
 │       ├── index.html      # HTML skeleton — layout, tab panels, modal containers,
 │       │                   # AI chat panel HTML, AI floating button (🤖 + ? badge).
 │       ├── diff-tab.html   # Standalone AI Diff tab page (opened in new browser tab).
 │       ├── style.css       # Core UI styles — design token system, all page sections.
-│       ├── app.js          # All client-side JavaScript for the Git board (~7000 lines).
+│       ├── app.js          # All client-side JavaScript for the Git board.
 │       │                   # i18n (EN/ZH), API helpers, all page logic, git op handlers,
 │       │                   # modal/toast system, syntax highlighting for 10+ languages.
 │       ├── ai-panel.css    # Styles for the AI chat panel and floating action button.
 │       └── ai-panel.js     # All client-side JavaScript for the AI panel.
+│                           # Chat uses SSE streaming (_streamFromAI via fetch ReadableStream):
+│                           #   POST /api/ai/stream → incremental chunks → typewriter render
+│                           #   Final markdown rendered once stream completes (done:true).
+│                           # Diff analysis retains legacy poll path (_pollChatJob).
 │                           # Context gathering, provider config, diff mode, quick actions.
 │
 ├── docs/
@@ -496,6 +525,33 @@ GitAutoManageBoard/
 ```
 
 The application is split into a Python backend (`app/core/`, `app/ai_module/`) and a static frontend (`app/static/`). Run with `python3 app/git_commit_tool.py` — no frameworks or external packages required.
+
+---
+
+### Architecture Overview
+
+```
+Browser (Frontend)
+  └─ fetch POST /api/ai/stream ──────────────────────────────┐
+  └─ fetch/GET all other /api/* ──────┐                      │
+                                      ▼                      ▼
+                         git_commit_tool.py (Entry)
+                         ├─ do_GET  → static files / handle_get()
+                         └─ do_POST → /api/ai/stream → _handle_ai_stream() [SSE]
+                                    → everything else → handle_post()
+                                              │
+                    ┌─────────────────────────┴──────────────────────┐
+                    ▼                                                 ▼
+          core/api_handlers.py                           core/server_state.py
+          (route dispatcher)                             PORT · _MSGLOG · _PUSH_JOBS
+                    │                        ┌───────────────────────┘
+                    ├─ core/git_ops.py        │  (re-imported by git_ops for compat)
+                    │  (git subprocess ops)   │
+                    ├─ core/async_jobs.py     │
+                    │  (unified job store)    │
+                    └─ ai_module/ai_provider.py
+                       call_llm / call_llm_stream / start_chat_job
+```
 
 ---
 
@@ -881,142 +937,138 @@ version = v1.1.0
 ```
 GitAutoManageBoard/
 │
-├── git_commit_tool.py      # 入口文件 — HTTP 服务器、请求路由、静态文件服务。
-│                           # Handler 类（继承 BaseHTTPRequestHandler）：
-│                           #   do_GET  → 服务 /static/* 文件 + 委托 handle_get() 处理 API
-│                           #   do_POST → 委托 handle_post() 处理 API
-│                           # main() 从 8989 端口开始寻找空闲端口，启动 HTTPServer，
-│                           # 自动打开浏览器。
+├── StartGitBoard.app       # macOS 一键启动器（AppleScript 应用包）。
+│                           # 双击后自动打开终端并启动服务器。
 │
-├── git_ops.py              # 所有 Git 操作函数与共享服务器状态。
-│                           # 全局变量：PORT、_MSGLOG（操作日志）、_PUSH_JOBS（流式任务注册表），
-│                           #           _PUSH_JOBS_LOCK、_MSGLOG_LOCK（线程安全）
-│                           # 核心辅助函数：
-│                           #   _get_git_env()          — 统一 git 环境变量（禁用交互提示）
-│                           #   _run()                  — 同步 git 子进程封装
-│                           #   _run_push_streaming()   — 异步 push，捕获实时 stdout
-│                           #   _run_gitop_streaming()  — 异步 fetch/pull，支持实时输出
-│                           # 业务函数（每个 git 操作对应一个函数）：
-│                           #   current_branch、get_status、get_conflicts、get_branches、
-│                           #   create_branch、checkout_branch、delete_branch_local/remote、
-│                           #   compare_branches、get_commit_log、get_commit_diff、
-│                           #   reset_to、revert_commit、squash_commits、restore_file、
-│                           #   stash_list/pop/drop、resolve_conflict、
-│                           #   pull_current、fetch、push_streaming、abort_merge ...
+├── StartGitBoard.bat       # Windows 一键启动器。
+│                           # 切换到项目根目录并运行 python app\git_commit_tool.py。
 │
-├── api_handlers.py         # REST API 端点分发器（GET + POST）。
-│                           #   json_result(rc, stdout, stderr) — 统一 JSON 响应格式构建函数
-│                           #   handle_get(path, params, send_json)  — 所有 GET /api/* 路由：
-│                           #     /api/files、/api/branches、/api/log、/api/conflicts、
-│                           #     /api/stash、/api/compare、/api/project-name、
-│                           #     /api/push-status、/api/gitop-status、
-│                           #     /api/ai/chat-status
-│                           #   handle_post(path, data, send_json)   — 所有 POST /api/* 路由：
-│                           #     /api/commit、/api/checkout、/api/create-branch、
-│                           #     /api/delete-branch、/api/merge、/api/squash、
-│                           #     /api/reset、/api/revert、/api/restore-file、
-│                           #     /api/resolve-conflict、/api/stash-pop、/api/stash-drop、
-│                           #     /api/push、/api/pull、/api/fetch、/api/abort-merge、
-│                           #     /api/gitignore-add、/api/gitignore-remove、
-│                           #     /api/ai/chat、/api/ai/test-provider
-│
-├── ai_module/
-│   ├── __init__.py         # 包初始化文件（空）。
+├── app/                    # 所有应用源代码。
 │   │
-│   └── ai_provider.py      # 解耦的 AI 服务商子模块。
-│                           # 支持：OpenAI 兼容 API、Anthropic 原生 API、Ollama、
-│                           #   DeepSeek、Qwen（通义千问）及任意自定义 OpenAI 兼容端点。
-│                           # 公开 API：
-│                           #   call_llm(provider, api_key, base_url, model, messages)
-│                           #                            — 同步 LLM 调用，返回 (ok, text)
-│                           #   test_provider(...)       — 测试连通性（用于设置弹窗）
-│                           #   start_chat_job(...)      — 异步 LLM 调用，返回 job_id
-│                           #   get_job_status(job_id)   — 轮询异步任务结果
-│
-├── static/
-│   ├── index.html          # HTML 骨架 — 页面布局、Tab 面板、Modal 容器、
-│   │                       # AI 聊天面板 HTML、AI 浮动按钮（🤖 + ? 徽章）。
-│   │                       # 引用 /static/style.css、/static/app.js、
-│   │                       # /static/ai-panel.css、/static/ai-panel.js。
+│   ├── git_commit_tool.py  # 入口文件 — HTTP 服务器、请求路由、静态文件服务。
+│   │                       # Handler 类（继承 BaseHTTPRequestHandler）：
+│   │                       #   do_GET  → 服务 /static/* 文件 + 委托 handle_get() 处理 API
+│   │                       #   do_POST → SSE 分支处理 /api/ai/stream（_handle_ai_stream），
+│   │                       #             其余路由委托 handle_post()
+│   │                       #   _handle_ai_stream() — 以 text/event-stream 流式推送 AI 回复
+│   │                       # main() 从 8989 端口开始寻找空闲端口，启动 HTTPServer，
+│   │                       # 自动打开浏览器。
 │   │
-│   ├── diff-tab.html       # 独立 AI Diff 标签页 — 当用户在 AI Diff 面板点击某文件的
-│   │                       # "Tab" 按钮时在新浏览器标签页打开。
-│   │                       # 展示单个文件的 diff，支持语法高亮、亮/暗主题切换和内容复制。
+│   ├── config.ini          # 应用品牌配置（每次 /api/project-name 请求时读取）。
+│   │                       #   [app]    name, version — 显示在右上角标题区域
+│   │                       #   [git]    network_timeout, gpg_sign
+│   │                       #   [protection]  protected_branches_exact / contains
 │   │
-│   ├── style.css           # Git 看板核心 UI 样式。
-│   │                       # :root CSS 自定义属性定义设计令牌体系：
-│   │                       #   --color-primary/success/warning/error/purple，
-│   │                       #   --color-text/bg/border，--radius-*，--font-size-*
-│   │                       # 涵盖：布局、顶部栏、项目横幅、Tab、diff 视图、
-│   │                       #   分支列表、冲突区域、Modal、Stash、日志、Toast、
-│   │                       #   还原文件页、Squash 工具栏、分支对比页。
+│   ├── core/               # 后端内部模块。
+│   │   │
+│   │   ├── server_state.py # 集中的共享服务器状态模块（新增）。
+│   │   │                   # 所有可变全局变量的唯一来源：
+│   │   │                   #   PORT                     — HTTP 端口（从 8989 自动递增）
+│   │   │                   #   _MSGLOG / _MSGLOG_LOCK   — 会话内操作日志
+│   │   │                   #   _PUSH_JOBS / _PUSH_JOBS_LOCK — 流式任务注册表
+│   │   │                   # git_ops 和 api_handlers 都从此模块导入，
+│   │   │                   # 消除了跨模块私有变量耦合。
+│   │   │
+│   │   ├── async_jobs.py   # 统一异步任务注册表（新增）。
+│   │   │                   # 按 namespace 隔离的线程安全 Job 存储，替代原来三套独立 dict：
+│   │   │                   #   namespace "push"    — push / fetch / pull 流式任务
+│   │   │                   #   namespace "autofix" — AI git 自动修复任务
+│   │   │                   # 公开 API：
+│   │   │                   #   create_job(ns, data) → job_id
+│   │   │                   #   update_job(ns, id, patch) → dict
+│   │   │                   #   get_job(ns, id) → dict | None
+│   │   │                   #   purge_expired(ns) — 按 TTL 自动清理过期任务
+│   │   │
+│   │   ├── git_ops.py      # 所有 Git 操作（仅 git subprocess 封装）。
+│   │   │                   # 不再持有全局状态 — 从 server_state re-import 以保持向后兼容
+│   │   │                   # （from core.git_ops import _PUSH_JOBS 等旧写法仍然有效）。
+│   │   │                   # 核心辅助函数：
+│   │   │                   #   _get_git_env()          — 统一 git 环境变量（禁用交互提示）
+│   │   │                   #   _run()                  — 同步 git 子进程封装
+│   │   │                   #   _run_push_streaming()   — 异步 push，捕获实时 stdout
+│   │   │                   #   _run_gitop_streaming()  — 异步 fetch/pull，支持实时输出
+│   │   │                   # 业务函数（每个 git 操作对应一个函数）：
+│   │   │                   #   current_branch、get_status、get_conflicts、get_branches、
+│   │   │                   #   create_branch、checkout_branch、delete_branch_local/remote、
+│   │   │                   #   compare_branches、get_commit_log、squash_selected_commits、
+│   │   │                   #   squash_conflict_check、reset_to、revert_commit、restore_file、
+│   │   │                   #   stash_list/pop/drop、resolve_conflict、pull_current、fetch ...
+│   │   │
+│   │   └── api_handlers.py # REST API 端点分发器（GET + POST）。
+│   │                       #   从 server_state 导入共享状态（不再依赖 git_ops 私有变量）。
+│   │                       #   AI autofix 任务通过 async_jobs 管理（namespace "autofix"）。
+│   │                       #   handle_get(path, params, send_json)  — 所有 GET /api/* 路由
+│   │                       #   handle_post(path, data, send_json)   — 所有 POST /api/* 路由
+│   │                       #   _autofix_analyze_job / _autofix_apply_job — AI 自动修复流程
 │   │
-│   ├── app.js              # Git 看板所有客户端 JavaScript（约 2800 行）。
-│   │                       # 功能分区：
-│   │                       #   i18n       — T{} 翻译表（EN/ZH），t()/tf() 辅助，
-│   │                       #               switchLang()，data-i18n 属性自动应用
-│   │                       #   状态管理   — 全局 UI 状态（checkedPaths、resolvedConflicts、
-│   │                       #               _conflictData、各页分页状态 ...）
-│   │                       #   API 层     — apiGet()、apiPost()、全局 spinner 管理
-│   │                       #   页面加载   — switchPage()、loadFiles()、loadBranches()、
-│   │                       #               loadLog()、loadConflicts()、loadStash()、
-│   │                       #               loadProjectName()、loadCompare()、loadMsgLog()
-│   │                       #   Git 操作   — doFetch()、doPull()、doPush()、doManualPush()、
-│   │                       #               checkoutBranch()、createNewBranch()、deleteBranch()、
-│   │                       #               mergeSquash()、doSquash()、doReset()、doRevert()、
-│   │                       #               resolveAllBlocks()、saveAndResolveFile()、
-│   │                       #               loadStashList()、popStash()、dropStash()
-│   │                       #   UI 辅助    — showModal()、showModalDouble()、showToast()、
-│   │                       #               addMsg()、highlightDiff()、renderConflictZone()、
-│   │                       #               renderDiff()、buildPagination()
-│   │                       #   语法高亮   — _tokenLine()、buildHighlightedPre()，支持 10+ 语言
+│   ├── ai_module/
+│   │   ├── __init__.py     # 包初始化文件（空）。
+│   │   │
+│   │   └── ai_provider.py  # 解耦的 AI 服务商子模块。
+│   │                       # 支持：OpenAI 兼容 API、Anthropic 原生 API、Ollama、
+│   │                       #   DeepSeek、Qwen（通义千问）及任意自定义 OpenAI 兼容端点。
+│   │                       # 公开 API：
+│   │                       #   call_llm(...)          — 同步 LLM 调用，返回 (ok, text)
+│   │                       #   call_llm_stream(...)   — SSE 流式推送 generator（新增）
+│   │                       #                            逐 token yield {"chunk":"..."}，
+│   │                       #                            结束时 yield {"done":true,"ok":true}
+│   │                       #   test_provider(...)     — 测试连通性（用于设置弹窗）
+│   │                       #   start_chat_job(...)    — 异步 LLM 调用，返回 job_id（旧路径）
+│   │                       #   get_job_status(id)     — 轮询异步任务结果（旧路径）
 │   │
-│   ├── ai-panel.css        # AI 聊天面板与浮动按钮的样式。
-│   │                       # 关键区块：
-│   │                       #   #ai-fab             — 浮动 🤖 按钮，带橙色 ? 徽章，
-│   │                       #                         transition: right 实现面板开启时平滑左移
-│   │                       #   #ai-fab.panel-open  — 面板打开时 FAB 停靠在面板左侧边缘
-│   │                       #   #ai-chat-panel      — 400px 宽右侧滑入面板
-│   │                       #   .ai-quick-actions   — 快速操作胶囊按钮行
-│   │                       #   .ai-msg / .ai-bubble — 聊天气泡（user/assistant/system）
-│   │                       #   .ai-thinking        — 三点弹跳打字动画
-│   │                       #   #ai-provider-modal  — 服务商/模型设置弹窗
-│   │                       #   .ai-ptabs           — 服务商标签选择器
-│   │
-│   └── ai-panel.js         # AI 面板所有客户端 JavaScript（约 500 行）。
-│                           # 关键模块：
-│                           #   AI_PROVIDERS        — 服务商定义（名称、baseUrl、
-│                           #                         是否需要 Key、提示、模型列表）
-│                           #   toggleAIChatPanel() — 开/关面板 + 管理 FAB 位置
-│                           #   _gatherPageContext()— 异步：调用 /api/files、/api/stash、
-│                           #                         /api/conflicts + 抓取页面 DOM，
-│                           #                         在每条消息发送前构建完整实时上下文
-│                           #   _buildSystemPrompt()— 组装系统提示：项目信息 + 当前页面内容
-│                           #                         + git status + 冲突详情
-│                           #   _sendToAI()         — 先收集上下文，再调用 /api/ai/chat
-│                           #   _pollChatJob()      — 轮询 /api/ai/chat-status 获取异步结果
-│                           #   aiQuickAction()     — 处理所有快速操作按钮逻辑
-│                           #   _acceptAllConflicts()— 批量解决所有冲突（接受我方/他方）
-│                           #   openAIProviderModal()— 服务商/模型设置 UI
-│                           #   saveAIProvider()    — 将配置持久化到 localStorage
-│
-├── config.ini              # 应用品牌配置（每次 /api/project-name 请求时读取）。
-│                           #   [app]
-│                           #   name    = Git Manage Board   # 显示在右上角标题区域
-│                           #   version = v1.1.0             # 显示在名称徽章下方
+│   └── static/
+│       ├── index.html      # HTML 骨架 — 页面布局、Tab 面板、Modal 容器、
+│       │                   # AI 聊天面板 HTML、AI 浮动按钮（🤖 + ? 徽章）。
+│       ├── diff-tab.html   # 独立 AI Diff 标签页（在新浏览器标签页中打开）。
+│       ├── style.css       # Git 看板核心 UI 样式，CSS 自定义属性设计令牌体系。
+│       ├── app.js          # Git 看板所有客户端 JavaScript。
+│       │                   # i18n（EN/ZH）、API 层、页面逻辑、git 操作、
+│       │                   # Modal/Toast 系统、10+ 语言语法高亮。
+│       ├── ai-panel.css    # AI 聊天面板与浮动按钮的样式。
+│       └── ai-panel.js     # AI 面板所有客户端 JavaScript。
+│                           # 聊天改用 SSE 流式推送（_streamFromAI，fetch ReadableStream）：
+│                           #   POST /api/ai/stream → 逐 chunk 更新气泡 → 完成后渲染 Markdown
+│                           #   打字机效果：流式阶段显示纯文本，done 信号后一次性渲染完整 Markdown
+│                           # Diff 分析保留旧轮询路径（_pollChatJob → /api/ai/chat-status）。
+│                           # 上下文收集、服务商配置、Diff 模式、快速操作按钮。
 │
 ├── docs/
-│   ├── screenshot.png      # 主看板截图（分支管理页 — 本地/远端分支列表、
-│   │                       # compare/merge/checkout 操作、模糊搜索、快速筛选标签）。
-│   ├── screenshot_AI_1.png # AI 聊天面板截图 — 聊天模式，展示快速操作按钮分组
-│   │                       # （冲突解决、通用 Git、提交分析）及与提交日志页并排的界面。
-│   └── Screenshot_AI_2.png # AI Diff 面板截图 — 逐文件 diff 视图，带内联 Analyze 按钮
-│                           # 和右侧 AI 建议面板（安全问题、重构提示等）。
+│   ├── screenshot.png
+│   ├── screenshot_AI_1.png
+│   └── Screenshot_AI_2.png
 │
-└── README.md               # 完整文档，中英双语（本文件）。
+├── README.md
+└── LICENSE
 ```
 
-应用由 Python 后端（`git_commit_tool.py`、`git_ops.py`、`api_handlers.py`、`ai_module/`）和静态前端（`static/`）组成。使用 `python3 git_commit_tool.py` 启动，无需任何框架或第三方依赖。
+应用由 Python 后端（`app/core/`、`app/ai_module/`）和静态前端（`app/static/`）组成。使用 `python3 app/git_commit_tool.py` 启动，无需任何框架或第三方依赖。
+
+---
+
+### 架构概览
+
+```
+浏览器（前端）
+  └─ fetch POST /api/ai/stream ──────────────────────────────┐
+  └─ fetch/GET 其他所有 /api/* ───────┐                      │
+                                      ▼                      ▼
+                         git_commit_tool.py（入口）
+                         ├─ do_GET  → 静态文件 / handle_get()
+                         └─ do_POST → /api/ai/stream → _handle_ai_stream() [SSE]
+                                    → 其余路由 → handle_post()
+                                              │
+                    ┌─────────────────────────┴──────────────────────┐
+                    ▼                                                 ▼
+          core/api_handlers.py                           core/server_state.py
+          （路由分发器）                                PORT · _MSGLOG · _PUSH_JOBS
+                    │                        ┌───────────────────────┘
+                    ├─ core/git_ops.py        │  （git_ops re-import 保持兼容）
+                    │  （git 操作封装）        │
+                    ├─ core/async_jobs.py     │
+                    │  （统一 Job 注册表）     │
+                    └─ ai_module/ai_provider.py
+                       call_llm / call_llm_stream / start_chat_job
+```
 
 ---
 
